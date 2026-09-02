@@ -1,0 +1,127 @@
+"""Immutable domain models shared by services and Qt workers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+from pathlib import Path
+from typing import Any, Mapping
+
+
+class TaskStatus(StrEnum):
+    PENDING = "PENDING"
+    FETCHING_METADATA = "FETCHING_METADATA"
+    READY = "READY"
+    DOWNLOADING_VIDEO = "DOWNLOADING_VIDEO"
+    DOWNLOADING_AUDIO = "DOWNLOADING_AUDIO"
+    MERGING = "MERGING"
+    POST_PROCESSING = "POST_PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+STATUS_TEXT: Mapping[TaskStatus, str] = {
+    TaskStatus.PENDING: "等待下载",
+    TaskStatus.FETCHING_METADATA: "正在获取视频信息",
+    TaskStatus.READY: "准备就绪",
+    TaskStatus.DOWNLOADING_VIDEO: "正在下载视频",
+    TaskStatus.DOWNLOADING_AUDIO: "正在下载音频",
+    TaskStatus.MERGING: "正在合并视频与音频",
+    TaskStatus.POST_PROCESSING: "正在处理文件",
+    TaskStatus.COMPLETED: "下载完成",
+    TaskStatus.FAILED: "下载失败",
+    TaskStatus.CANCELLED: "已取消",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FormatOption:
+    label: str
+    height: int
+    fps: float
+    vcodec: str
+    acodec: str
+    container: str
+    final_ext: str
+    format_selector: str
+    estimated_size: int | None
+    requires_merge: bool
+    video_format_id: str
+    audio_format_id: str | None = None
+    is_recommended: bool = False
+
+    @property
+    def technical_summary(self) -> str:
+        codec = self.vcodec.split(".", 1)[0].upper()
+        audio = self.acodec.split(".", 1)[0].upper() if self.acodec != "none" else "无音频"
+        merge = " · 需要自动合并" if self.requires_merge else ""
+        return f"{self.container} · {codec} · {audio}{merge}"
+
+
+@dataclass(frozen=True, slots=True)
+class VideoInfo:
+    video_id: str
+    url: str
+    title: str
+    channel: str
+    duration: float | None
+    thumbnail_url: str | None
+    thumbnail_bytes: bytes | None
+    formats: tuple[FormatOption, ...]
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadRequest:
+    task_id: str
+    video: VideoInfo
+    format: FormatOption
+    output_directory: Path
+    filename_stem: str
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadProgress:
+    task_id: str
+    status: TaskStatus
+    percent: float | None = None
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    speed: float | None = None
+    eta: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadResult:
+    task_id: str
+    file_path: Path
+    file_size: int
+    completed_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryRecord:
+    task_id: str
+    video_id: str
+    url: str
+    title: str
+    file_path: Path
+    quality_label: str
+    file_size: int | None
+    thumbnail_path: Path | None
+    status: TaskStatus
+    created_at: str
+    completed_at: str | None = None
+    error_summary: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AppSettings:
+    schema_version: int = 1
+    download_directory: str = ""
+    default_quality: str = "recommended"
+    theme: str = "system"
+    reduce_motion: bool = False
+    ffmpeg_directory: str = ""
+

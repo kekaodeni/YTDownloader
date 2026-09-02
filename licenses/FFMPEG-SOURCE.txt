@@ -1,0 +1,10 @@
+FFmpeg binary build: N-126374-g089a48eb36-20260831
+Binary provider: https://github.com/yt-dlp/FFmpeg-Builds
+Binary archive SHA256: ccf4f10e8f90290c91168249a64d002a174c24e1ba75fa03fb1edb18ae80786f
+
+Exact FFmpeg source commit: 089a48eb36
+Source archive: https://github.com/FFmpeg/FFmpeg/archive/089a48eb36.tar.gz
+Source archive SHA256: 582b7ee3f940b5677bfd723d6c480e6677b1e0ae199f91231c49141a0a3d7bf9
+
+The distributable includes this source archive beside the third-party licenses.
+Build scripts and configuration are available from the binary provider above.

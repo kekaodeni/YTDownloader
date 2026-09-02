@@ -1,0 +1,62 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Build and generated release output
+build/
+dist/
+release/
+artifacts/
+
+# Downloaded tools and transient test/runtime data
+vendor/tools/
+.tool-cache/
+.tool-stage/
+.runtime-data/
+.package-smoke-data/
+.package-preview-data/
+.visual-data/
+tmp/
+temp/
+
+# Logs and local application data
+logs/
+*.log
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Local environment and authentication material
+.env
+.env.*
+!.env.example
+cookies.txt
+cookies*.txt
+*.cookies
+.cookies/
+token
+token.*
+*.token
+secrets.*
+.secrets/
+credentials.*
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# yt-dlp resumable temporary files
+*.part
+*.ytdl
