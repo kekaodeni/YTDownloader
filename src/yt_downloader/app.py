@@ -62,7 +62,13 @@ class _MemoryHistory:
     def update_thumbnail(self, task_id, thumbnail_path) -> None:
         from dataclasses import replace
         if task_id in self.records:
-            self.records[task_id] = replace(self.records[task_id], thumbnail_path=Path(thumbnail_path))
+            self.records[task_id] = replace(
+                self.records[task_id],
+                thumbnail_path=Path(thumbnail_path) if thumbnail_path else None,
+            )
+
+    def get(self, task_id: str) -> HistoryRecord | None:
+        return self.records.get(task_id)
 
     def mark_interrupted(self) -> int:
         return 0
@@ -334,7 +340,7 @@ class AppController:
     def _change_thumbnail(self, record: HistoryRecord) -> None:
         dialog = ThumbnailDialog(record.file_path, record.video_id, self.paths.thumbnails, self.ffmpeg, self.window)
         dialog.error.connect(self.show_error)
-        dialog.thumbnail_set.connect(lambda path, task=record.task_id: self._thumbnail_saved(task, path))
+        dialog.thumbnail_set.connect(lambda result, task=record.task_id: self._thumbnail_saved(task, result))
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
         self._dialogs.append(dialog)
@@ -346,12 +352,21 @@ class AppController:
         self.window.download_page.url_input.setText(record.url)
         self.fetch_metadata(record.url)
 
-    def _thumbnail_saved(self, task_id: str, path: str) -> None:
+    def _thumbnail_saved(self, task_id: str, _result) -> None:
         try:
-            self.history.update_thumbnail(task_id, path)
+            record = self.history.get(task_id)
+            previous = record.thumbnail_path if record else None
+            self.history.update_thumbnail(task_id, None)
+            if previous and previous.is_file():
+                try:
+                    previous.resolve().relative_to(self.paths.thumbnails.resolve())
+                except (OSError, ValueError):
+                    pass
+                else:
+                    previous.unlink(missing_ok=True)
             self.refresh_history()
         except Exception as exc:
-            self.show_error(AppError("history_update_failed", "缩略图已生成，但历史记录更新失败。", repr(exc)))
+            self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
     def show_error(self, error: AppError) -> None:
         logger.error("%s: %s", error.code, error.technical_message)

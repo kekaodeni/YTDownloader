@@ -105,9 +105,12 @@ class HistoryRepository:
         with self._connection() as connection:
             connection.execute(f"UPDATE downloads SET {', '.join(fields)} WHERE task_id=?", values)
 
-    def update_thumbnail(self, task_id: str, thumbnail_path: str | Path) -> None:
+    def update_thumbnail(self, task_id: str, thumbnail_path: str | Path | None) -> None:
         with self._connection() as connection:
-            connection.execute("UPDATE downloads SET thumbnail_path=? WHERE task_id=?", (str(thumbnail_path), task_id))
+            connection.execute(
+                "UPDATE downloads SET thumbnail_path=? WHERE task_id=?",
+                (str(thumbnail_path) if thumbnail_path else None, task_id),
+            )
 
     def mark_interrupted(self) -> int:
         terminal = (TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value)
@@ -146,4 +149,3 @@ class HistoryRepository:
             completed_at=row["completed_at"],
             error_summary=row["error_summary"],
         )
-

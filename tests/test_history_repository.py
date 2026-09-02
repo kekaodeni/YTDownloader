@@ -31,3 +31,12 @@ def test_persists_and_recovers_interrupted_tasks(tmp_path: Path) -> None:
     assert active.status == TaskStatus.CANCELLED
     assert active.error_summary == "上次运行中断"
     assert repository.get("done").status == TaskStatus.COMPLETED  # type: ignore[union-attr]
+
+
+def test_thumbnail_reference_can_be_cleared_after_embedding_into_video(tmp_path: Path) -> None:
+    repository = HistoryRepository(tmp_path / "history.db")
+    repository.upsert(_record(tmp_path, "embedded", TaskStatus.COMPLETED))
+
+    repository.update_thumbnail("embedded", None)
+
+    assert repository.get("embedded").thumbnail_path is None  # type: ignore[union-attr]
