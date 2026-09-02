@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
 from PySide6.QtGui import QGuiApplication, QPalette, QPixmap
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QPushButton, QToolButton
 
 from yt_downloader.core.errors import AppError, CancellationCleanupReport
 from yt_downloader.core.models import AppSettings
@@ -29,6 +29,24 @@ def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) ->
     page.set_loading(False)
     assert page.url_input.isEnabled()
     assert page.parse_button.isEnabled()
+
+
+def test_url_clear_action_is_vertically_centered_by_qt_layout(qapp, qtbot, tmp_path) -> None:
+    manager = ThemeManager(qapp)
+    manager.set_mode("light")
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    page.resize(1100, 720)
+    page.show()
+    page.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    qapp.processEvents()
+    clear_button = page.url_input.findChild(QToolButton)
+
+    assert clear_button is not None
+    assert abs(
+        clear_button.geometry().center().y()
+        - page.url_input.rect().center().y()
+    ) <= 1
 
 
 def test_theme_manager_updates_qpalette(qapp) -> None:

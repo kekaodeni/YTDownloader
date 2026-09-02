@@ -94,6 +94,14 @@ def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
     QPushButton:pressed, QToolButton:pressed {{ background: {t.selection}; }}
     QPushButton:focus, QToolButton:focus {{ border: 2px solid {t.stroke_focus}; padding: 6px 13px; }}
     QPushButton:disabled, QToolButton:disabled {{ color: {t.text_disabled}; border-color: {t.stroke}; }}
+    QLineEdit QToolButton {{
+        background: transparent; border: none; border-radius: 4px;
+        padding: 0; margin: 0; min-width: 20px; min-height: 0;
+        qproperty-iconSize: 16px 16px;
+    }}
+    QLineEdit QToolButton:hover {{ background: {t.layer_alt}; border: none; }}
+    QLineEdit QToolButton:pressed {{ background: {t.selection}; border: none; }}
+    QLineEdit QToolButton:focus {{ border: none; padding: 0; }}
     QPushButton[fluentAppearance="primary"] {{ background: {t.accent}; color: {t.accent_text}; border-color: {t.accent}; font-weight: 600; }}
     QPushButton[fluentAppearance="primary"]:hover {{ background: {t.accent_hover}; border-color: {t.accent_hover}; }}
     QPushButton[fluentAppearance="primary"]:pressed {{ background: {t.accent_pressed}; border-color: {t.accent_pressed}; }}
