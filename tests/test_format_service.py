@@ -24,8 +24,23 @@ def test_normalizes_and_sorts_user_facing_quality_options() -> None:
     assert option_1080.container == "MP4"
     assert option_1080.requires_merge
     assert option_1080.estimated_size == 210
+    assert option_1080.size_is_estimate is True
+
+    option_720 = next(option for option in options if option.label == "720p")
+    assert option_720.estimated_size == 100
+    assert option_720.size_is_estimate is False
 
     option_4k = options[0]
     assert option_4k.format_selector == "313+251"
     assert option_4k.container == "WebM"
     assert next(option for option in options if option.is_recommended).label == "1080p"
+
+
+def test_split_format_has_unknown_size_when_one_required_stream_size_is_missing() -> None:
+    options = normalize_formats([
+        {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2"},
+        {"format_id": "137", "ext": "mp4", "height": 1080, "fps": 30, "vcodec": "avc1", "acodec": "none", "filesize": 200},
+    ])
+
+    assert options[0].requires_merge is True
+    assert options[0].estimated_size is None

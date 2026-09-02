@@ -52,6 +52,7 @@ class FormatOption:
     video_format_id: str
     audio_format_id: str | None = None
     is_recommended: bool = False
+    size_is_estimate: bool = False
 
     @property
     def technical_summary(self) -> str:
@@ -92,6 +93,7 @@ class DownloadProgress:
     total_bytes: int | None = None
     speed: float | None = None
     eta: int | None = None
+    total_is_estimate: bool = False
 
 
 @dataclass(frozen=True, slots=True)

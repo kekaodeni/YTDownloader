@@ -28,3 +28,23 @@ def test_cancelling_freezes_progress_and_clears_live_metrics(qtbot) -> None:
     assert widget.percent_label.text() == "42%"
     assert widget.speed_label.text() == "—"
     assert widget.eta_label.text() == "剩余 —"
+
+
+def test_estimated_total_is_labeled_instead_of_presented_as_exact(qtbot) -> None:
+    widget = ProgressWidget()
+    qtbot.addWidget(widget)
+
+    widget.set_progress(
+        DownloadProgress(
+            "x",
+            TaskStatus.DOWNLOADING_VIDEO,
+            20,
+            50,
+            250,
+            1000,
+            2,
+            total_is_estimate=True,
+        )
+    )
+
+    assert widget.size_label.text() == "50 B / 估算 250 B"

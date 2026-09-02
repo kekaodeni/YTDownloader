@@ -204,7 +204,13 @@ class DownloadPage(QWidget):
         option = self.format_combo.currentData()
         if option:
             size = format_bytes(option.estimated_size)
-            self.technical_info.setText(f"{option.technical_summary}  ·  预计 {size}")
+            if option.estimated_size is None:
+                size_text = "大小未知"
+            elif option.size_is_estimate:
+                size_text = f"估算 {size}"
+            else:
+                size_text = f"大小 {size}"
+            self.technical_info.setText(f"{option.technical_summary}  ·  {size_text}")
 
     def _browse_directory(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "选择下载目录", self.directory_input.text())

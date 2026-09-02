@@ -189,28 +189,74 @@ class DownloadService:
         ydl_logger = _DownloadLogger()
         last_emit_at = float("-inf")
         last_status: TaskStatus | None = None
+        expected_format_ids = {request.format.video_format_id}
+        if request.format.audio_format_id:
+            expected_format_ids.add(request.format.audio_format_id)
+        component_downloaded: dict[str, int] = {}
+        component_totals: dict[str, int] = {}
+        component_total_is_estimate: dict[str, bool] = {}
+        locked_total = request.format.estimated_size
+        locked_total_is_estimate = request.format.size_is_estimate
+        last_aggregate_downloaded: int | None = None
 
-        def emit(status: TaskStatus, data: dict[str, Any] | None = None, *, force: bool = False) -> None:
+        def aggregate_transfer(data: dict[str, Any], *, finished: bool = False) -> tuple[int | None, int | None, bool]:
+            nonlocal locked_total, locked_total_is_estimate, last_aggregate_downloaded
+            info = data.get("info_dict") or {}
+            format_id = str(info.get("format_id") or "")
+            if not format_id and len(expected_format_ids) == 1:
+                format_id = next(iter(expected_format_ids))
+            if format_id:
+                downloaded = data.get("downloaded_bytes")
+                if isinstance(downloaded, (int, float)) and downloaded >= 0:
+                    component_downloaded[format_id] = max(component_downloaded.get(format_id, 0), int(downloaded))
+                total = data.get("total_bytes")
+                estimate = data.get("total_bytes_estimate")
+                if isinstance(total, (int, float)) and total > 0:
+                    component_totals[format_id] = int(total)
+                    component_total_is_estimate[format_id] = False
+                elif isinstance(estimate, (int, float)) and estimate > 0:
+                    component_totals[format_id] = int(estimate)
+                    component_total_is_estimate[format_id] = True
+                if finished and format_id in component_totals:
+                    component_downloaded[format_id] = max(
+                        component_downloaded.get(format_id, 0),
+                        component_totals[format_id],
+                    )
+            aggregate = sum(component_downloaded.values()) if component_downloaded else None
+            if aggregate is not None:
+                last_aggregate_downloaded = max(last_aggregate_downloaded or 0, aggregate)
+            if locked_total is None and expected_format_ids.issubset(component_totals):
+                locked_total = sum(component_totals[item] for item in expected_format_ids)
+                locked_total_is_estimate = any(component_total_is_estimate[item] for item in expected_format_ids)
+            return last_aggregate_downloaded, locked_total, locked_total_is_estimate
+
+        def emit(
+            status: TaskStatus,
+            data: dict[str, Any] | None = None,
+            *,
+            force: bool = False,
+            finished_component: bool = False,
+        ) -> None:
             nonlocal last_emit_at, last_status
             now = self.clock()
+            data = data or {}
+            downloaded, total, total_is_estimate = aggregate_transfer(data, finished=finished_component)
             if force and status == last_status:
                 return
             if not force and status == last_status and now - last_emit_at < 0.1:
                 return
-            data = data or {}
-            total = data.get("total_bytes") or data.get("total_bytes_estimate")
-            downloaded = data.get("downloaded_bytes")
             percent = None
-            if isinstance(total, (int, float)) and total > 0 and isinstance(downloaded, (int, float)):
+            if total and downloaded is not None:
                 percent = max(0.0, min(100.0, float(downloaded) * 100.0 / float(total)))
             progress_callback(DownloadProgress(
                 task_id=request.task_id,
                 status=status,
                 percent=percent,
-                downloaded_bytes=int(downloaded) if isinstance(downloaded, (int, float)) else None,
-                total_bytes=int(total) if isinstance(total, (int, float)) else None,
+                downloaded_bytes=downloaded,
+                total_bytes=total,
                 speed=float(data["speed"]) if isinstance(data.get("speed"), (int, float)) else None,
                 eta=int(data["eta"]) if isinstance(data.get("eta"), (int, float)) else None,
+                total_is_estimate=total_is_estimate,
             ))
             last_emit_at = now
             last_status = status
@@ -230,9 +276,14 @@ class DownloadService:
             elif status == "finished":
                 format_id = str((data.get("info_dict") or {}).get("format_id") or "")
                 if request.format.audio_format_id and format_id == request.format.video_format_id:
-                    emit(TaskStatus.DOWNLOADING_AUDIO, data, force=True)
+                    emit(TaskStatus.DOWNLOADING_AUDIO, data, force=True, finished_component=True)
                 else:
-                    emit(TaskStatus.MERGING if request.format.requires_merge else TaskStatus.POST_PROCESSING, data, force=True)
+                    emit(
+                        TaskStatus.MERGING if request.format.requires_merge else TaskStatus.POST_PROCESSING,
+                        data,
+                        force=True,
+                        finished_component=True,
+                    )
 
         def postprocessor_hook(data: dict[str, Any]) -> None:
             if cancel_event.is_set():
@@ -295,11 +346,19 @@ class DownloadService:
                     "ffprobe stream validation failed",
                     context,
                 )
-            emit(TaskStatus.COMPLETED, {"downloaded_bytes": final_path.stat().st_size, "total_bytes": final_path.stat().st_size}, force=True)
+            final_size = final_path.stat().st_size
+            progress_callback(DownloadProgress(
+                request.task_id,
+                TaskStatus.COMPLETED,
+                100.0,
+                final_size,
+                final_size,
+                total_is_estimate=False,
+            ))
             return DownloadResult(
                 request.task_id,
                 final_path,
-                final_path.stat().st_size,
+                final_size,
                 datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             )
         except OperationCancelled:

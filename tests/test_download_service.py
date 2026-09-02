@@ -35,6 +35,7 @@ def _request(tmp_path: Path) -> DownloadRequest:
         video_format_id="137",
         audio_format_id="140",
         is_recommended=True,
+        size_is_estimate=True,
     )
     video = VideoInfo(
         video_id="dQw4w9WgXcQ",
@@ -114,7 +115,13 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
         TaskStatus.POST_PROCESSING,
         TaskStatus.COMPLETED,
     ]
-    assert events[0].percent == 50
+    transfer_events = events[:-1]
+    assert [event.total_bytes for event in transfer_events] == [300, 300, 300, 300]
+    assert [event.downloaded_bytes for event in transfer_events] == [50, 100, 150, 150]
+    assert [round(event.percent or 0, 2) for event in transfer_events] == [16.67, 33.33, 50.0, 50.0]
+    assert all(event.total_is_estimate for event in transfer_events)
+    assert events[-1].total_bytes == result.file_size
+    assert events[-1].total_is_estimate is False
     assert events[0].speed == 2_000_000
     options = FakeYDL.last_options or {}
     assert options["ignoreconfig"] is True

@@ -66,6 +66,9 @@ class ProgressWidget(QWidget):
             self.percent_label.setText(f"{value}%")
         self.speed_label.setText("—" if stopping else format_speed(progress.speed))
         if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
-            self.size_label.setText(f"{format_bytes(progress.downloaded_bytes)} / {format_bytes(progress.total_bytes)}")
+            total_text = format_bytes(progress.total_bytes)
+            if progress.total_is_estimate and progress.total_bytes is not None:
+                total_text = f"估算 {total_text}"
+            self.size_label.setText(f"{format_bytes(progress.downloaded_bytes)} / {total_text}")
         eta = "—" if stopping else format_eta(progress.eta)
         self.eta_label.setText(f"剩余 {eta}" if eta != "—" else "剩余 —")

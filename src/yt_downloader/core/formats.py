@@ -8,9 +8,14 @@ from typing import Any, Iterable, Mapping
 from .models import FormatOption
 
 
-def _size(item: Mapping[str, Any]) -> int | None:
-    value = item.get("filesize") or item.get("filesize_approx")
-    return int(value) if isinstance(value, (int, float)) and value > 0 else None
+def _size(item: Mapping[str, Any]) -> tuple[int | None, bool]:
+    exact = item.get("filesize")
+    if isinstance(exact, (int, float)) and exact > 0:
+        return int(exact), False
+    estimate = item.get("filesize_approx")
+    if isinstance(estimate, (int, float)) and estimate > 0:
+        return int(estimate), True
+    return None, False
 
 
 def _codec_score(codec: str) -> int:
@@ -88,12 +93,18 @@ def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOp
         else:
             final_ext = "mkv"
 
-        video_size = _size(video)
-        audio_size = _size(audio) if audio else None
-        estimated = None
-        if video_size is not None:
-            estimated = video_size + (audio_size or 0)
-        acodec = str(video.get("acodec") or (audio.get("acodec") if audio else "none") or "none")
+        video_size, video_size_is_estimate = _size(video)
+        audio_size, audio_size_is_estimate = _size(audio) if audio else (None, False)
+        if audio:
+            estimated = video_size + audio_size if video_size is not None and audio_size is not None else None
+            size_is_estimate = video_size_is_estimate or audio_size_is_estimate
+        else:
+            estimated = video_size
+            size_is_estimate = video_size_is_estimate
+        acodec = str(
+            video.get("acodec") if has_audio
+            else (audio.get("acodec") if audio else "none")
+        )
         options.append(FormatOption(
             label=_quality_label(height, fps),
             height=height,
@@ -107,6 +118,7 @@ def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOp
             requires_merge=bool(audio_id),
             video_format_id=video_id,
             audio_format_id=audio_id,
+            size_is_estimate=size_is_estimate,
         ))
 
     options.sort(key=lambda option: (option.height, option.fps), reverse=True)
@@ -115,4 +127,3 @@ def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOp
         recommended = max(compatible, key=lambda option: (option.height, -abs(option.fps - 30))) if compatible else options[0]
         options = [replace(option, is_recommended=option is recommended) for option in options]
     return options
-
