@@ -138,6 +138,10 @@ def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOp
             audio_format_id=audio_id,
             width=width,
             size_is_estimate=size_is_estimate,
+            video_size=video_size,
+            video_size_is_estimate=video_size_is_estimate,
+            audio_size=audio_size,
+            audio_size_is_estimate=audio_size_is_estimate,
         ))
 
     options.sort(

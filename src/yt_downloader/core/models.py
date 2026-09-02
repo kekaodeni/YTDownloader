@@ -22,6 +22,14 @@ class TaskStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class ProgressTotalSource(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    METADATA = "METADATA"
+    HOOK = "HOOK"
+    MIXED = "MIXED"
+    FINAL = "FINAL"
+
+
 STATUS_TEXT: Mapping[TaskStatus, str] = {
     TaskStatus.PENDING: "等待下载",
     TaskStatus.FETCHING_METADATA: "正在获取视频信息",
@@ -54,6 +62,10 @@ class FormatOption:
     is_recommended: bool = False
     size_is_estimate: bool = False
     width: int | None = None
+    video_size: int | None = None
+    video_size_is_estimate: bool = False
+    audio_size: int | None = None
+    audio_size_is_estimate: bool = False
 
     @property
     def display_height(self) -> int | None:
@@ -103,6 +115,7 @@ class DownloadProgress:
     speed: float | None = None
     eta: int | None = None
     total_is_estimate: bool = False
+    total_source: ProgressTotalSource = ProgressTotalSource.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)

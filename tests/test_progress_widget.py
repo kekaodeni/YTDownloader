@@ -48,3 +48,38 @@ def test_estimated_total_is_labeled_instead_of_presented_as_exact(qtbot) -> None
     )
 
     assert widget.size_label.text() == "50 B / 估算 250 B"
+
+
+def test_unknown_total_keeps_downloaded_speed_and_eta_visible(qtbot) -> None:
+    widget = ProgressWidget()
+    qtbot.addWidget(widget)
+
+    widget.set_progress(
+        DownloadProgress(
+            "x",
+            TaskStatus.DOWNLOADING_VIDEO,
+            percent=None,
+            downloaded_bytes=512,
+            total_bytes=None,
+            speed=1024,
+            eta=12,
+        )
+    )
+
+    assert (widget.progress_bar.minimum(), widget.progress_bar.maximum()) == (0, 0)
+    assert widget.percent_label.text() == "—%"
+    assert widget.size_label.text() == "512 B / —"
+    assert widget.speed_label.text() == "1.0 KB/s"
+    assert widget.eta_label.text() == "剩余 00:12"
+
+
+def test_progress_switches_from_unknown_to_determinate_without_reset(qtbot) -> None:
+    widget = ProgressWidget()
+    qtbot.addWidget(widget)
+    widget.set_progress(DownloadProgress("x", TaskStatus.DOWNLOADING_VIDEO, None, 100, None, 50, None))
+
+    widget.set_progress(DownloadProgress("x", TaskStatus.DOWNLOADING_VIDEO, 20, 200, 1000, 50, 16))
+
+    assert (widget.progress_bar.minimum(), widget.progress_bar.maximum()) == (0, 100)
+    assert widget.progress_bar.value() == 20
+    assert widget.percent_label.text() == "20%"

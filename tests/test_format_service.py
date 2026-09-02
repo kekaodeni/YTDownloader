@@ -27,6 +27,10 @@ def test_normalizes_and_sorts_user_facing_quality_options() -> None:
     assert option_1080.requires_merge
     assert option_1080.estimated_size == 210
     assert option_1080.size_is_estimate is True
+    assert option_1080.video_size == 200
+    assert option_1080.video_size_is_estimate is True
+    assert option_1080.audio_size == 10
+    assert option_1080.audio_size_is_estimate is False
 
     option_720 = next(option for option in options if option.label == "720p")
     assert option_720.estimated_size == 100

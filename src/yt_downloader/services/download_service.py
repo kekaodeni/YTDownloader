@@ -21,7 +21,14 @@ from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.core.filename import ensure_unique_path, sanitize_filename
-from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, TaskStatus
+from yt_downloader.core.models import (
+    DownloadProgress,
+    DownloadRequest,
+    DownloadResult,
+    ProgressTotalSource,
+    TaskStatus,
+)
+from yt_downloader.core.progress import AggregateProgressTracker
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.ffmpeg_service import FfmpegService
@@ -197,46 +204,9 @@ class DownloadService:
         ydl_logger = _DownloadLogger()
         last_emit_at = float("-inf")
         last_status: TaskStatus | None = None
-        expected_format_ids = {request.format.video_format_id}
-        if request.format.audio_format_id:
-            expected_format_ids.add(request.format.audio_format_id)
-        component_downloaded: dict[str, int] = {}
-        component_totals: dict[str, int] = {}
-        component_total_is_estimate: dict[str, bool] = {}
-        locked_total = request.format.estimated_size
-        locked_total_is_estimate = request.format.size_is_estimate
-        last_aggregate_downloaded: int | None = None
-
-        def aggregate_transfer(data: dict[str, Any], *, finished: bool = False) -> tuple[int | None, int | None, bool]:
-            nonlocal locked_total, locked_total_is_estimate, last_aggregate_downloaded
-            info = data.get("info_dict") or {}
-            format_id = str(info.get("format_id") or "")
-            if not format_id and len(expected_format_ids) == 1:
-                format_id = next(iter(expected_format_ids))
-            if format_id:
-                downloaded = data.get("downloaded_bytes")
-                if isinstance(downloaded, (int, float)) and downloaded >= 0:
-                    component_downloaded[format_id] = max(component_downloaded.get(format_id, 0), int(downloaded))
-                total = data.get("total_bytes")
-                estimate = data.get("total_bytes_estimate")
-                if isinstance(total, (int, float)) and total > 0:
-                    component_totals[format_id] = int(total)
-                    component_total_is_estimate[format_id] = False
-                elif isinstance(estimate, (int, float)) and estimate > 0:
-                    component_totals[format_id] = int(estimate)
-                    component_total_is_estimate[format_id] = True
-                if finished and format_id in component_totals:
-                    component_downloaded[format_id] = max(
-                        component_downloaded.get(format_id, 0),
-                        component_totals[format_id],
-                    )
-            aggregate = sum(component_downloaded.values()) if component_downloaded else None
-            if aggregate is not None:
-                last_aggregate_downloaded = max(last_aggregate_downloaded or 0, aggregate)
-            if locked_total is None and expected_format_ids.issubset(component_totals):
-                locked_total = sum(component_totals[item] for item in expected_format_ids)
-                locked_total_is_estimate = any(component_total_is_estimate[item] for item in expected_format_ids)
-            return last_aggregate_downloaded, locked_total, locked_total_is_estimate
+        aggregate_progress = AggregateProgressTracker(request.format)
+        smoothed_speed: float | None = None
+        last_speed_at: float | None = None
 
         def emit(
             status: TaskStatus,
@@ -245,26 +215,46 @@ class DownloadService:
             force: bool = False,
             finished_component: bool = False,
         ) -> None:
-            nonlocal last_emit_at, last_status
+            nonlocal last_emit_at, last_status, smoothed_speed, last_speed_at
             now = self.clock()
             data = data or {}
-            downloaded, total, total_is_estimate = aggregate_transfer(data, finished=finished_component)
+            snapshot = aggregate_progress.update(data, finished=finished_component)
             if force and status == last_status:
                 return
-            if not force and status == last_status and now - last_emit_at < 0.1:
+            if not force and status == last_status and now - last_emit_at < 0.08:
                 return
+            if status in {TaskStatus.MERGING, TaskStatus.POST_PROCESSING}:
+                snapshot = aggregate_progress.terminal_stage_snapshot()
+            downloaded = snapshot.downloaded_bytes
+            total = snapshot.total_bytes
             percent = None
             if total and downloaded is not None:
                 percent = max(0.0, min(100.0, float(downloaded) * 100.0 / float(total)))
+            raw_speed = float(data["speed"]) if isinstance(data.get("speed"), (int, float)) and data["speed"] > 0 else None
+            if raw_speed is not None:
+                smoothed_speed = raw_speed if smoothed_speed is None else (0.25 * raw_speed) + (0.75 * smoothed_speed)
+                last_speed_at = now
+            provider_eta = data.get("eta")
+            eta = int(provider_eta) if isinstance(provider_eta, (int, float)) and provider_eta >= 0 else None
+            if (
+                eta is None
+                and total is not None
+                and downloaded is not None
+                and smoothed_speed
+                and last_speed_at is not None
+                and now - last_speed_at <= 3.0
+            ):
+                eta = max(0, round((total - downloaded) / smoothed_speed))
             progress_callback(DownloadProgress(
                 task_id=request.task_id,
                 status=status,
                 percent=percent,
                 downloaded_bytes=downloaded,
                 total_bytes=total,
-                speed=float(data["speed"]) if isinstance(data.get("speed"), (int, float)) else None,
-                eta=int(data["eta"]) if isinstance(data.get("eta"), (int, float)) else None,
-                total_is_estimate=total_is_estimate,
+                speed=raw_speed,
+                eta=eta,
+                total_is_estimate=snapshot.total_is_estimate,
+                total_source=snapshot.total_source,
             ))
             last_emit_at = now
             last_status = status
@@ -365,6 +355,7 @@ class DownloadService:
                 final_size,
                 final_size,
                 total_is_estimate=False,
+                total_source=ProgressTotalSource.FINAL,
             ))
             return DownloadResult(
                 request.task_id,
