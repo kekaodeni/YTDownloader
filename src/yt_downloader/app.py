@@ -70,6 +70,9 @@ class _MemoryHistory:
     def get(self, task_id: str) -> HistoryRecord | None:
         return self.records.get(task_id)
 
+    def delete(self, task_id: str) -> bool:
+        return self.records.pop(task_id, None) is not None
+
     def mark_interrupted(self) -> int:
         return 0
 
@@ -135,6 +138,7 @@ class AppController:
         history.copy_link_requested.connect(lambda value: QGuiApplication.clipboard().setText(value))
         history.thumbnail_requested.connect(self._change_thumbnail)
         history.retry_requested.connect(self._retry_record)
+        history.delete_requested.connect(self._delete_history_record)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
         settings.network_test_requested.connect(self.test_network_connection)
@@ -351,6 +355,19 @@ class AppController:
         self.window._select_page(0)
         self.window.download_page.url_input.setText(record.url)
         self.fetch_metadata(record.url)
+
+    def _delete_history_record(self, record: HistoryRecord) -> None:
+        if record.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            return
+        try:
+            self.history.delete(record.task_id)
+            self.refresh_history()
+        except Exception as exc:
+            self.show_error(AppError(
+                "history_delete_failed",
+                "无法删除这条历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
 
     def _thumbnail_saved(self, task_id: str, _result) -> None:
         try:

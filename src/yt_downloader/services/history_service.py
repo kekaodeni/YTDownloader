@@ -126,6 +126,11 @@ class HistoryRepository:
             row = connection.execute("SELECT * FROM downloads WHERE task_id=?", (task_id,)).fetchone()
         return self._from_row(row) if row else None
 
+    def delete(self, task_id: str) -> bool:
+        with self._connection() as connection:
+            cursor = connection.execute("DELETE FROM downloads WHERE task_id=?", (task_id,))
+            return cursor.rowcount > 0
+
     def list_records(self, *, limit: int = 500) -> list[HistoryRecord]:
         with self._connection() as connection:
             rows = connection.execute(

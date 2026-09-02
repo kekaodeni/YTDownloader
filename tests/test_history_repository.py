@@ -40,3 +40,15 @@ def test_thumbnail_reference_can_be_cleared_after_embedding_into_video(tmp_path:
     repository.update_thumbnail("embedded", None)
 
     assert repository.get("embedded").thumbnail_path is None  # type: ignore[union-attr]
+
+
+def test_delete_removes_only_history_row_and_never_the_video_file(tmp_path: Path) -> None:
+    video = tmp_path / "中文标题.mp4"
+    video.write_bytes(b"keep-video")
+    repository = HistoryRepository(tmp_path / "history.db")
+    repository.upsert(_record(tmp_path, "delete-me", TaskStatus.COMPLETED))
+
+    assert repository.delete("delete-me")
+
+    assert repository.get("delete-me") is None
+    assert video.read_bytes() == b"keep-video"

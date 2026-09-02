@@ -105,6 +105,11 @@ def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QFrame[separator="true"] {{ background: {t.stroke}; max-height: 1px; }}
     QToolTip {{ background: {t.layer}; color: {t.text}; border: 1px solid {t.stroke}; padding: 5px; }}
+    QMenu {{ background: {t.layer}; color: {t.text}; border: 1px solid {t.stroke}; padding: 5px; }}
+    QMenu::item {{ background: transparent; color: {t.text}; border-radius: 5px; padding: 7px 24px 7px 10px; }}
+    QMenu::item:selected {{ background: {t.selection}; color: {t.text}; }}
+    QMenu::item:disabled {{ color: {t.text_disabled}; }}
+    QMenu::separator {{ background: {t.stroke}; height: 1px; margin: 5px 8px; }}
     """ + typography_qss(fonts)
 
 
