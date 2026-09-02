@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, STATUS_TEXT, TaskStatus
 from yt_downloader.ui.widgets.progress_widget import ProgressWidget
 
@@ -80,6 +81,18 @@ class DownloadTaskCard(QWidget):
         self.open_button.show()
         self.folder_button.show()
 
-    def set_terminal_status(self, status: TaskStatus) -> None:
+    def set_terminal_status(
+        self,
+        status: TaskStatus,
+        cleanup_report: CancellationCleanupReport | None = None,
+    ) -> None:
         self.progress.set_progress(DownloadProgress(self.request.task_id, status))
         self.cancel_button.hide()
+        if (
+            status is TaskStatus.CANCELLED
+            and cleanup_report is not None
+            and not cleanup_report.succeeded
+        ):
+            self.progress.status_label.setText("已取消，但部分临时文件未能清理")
+            self.file_path = Path(cleanup_report.output_directory)
+            self.folder_button.show()

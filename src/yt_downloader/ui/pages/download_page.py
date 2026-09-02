@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration
+from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, TaskStatus, VideoInfo
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.ui.widgets.task_card import DownloadTaskCard
@@ -277,10 +278,15 @@ class DownloadPage(QWidget):
             card.set_completed(result)
             self._mark_terminal(result.task_id)
 
-    def fail_task(self, task_id: str, status: TaskStatus) -> None:
+    def fail_task(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        cleanup_report: CancellationCleanupReport | None = None,
+    ) -> None:
         card = self.cards.get(task_id)
         if card:
-            card.set_terminal_status(status)
+            card.set_terminal_status(status, cleanup_report)
             self._mark_terminal(task_id)
 
     def _mark_terminal(self, task_id: str) -> None:

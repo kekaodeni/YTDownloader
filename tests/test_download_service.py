@@ -291,8 +291,11 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
 
 
 class FakeYDLWithFfmpegChild(FakeYDL):
+    marker_path: Path | None = None
+
     def download(self, _urls: list[str]) -> int:
         marker = Path(self.options["final_path"]).with_suffix(".child-lock")
+        type(self).marker_path = marker
         script = (
             "from pathlib import Path; import sys, time; "
             "p=Path(sys.argv[1]); f=p.open('wb'); f.write(b'locked'); f.flush(); "
@@ -304,6 +307,58 @@ class FakeYDLWithFfmpegChild(FakeYDL):
             stderr=subprocess.PIPE,
         )
         return 0
+
+
+class FakeYDLWithOwnedPartial(FakeYDL):
+    started = threading.Event()
+    part_path: Path | None = None
+
+    def download(self, _urls: list[str]) -> int:
+        progress = self.options["progress_hooks"][0]
+        type(self).part_path = Path(self.options["final_path"]).with_suffix(".part")
+        assert type(self).part_path is not None
+        with type(self).part_path.open("wb") as handle:
+            handle.write(b"partial")
+            handle.flush()
+            type(self).started.set()
+            while True:
+                time.sleep(0.01)
+                progress({
+                    "status": "downloading",
+                    "downloaded_bytes": handle.tell(),
+                    "total_bytes": 100,
+                    "info_dict": {"format_id": "137"},
+                })
+
+
+def test_user_cancellation_removes_only_the_task_owned_partial_files(
+    tmp_path: Path,
+) -> None:
+    FakeYDLWithOwnedPartial.started = threading.Event()
+    FakeYDLWithOwnedPartial.part_path = None
+    request = _request(tmp_path)
+    unrelated = tmp_path / "keep-me.part"
+    unrelated.write_bytes(b"user file")
+    cancel = threading.Event()
+    service = DownloadService(
+        ydl_factory=FakeYDLWithOwnedPartial,
+        require_tools=False,
+        media_validator=lambda _path: True,
+    )
+
+    watcher = threading.Thread(
+        target=lambda: (FakeYDLWithOwnedPartial.started.wait(2), cancel.set()),
+    )
+    watcher.start()
+    with pytest.raises(OperationCancelled) as cancelled:
+        service.download(request, lambda _event: None, cancel)
+    watcher.join(timeout=1)
+
+    assert FakeYDLWithOwnedPartial.part_path is not None
+    assert not FakeYDLWithOwnedPartial.part_path.exists()
+    assert unrelated.read_bytes() == b"user file"
+    assert cancelled.value.cleanup_report is not None
+    assert cancelled.value.cleanup_report.succeeded
 
 
 class FakeYDLWithRapidHooks(FakeYDL):
@@ -353,9 +408,9 @@ def test_progress_events_are_coalesced_to_about_twelve_frames_per_second(
 
 
 def test_cancel_interrupts_task_owned_ffmpeg_and_closes_handles(tmp_path: Path) -> None:
+    FakeYDLWithFfmpegChild.marker_path = None
     request = _request(tmp_path)
     cancel = threading.Event()
-    marker = (tmp_path / "标题.mp4").with_suffix(".child-lock")
     service = DownloadService(
         ydl_factory=FakeYDLWithFfmpegChild,
         deno_path=tmp_path / "deno.exe",
@@ -366,7 +421,10 @@ def test_cancel_interrupts_task_owned_ffmpeg_and_closes_handles(tmp_path: Path) 
 
     def cancel_after_child_starts() -> None:
         deadline = time.monotonic() + 2
-        while time.monotonic() < deadline and not marker.exists():
+        while time.monotonic() < deadline:
+            marker = FakeYDLWithFfmpegChild.marker_path
+            if marker is not None and marker.exists():
+                break
             time.sleep(0.01)
         cancel.set()
 
@@ -378,7 +436,8 @@ def test_cancel_interrupts_task_owned_ffmpeg_and_closes_handles(tmp_path: Path) 
     elapsed = time.monotonic() - started
     watcher.join(timeout=1)
 
-    probe = marker.with_suffix(".unlock-probe")
-    marker.rename(probe)
-    probe.rename(marker)
+    marker = FakeYDLWithFfmpegChild.marker_path
+    assert marker is not None
+    assert not marker.exists()
+    assert not (tmp_path / ".ytdownloader-tmp").exists()
     assert elapsed < 1.5

@@ -8,7 +8,7 @@ import time
 from PySide6.QtCore import QCoreApplication
 
 from test_download_service import _request
-from yt_downloader.core.errors import OperationCancelled
+from yt_downloader.core.errors import CancellationCleanupReport, OperationCancelled
 from yt_downloader.core.models import DownloadProgress, DownloadResult, TaskStatus
 from yt_downloader.workers.download_queue import DownloadQueueController
 
@@ -64,7 +64,12 @@ class LockingCancellableService:
                 callback(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 75, 75, 100, 900, 1))
         finally:
             self.worker_exited.set()
-        raise OperationCancelled()
+        raise OperationCancelled(
+            cleanup_report=CancellationCleanupReport(
+                task_id=request.task_id,
+                output_directory=str(request.output_directory),
+            ),
+        )
 
 
 def test_cancelled_is_emitted_only_after_thread_exit_and_file_unlock(qtbot, tmp_path: Path) -> None:
@@ -75,15 +80,17 @@ def test_cancelled_is_emitted_only_after_thread_exit_and_file_unlock(qtbot, tmp_
     lifecycle: list[str] = []
     progress: list[DownloadProgress] = []
     unlocked_during_cancelled: list[bool] = []
+    cleanup_reports: list[CancellationCleanupReport] = []
 
     queue.cancelling.connect(lambda task_id: lifecycle.append(f"cancelling:{task_id}"))
     queue.progress.connect(progress.append)
 
-    def on_cancelled(task_id: str) -> None:
+    def on_cancelled(task_id: str, report: CancellationCleanupReport) -> None:
         probe = partial.with_suffix(".unlock-probe")
         partial.rename(probe)
         probe.rename(partial)
         unlocked_during_cancelled.append(True)
+        cleanup_reports.append(report)
         lifecycle.append(f"cancelled:{task_id}")
 
     queue.cancelled.connect(on_cancelled)
@@ -96,5 +103,7 @@ def test_cancelled_is_emitted_only_after_thread_exit_and_file_unlock(qtbot, tmp_
     assert lifecycle == ["cancelling:cancel-me", "cancelled:cancel-me"]
     assert service.worker_exited.is_set()
     assert unlocked_during_cancelled == [True]
+    assert cleanup_reports[0].succeeded
+    assert cleanup_reports[0].task_id == request.task_id
     assert [event.percent for event in progress] == [25]
     assert queue.is_busy is False

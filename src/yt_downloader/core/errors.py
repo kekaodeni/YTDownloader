@@ -29,12 +29,28 @@ class AppError(Exception):
         return self.user_message
 
 
+@dataclass(frozen=True, slots=True)
+class CancellationCleanupReport:
+    task_id: str = ""
+    output_directory: str = ""
+    failed_paths: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+
+    @property
+    def succeeded(self) -> bool:
+        return not self.failed_paths
+
+
 class OperationCancelled(AppError):
-    def __init__(self, context: ErrorContext | None = None) -> None:
+    def __init__(
+        self,
+        context: ErrorContext | None = None,
+        cleanup_report: CancellationCleanupReport | None = None,
+    ) -> None:
         super().__init__(
             code="cancelled",
             user_message="操作已取消。",
             technical_message="Operation cancelled by the user",
             context=context or ErrorContext(),
         )
-
+        object.__setattr__(self, "cleanup_report", cleanup_report)

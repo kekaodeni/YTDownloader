@@ -34,6 +34,7 @@ from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.download_tuning import AUTO_FRAGMENT_COUNT
+from yt_downloader.services.task_artifacts import TaskArtifactRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -199,8 +200,11 @@ class DownloadService:
             directory=output_directory,
             extension=f".{request.format.final_ext}",
         )
-        final_path = ensure_unique_path(output_directory / f"{safe_stem}.{request.format.final_ext}")
-        output_template = str(final_path.with_suffix(".%(ext)s"))
+        destination = ensure_unique_path(output_directory / f"{safe_stem}.{request.format.final_ext}")
+        artifacts = TaskArtifactRegistry(output_directory, request.task_id)
+        artifacts.prepare()
+        final_path = artifacts.download_path(request.format.final_ext)
+        output_template = artifacts.output_template
         ydl_logger = _DownloadLogger()
         last_emit_at = float("-inf")
         last_status: TaskStatus | None = None
@@ -328,12 +332,7 @@ class DownloadService:
             if exit_code:
                 raise DownloadError(f"yt-dlp returned exit code {exit_code}")
             if not final_path.is_file():
-                candidates = sorted(
-                    output_directory.glob(f"{final_path.stem}.*"),
-                    key=lambda item: item.stat().st_mtime,
-                    reverse=True,
-                )
-                final_path = next((item for item in candidates if item.suffix != ".part"), final_path)
+                final_path = artifacts.find_completed_file(request.format.final_ext) or final_path
             if not final_path.is_file():
                 raise OSError(f"Expected output was not created: {final_path}")
 
@@ -346,6 +345,13 @@ class DownloadService:
                     "下载完成，但文件没有同时包含视频和音频流。",
                     "ffprobe stream validation failed",
                     context,
+                )
+            final_path = artifacts.commit(final_path, destination)
+            cleanup_report = artifacts.cleanup()
+            if not cleanup_report.succeeded:
+                logger.error(
+                    "Download completed but task workspace cleanup failed: %s",
+                    cleanup_report.failed_paths,
                 )
             final_size = final_path.stat().st_size
             progress_callback(DownloadProgress(
@@ -363,13 +369,15 @@ class DownloadService:
                 final_size,
                 datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             )
-        except OperationCancelled:
-            raise
+        except OperationCancelled as exc:
+            cleanup_report = artifacts.cleanup()
+            raise OperationCancelled(exc.context or context, cleanup_report) from exc
         except AppError:
             raise
         except Exception as exc:
             if cancel_event.is_set():
-                raise OperationCancelled(context) from exc
+                cleanup_report = artifacts.cleanup()
+                raise OperationCancelled(context, cleanup_report) from exc
             technical = redact_sensitive(str(exc))
             code, user_message = _download_error(technical)
             raise AppError(

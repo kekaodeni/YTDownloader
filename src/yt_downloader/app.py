@@ -258,10 +258,15 @@ class AppController:
         self.refresh_history()
         self.show_error(error)
 
-    def _cancelled(self, task_id: str) -> None:
-        self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED)
+    def _cancelled(self, task_id: str, cleanup_report) -> None:
+        self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED, cleanup_report)
+        summary = (
+            "任务由用户取消，临时文件已清理。"
+            if cleanup_report.succeeded
+            else "任务由用户取消，但部分临时文件未能清理；可打开下载文件夹处理。"
+        )
         try:
-            self.history.update_status(task_id, TaskStatus.CANCELLED, error_summary="任务由用户取消；可重试并续传 .part 文件。")
+            self.history.update_status(task_id, TaskStatus.CANCELLED, error_summary=summary)
         except Exception:
             logger.exception("Failed to persist cancelled task")
         self.refresh_history()
@@ -331,7 +336,9 @@ class AppController:
         self._shell_action(lambda: open_path(value), "无法打开文件。")
 
     def _reveal_file(self, value: str) -> None:
-        self._shell_action(lambda: reveal_in_folder(value), "无法在文件夹中显示该文件。")
+        target = Path(value)
+        action = (lambda: open_path(target)) if target.is_dir() else (lambda: reveal_in_folder(target))
+        self._shell_action(action, "无法打开文件夹。")
 
     def _open_directory(self, value: Path) -> None:
         self._shell_action(lambda: open_path(value), "无法打开目录。")

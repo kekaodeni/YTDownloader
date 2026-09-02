@@ -10,7 +10,11 @@ from typing import Protocol
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
-from yt_downloader.core.errors import AppError, OperationCancelled
+from yt_downloader.core.errors import (
+    AppError,
+    CancellationCleanupReport,
+    OperationCancelled,
+)
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult
 
 
@@ -37,8 +41,12 @@ class _DownloadWorker(QObject):
         try:
             result = self.service.download(self.request, self.progress.emit, self.cancel_event)
             self.outcome = ("completed", result)
-        except OperationCancelled:
-            self.outcome = ("cancelled", None)
+        except OperationCancelled as exc:
+            report = exc.cleanup_report or CancellationCleanupReport(
+                task_id=self.request.task_id,
+                output_directory=str(self.request.output_directory),
+            )
+            self.outcome = ("cancelled", report)
         except AppError as exc:
             self.outcome = ("failed", exc)
         except Exception as exc:  # Last-resort worker boundary; never cross Qt with an uncaught exception.
@@ -55,7 +63,7 @@ class DownloadQueueController(QObject):
     progress = Signal(object)
     completed = Signal(object)
     failed = Signal(str, object)
-    cancelled = Signal(str)
+    cancelled = Signal(str, object)
     busy_changed = Signal(bool)
 
     def __init__(self, service: DownloadServiceProtocol, parent: QObject | None = None) -> None:
@@ -102,7 +110,10 @@ class DownloadQueueController(QObject):
             if request.task_id == task_id:
                 self._pending.remove(request)
                 self.cancelling.emit(task_id)
-                self.cancelled.emit(task_id)
+                self.cancelled.emit(
+                    task_id,
+                    CancellationCleanupReport(task_id, str(request.output_directory)),
+                )
                 if not self.is_busy:
                     self.busy_changed.emit(False)
                 return True
@@ -112,7 +123,10 @@ class DownloadQueueController(QObject):
         for request in tuple(self._pending):
             self._pending.remove(request)
             self.cancelling.emit(request.task_id)
-            self.cancelled.emit(request.task_id)
+            self.cancelled.emit(
+                request.task_id,
+                CancellationCleanupReport(request.task_id, str(request.output_directory)),
+            )
         if self._active_cancel:
             if not self._active_cancel.is_set():
                 self._active_cancel.set()
@@ -165,11 +179,21 @@ class DownloadQueueController(QObject):
         self._active_worker = None
         self._active_cancel_requested_at = None
         if request and cancel_requested_at is not None:
-            logger.info(
-                "Cancellation cleanup completed for task %s after %.3fs",
-                request.task_id,
-                time.monotonic() - cancel_requested_at,
-            )
+            elapsed = time.monotonic() - cancel_requested_at
+            report = outcome[1] if outcome and outcome[0] == "cancelled" else None
+            if isinstance(report, CancellationCleanupReport) and not report.succeeded:
+                logger.warning(
+                    "Cancellation ended with incomplete cleanup for task %s after %.3fs: %s",
+                    request.task_id,
+                    elapsed,
+                    report.failed_paths,
+                )
+            else:
+                logger.info(
+                    "Cancellation cleanup completed for task %s after %.3fs",
+                    request.task_id,
+                    elapsed,
+                )
         if request and outcome:
             kind, payload = outcome
             if kind == "completed":
@@ -177,7 +201,11 @@ class DownloadQueueController(QObject):
             elif kind == "failed":
                 self.failed.emit(request.task_id, payload)
             else:
-                self.cancelled.emit(request.task_id)
+                report = payload or CancellationCleanupReport(
+                    request.task_id,
+                    str(request.output_directory),
+                )
+                self.cancelled.emit(request.task_id, report)
         elif request:
             self.failed.emit(
                 request.task_id,

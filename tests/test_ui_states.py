@@ -6,7 +6,7 @@ from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
 from PySide6.QtGui import QGuiApplication, QPalette, QPixmap
 from PySide6.QtWidgets import QPushButton
 
-from yt_downloader.core.errors import AppError
+from yt_downloader.core.errors import AppError, CancellationCleanupReport
 from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
@@ -114,6 +114,29 @@ def test_task_card_enters_cancelling_immediately(qtbot, tmp_path) -> None:
     assert card.progress.progress_bar.maximum() == 100
     assert card.progress.speed_label.text() == "—"
     assert card.progress.eta_label.text() == "剩余 —"
+
+
+def test_cancel_cleanup_warning_offers_the_output_folder(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    page.show()
+    request = replace(_request(tmp_path), task_id="cancel-cleanup-warning")
+    page.add_task(request)
+    report = CancellationCleanupReport(
+        task_id=request.task_id,
+        output_directory=str(tmp_path),
+        failed_paths=(str(tmp_path / ".ytdownloader-tmp" / "task-owned"),),
+        errors=("locked",),
+    )
+
+    page.fail_task(request.task_id, TaskStatus.CANCELLED, report)
+
+    card = page.cards[request.task_id]
+    assert card.progress.status_label.text() == "已取消，但部分临时文件未能清理"
+    assert card.folder_button.isVisible()
+    with qtbot.waitSignal(page.open_folder_requested, timeout=500) as signal:
+        card.folder_button.click()
+    assert signal.args == [str(tmp_path)]
 
 
 def test_new_metadata_clears_the_previous_thumbnail_when_image_is_missing(qtbot, tmp_path) -> None:
