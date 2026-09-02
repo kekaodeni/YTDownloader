@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QPushButton
 from yt_downloader.core.errors import AppError
 from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.pages.download_page import DownloadPage
+from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
@@ -119,3 +120,46 @@ def test_starting_the_next_task_retires_older_terminal_cards(qtbot, tmp_path) ->
     page.task_started("second")
 
     assert set(page.cards) == {"second"}
+
+
+def test_settings_auto_save_after_text_edit_and_show_saved_status(qtbot, tmp_path) -> None:
+    page = SettingsPage(
+        AppSettings(download_directory=str(tmp_path)),
+        ytdlp_version="test",
+        ffmpeg_description="test",
+    )
+    qtbot.addWidget(page)
+    changed = tmp_path / "新的默认目录"
+
+    with qtbot.waitSignal(page.save_requested, timeout=1500) as signal:
+        page.directory_input.setText(str(changed))
+
+    saved = signal.args[0]
+    assert saved.schema_version == 2
+    assert saved.download_directory == str(changed)
+    assert page.unsaved_label.text() == "正在保存…"
+
+    page.mark_saved(saved)
+
+    assert page.unsaved_label.text() == "已保存"
+
+
+def test_saved_default_directory_applies_to_new_videos_without_overwriting_manual_choice(qtbot, tmp_path) -> None:
+    first_default = str(tmp_path / "first-default")
+    second_default = str(tmp_path / "second-default")
+    manual = str(tmp_path / "manual-for-current-video")
+    page = DownloadPage(first_default)
+    qtbot.addWidget(page)
+    source = _request(tmp_path).video
+    page.show_video(source)
+
+    page.set_default_directory(second_default)
+    assert page.directory_input.text() == second_default
+
+    page.directory_input.setText(manual)
+    page.directory_input.textEdited.emit(manual)
+    page.set_default_directory(str(tmp_path / "third-default"))
+    assert page.directory_input.text() == manual
+
+    page.show_video(replace(source, video_id="next-video"))
+    assert page.directory_input.text() == str(tmp_path / "third-default")

@@ -263,11 +263,12 @@ class AppController:
             self.settings = settings
             self.theme.set_mode(settings.theme)
             self.window.settings_page.mark_saved(settings)
-            self.window.download_page.directory_input.setText(settings.download_directory)
+            self.window.download_page.set_default_directory(settings.download_directory)
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
         except (OSError, ValueError) as exc:
-            self.show_error(AppError("settings_invalid", "设置未保存。", repr(exc), ErrorContext(stage="Saving settings")))
+            logger.warning("Settings were not saved: %s", exc)
+            self.window.settings_page.mark_save_failed(str(exc))
 
     def copy_system_info(self) -> None:
         QGuiApplication.clipboard().setText(build_system_info(

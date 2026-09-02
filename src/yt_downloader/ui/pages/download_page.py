@@ -28,6 +28,8 @@ class DownloadPage(QWidget):
         self.video: VideoInfo | None = None
         self.cards: dict[str, DownloadTaskCard] = {}
         self._terminal_task_ids: set[str] = set()
+        self._default_directory = download_directory
+        self._directory_overridden = False
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.page_scroll = QScrollArea()
@@ -110,6 +112,7 @@ class DownloadPage(QWidget):
         directory_row.addWidget(QLabel("保存到"))
         self.directory_input = QLineEdit(download_directory)
         self.directory_input.setAccessibleName("下载目录")
+        self.directory_input.textEdited.connect(self._mark_directory_overridden)
         browse = QPushButton("浏览")
         browse.setToolTip("选择下载文件夹")
         browse.setAccessibleName("浏览下载目录")
@@ -174,6 +177,8 @@ class DownloadPage(QWidget):
 
     def show_video(self, video: VideoInfo, *, preferred_quality: str = "recommended") -> None:
         self.video = video
+        self._directory_overridden = False
+        self.directory_input.setText(self._default_directory)
         self.video_title.setText(video.title)
         self.video_meta.setText(f"{video.channel}  ·  {format_duration(video.duration)}")
         self.thumbnail.clear()
@@ -204,7 +209,16 @@ class DownloadPage(QWidget):
     def _browse_directory(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "选择下载目录", self.directory_input.text())
         if selected:
+            self._directory_overridden = True
             self.directory_input.setText(selected)
+
+    def _mark_directory_overridden(self, _text: str) -> None:
+        self._directory_overridden = True
+
+    def set_default_directory(self, directory: str) -> None:
+        self._default_directory = directory
+        if self.video is None or not self._directory_overridden:
+            self.directory_input.setText(directory)
 
     def _request_download(self) -> None:
         option = self.format_combo.currentData()

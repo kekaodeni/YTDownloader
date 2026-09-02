@@ -120,9 +120,12 @@ class HistoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 1
+    schema_version: int = 2
     download_directory: str = ""
     default_quality: str = "recommended"
     theme: str = "system"
     reduce_motion: bool = False
     ffmpeg_directory: str = ""
+    proxy_mode: str = "system"
+    custom_proxy_url: str = ""
+    concurrent_fragments: int = 0

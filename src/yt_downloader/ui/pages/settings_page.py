@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -20,6 +20,14 @@ class SettingsPage(QWidget):
     def __init__(self, settings: AppSettings, *, ytdlp_version: str, ffmpeg_description: str, parent=None) -> None:
         super().__init__(parent)
         self._saved = settings
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(500)
+        self._autosave_timer.timeout.connect(self._save)
+        self._status_hide_timer = QTimer(self)
+        self._status_hide_timer.setSingleShot(True)
+        self._status_hide_timer.setInterval(1800)
+        self._status_hide_timer.timeout.connect(lambda: self.save_bar.hide())
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 24)
         root.setSpacing(16)
@@ -109,7 +117,7 @@ class SettingsPage(QWidget):
         save_layout.setContentsMargins(14, 10, 14, 10)
         self.unsaved_label = QLabel("有未保存的更改")
         self.unsaved_label.setProperty("secondary", True)
-        self.save_button = QPushButton("保存设置")
+        self.save_button = QPushButton("立即保存")
         self.save_button.setProperty("fluentAppearance", "primary")
         self.save_button.clicked.connect(self._save)
         save_layout.addWidget(self.unsaved_label)
@@ -119,9 +127,9 @@ class SettingsPage(QWidget):
         root.addWidget(self.save_bar)
 
         self.directory_input.textChanged.connect(self._mark_dirty)
-        self.quality_combo.currentIndexChanged.connect(self._mark_dirty)
+        self.quality_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
-        self.reduce_motion.toggled.connect(self._mark_dirty)
+        self.reduce_motion.toggled.connect(self._mark_dirty_immediately)
         self.ffmpeg_input.textChanged.connect(self._mark_dirty)
 
     @staticmethod
@@ -141,26 +149,46 @@ class SettingsPage(QWidget):
             self.ffmpeg_input.setText(path)
 
     def _theme_changed(self) -> None:
-        self._mark_dirty()
+        self._mark_dirty_immediately()
         self.theme_preview_requested.emit(str(self.theme_combo.currentData()))
 
     def _mark_dirty(self, *_args) -> None:
+        self._status_hide_timer.stop()
+        self.unsaved_label.setText("有未保存的更改")
         self.save_bar.show()
+        self._autosave_timer.start(500)
+
+    def _mark_dirty_immediately(self, *_args) -> None:
+        self._mark_dirty()
+        self._autosave_timer.start(0)
 
     def current_settings(self) -> AppSettings:
         return AppSettings(
-            schema_version=1,
+            schema_version=2,
             download_directory=self.directory_input.text().strip(),
             default_quality=str(self.quality_combo.currentData()),
             theme=str(self.theme_combo.currentData()),
             reduce_motion=self.reduce_motion.isChecked(),
             ffmpeg_directory=self.ffmpeg_input.text().strip(),
+            proxy_mode=self._saved.proxy_mode,
+            custom_proxy_url=self._saved.custom_proxy_url,
+            concurrent_fragments=self._saved.concurrent_fragments,
         )
 
     def _save(self) -> None:
+        self._autosave_timer.stop()
+        self._status_hide_timer.stop()
+        self.unsaved_label.setText("正在保存…")
+        self.save_bar.show()
         self.save_requested.emit(self.current_settings())
 
     def mark_saved(self, settings: AppSettings) -> None:
         self._saved = settings
-        self.save_bar.hide()
+        self.unsaved_label.setText("已保存")
+        self.save_bar.show()
+        self._status_hide_timer.start()
 
+    def mark_save_failed(self, message: str) -> None:
+        self._status_hide_timer.stop()
+        self.unsaved_label.setText(f"无法保存：{message}")
+        self.save_bar.show()
