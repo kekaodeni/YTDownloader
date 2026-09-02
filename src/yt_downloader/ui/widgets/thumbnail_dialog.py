@@ -13,6 +13,7 @@ from yt_downloader.core.errors import AppError
 from yt_downloader.core.formatting import format_duration
 from yt_downloader.services.ffmpeg_service import CoverEmbedResult, FfmpegService
 from yt_downloader.ui.localization import localize_dialog_button_box
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 from yt_downloader.workers.function_worker import FunctionWorker
 
 
@@ -38,13 +39,13 @@ class ThumbnailDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 20, 22, 18)
         title = QLabel("选择视频中的一个时间点")
-        title.setProperty("headingLevel", "2")
+        apply_typography(title, FontRole.SECTION_TITLE)
         root.addWidget(title)
         self.duration_label = QLabel("正在读取视频时长……")
-        self.duration_label.setProperty("secondary", True)
+        apply_typography(self.duration_label, FontRole.SECONDARY)
         root.addWidget(self.duration_label)
         self.result_label = QLabel("预览图片只用于写入视频，关闭窗口后会自动清理。")
-        self.result_label.setProperty("secondary", True)
+        apply_typography(self.result_label, FontRole.SECONDARY)
         self.result_label.setWordWrap(True)
         root.addWidget(self.result_label)
         self.preview = QLabel("选择时间后点击“预览”")
@@ -78,6 +79,7 @@ class ThumbnailDialog(QDialog):
         actions.addButton(self.preview_button, QDialogButtonBox.ButtonRole.ActionRole)
         actions.addButton(self.apply_button, QDialogButtonBox.ButtonRole.AcceptRole)
         root.addWidget(actions)
+        apply_typography_tree(self)
         self.output_directory.mkdir(parents=True, exist_ok=True)
         self._run(
             self.ffmpeg.probe_duration,

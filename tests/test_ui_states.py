@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
-from PySide6.QtGui import QGuiApplication, QPalette, QPixmap
-from PySide6.QtWidgets import QPushButton, QToolButton
+from PySide6.QtGui import QFont, QGuiApplication, QPalette, QPixmap
+from PySide6.QtWidgets import QPushButton, QSizePolicy, QToolButton
 
 from yt_downloader.core.errors import AppError, CancellationCleanupReport
 from yt_downloader.core.models import AppSettings
@@ -12,6 +12,7 @@ from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.theme import DARK, LIGHT, ThemeManager, _qss
+from yt_downloader.ui.typography import FontRole
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from test_download_service import _request
 from yt_downloader.core.models import DownloadProgress, DownloadResult, TaskStatus
@@ -178,6 +179,34 @@ def test_new_metadata_clears_the_previous_thumbnail_when_image_is_missing(qtbot,
 
     assert page.thumbnail.pixmap().isNull()
     assert page.thumbnail.text() == "暂无封面"
+
+
+def test_dynamic_video_title_keeps_the_card_title_role(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    source = _request(tmp_path).video
+
+    page.show_video(replace(source, title="桜のテスト動画"))
+
+    assert page.video_title.property("typographyRole") == FontRole.CARD_TITLE.value
+    assert page.video_title.font().pointSizeF() == 12.0
+    assert page.video_title.font().weight() == QFont.Weight.DemiBold
+
+
+def test_wrapped_video_text_is_not_squeezed_below_its_required_height(qapp, qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    page.resize(640, 560)
+    page.show_video(replace(
+        _request(tmp_path).video,
+        title="Windows 11 Fluent Design：从构想到成品",
+    ))
+    page.show()
+    qapp.processEvents()
+
+    for label in (page.video_title, page.technical_info):
+        assert label.sizePolicy().verticalPolicy() is QSizePolicy.Policy.Minimum
+        assert label.height() >= label.heightForWidth(label.width())
 
 
 def test_starting_the_next_task_retires_older_terminal_cards(qtbot, tmp_path) -> None:

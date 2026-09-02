@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QListView, QMenu, QP
 from yt_downloader.core.formatting import format_bytes
 from yt_downloader.core.models import HistoryRecord, STATUS_TEXT
 from yt_downloader.core.models import TaskStatus
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 from yt_downloader.ui.widgets.confirm_dialog import DeleteHistoryDialog
 
 
@@ -73,10 +74,10 @@ class HistoryPage(QWidget):
         root.setContentsMargins(32, 28, 32, 24)
         root.setSpacing(16)
         heading = QLabel("历史记录")
-        heading.setProperty("headingLevel", "1")
+        apply_typography(heading, FontRole.PAGE_TITLE)
         root.addWidget(heading)
         subtitle = QLabel("仅显示通过本软件下载或中断的任务。")
-        subtitle.setProperty("secondary", True)
+        apply_typography(subtitle, FontRole.SECONDARY)
         root.addWidget(subtitle)
         self.model = HistoryListModel()
         self.list_view = HistoryListView()
@@ -104,6 +105,7 @@ class HistoryPage(QWidget):
         self.copy_button.clicked.connect(lambda: self._with_record(lambda r: self.copy_link_requested.emit(r.url)))
         self.thumbnail_button.clicked.connect(lambda: self._with_record(self.thumbnail_requested.emit))
         self.retry_button.clicked.connect(lambda: self._with_record(self.retry_requested.emit))
+        apply_typography_tree(self)
 
     def set_records(self, records: list[HistoryRecord]) -> None:
         self.model.replace(records)

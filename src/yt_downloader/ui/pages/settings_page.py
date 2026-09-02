@@ -9,7 +9,12 @@ from PySide6.QtWidgets import (
 )
 
 from yt_downloader.core.models import AppSettings
-from yt_downloader.ui.typography import FontRole
+from yt_downloader.ui.typography import (
+    FontRole,
+    apply_form_typography,
+    apply_typography,
+    apply_typography_tree,
+)
 
 
 class SettingsPage(QWidget):
@@ -34,7 +39,7 @@ class SettingsPage(QWidget):
         root.setContentsMargins(32, 28, 32, 24)
         root.setSpacing(16)
         heading = QLabel("设置")
-        heading.setProperty("headingLevel", "1")
+        apply_typography(heading, FontRole.PAGE_TITLE)
         root.addWidget(heading)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -90,8 +95,7 @@ class SettingsPage(QWidget):
         self.network_test_button.setToolTip("使用当前代理选项连接 YouTube；不会保存设置。")
         self.network_test_button.clicked.connect(self._request_network_test)
         self.network_test_status = QLabel("")
-        self.network_test_status.setProperty("secondary", True)
-        self.network_test_status.setProperty("typographyRole", FontRole.CAPTION.value)
+        apply_typography(self.network_test_status, FontRole.CAPTION)
         self.network_test_status.setWordWrap(True)
         network_test_layout.addWidget(self.network_test_button)
         network_test_layout.addWidget(self.network_test_status, 1)
@@ -152,7 +156,7 @@ class SettingsPage(QWidget):
         save_layout = QHBoxLayout(self.save_bar)
         save_layout.setContentsMargins(14, 10, 14, 10)
         self.unsaved_label = QLabel("有未保存的更改")
-        self.unsaved_label.setProperty("secondary", True)
+        apply_typography(self.unsaved_label, FontRole.SECONDARY)
         self.save_button = QPushButton("立即保存")
         self.save_button.setProperty("fluentAppearance", "primary")
         self.save_button.clicked.connect(self._save)
@@ -170,11 +174,14 @@ class SettingsPage(QWidget):
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
         self.reduce_motion.toggled.connect(self._mark_dirty_immediately)
         self.ffmpeg_input.textChanged.connect(self._mark_dirty)
+        for current_form in (form, appearance_form, tools_form):
+            apply_form_typography(current_form)
+        apply_typography_tree(self)
 
     @staticmethod
     def _section(text: str) -> QLabel:
         label = QLabel(text)
-        label.setProperty("headingLevel", "2")
+        apply_typography(label, FontRole.SECTION_TITLE)
         return label
 
     def _browse_download(self) -> None:

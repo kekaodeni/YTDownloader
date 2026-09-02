@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWi
 
 from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, STATUS_TEXT, TaskStatus
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 from yt_downloader.ui.widgets.progress_widget import ProgressWidget
 
 
@@ -38,12 +39,12 @@ class DownloadTaskCard(QWidget):
         root.addWidget(self.thumbnail, 0, Qt.AlignmentFlag.AlignTop)
         content = QVBoxLayout()
         content.setSpacing(7)
-        title = QLabel(request.video.title)
-        title.setProperty("headingLevel", "3")
-        title.setWordWrap(True)
-        content.addWidget(title)
+        self.title_label = QLabel(request.video.title)
+        apply_typography(self.title_label, FontRole.CARD_TITLE)
+        self.title_label.setWordWrap(True)
+        content.addWidget(self.title_label)
         quality = QLabel(f"{request.format.label} · {request.format.container}")
-        quality.setProperty("secondary", True)
+        apply_typography(quality, FontRole.SECONDARY)
         content.addWidget(quality)
         self.progress = ProgressWidget()
         self.progress.set_progress(DownloadProgress(request.task_id, TaskStatus.PENDING))
@@ -65,6 +66,7 @@ class DownloadTaskCard(QWidget):
         actions.addStretch()
         content.addLayout(actions)
         root.addLayout(content, 1)
+        apply_typography_tree(self)
 
     def update_progress(self, progress: DownloadProgress) -> None:
         self.progress.set_progress(progress)

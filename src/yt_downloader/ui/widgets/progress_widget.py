@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QW
 
 from yt_downloader.core.formatting import format_bytes, format_eta, format_speed
 from yt_downloader.core.models import DownloadProgress, STATUS_TEXT, TaskStatus
-from yt_downloader.ui.typography import FontRole
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 
 
 class ProgressWidget(QWidget):
@@ -19,9 +19,9 @@ class ProgressWidget(QWidget):
         root.setSpacing(8)
         top = QHBoxLayout()
         self.status_label = QLabel("等待下载")
-        self.status_label.setProperty("secondary", True)
+        apply_typography(self.status_label, FontRole.SECONDARY)
         self.percent_label = QLabel("—%")
-        self.percent_label.setProperty("typographyRole", FontRole.NUMERIC.value)
+        apply_typography(self.percent_label, FontRole.NUMERIC)
         self.percent_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         top.addWidget(self.status_label)
         top.addStretch()
@@ -34,20 +34,18 @@ class ProgressWidget(QWidget):
         root.addWidget(self.progress_bar)
         bottom = QHBoxLayout()
         self.speed_label = QLabel("—")
-        self.speed_label.setProperty("secondary", True)
-        self.speed_label.setProperty("typographyRole", FontRole.NUMERIC.value)
+        apply_typography(self.speed_label, FontRole.NUMERIC)
         self.size_label = QLabel("— / —")
-        self.size_label.setProperty("secondary", True)
-        self.size_label.setProperty("typographyRole", FontRole.NUMERIC.value)
+        apply_typography(self.size_label, FontRole.NUMERIC)
         self.eta_label = QLabel("剩余 —")
-        self.eta_label.setProperty("secondary", True)
-        self.eta_label.setProperty("typographyRole", FontRole.NUMERIC.value)
+        apply_typography(self.eta_label, FontRole.NUMERIC)
         bottom.addWidget(self.speed_label)
         bottom.addStretch()
         bottom.addWidget(self.size_label)
         bottom.addSpacing(14)
         bottom.addWidget(self.eta_label)
         root.addLayout(bottom)
+        apply_typography_tree(self)
 
     def set_progress(self, progress: DownloadProgress) -> None:
         self.status_label.setText(STATUS_TEXT[progress.status])

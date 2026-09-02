@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from yt_downloader.ui.localization import action_text, localize_dialog_button_box
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 
 
 class DeleteHistoryDialog(QDialog):
@@ -16,13 +17,13 @@ class DeleteHistoryDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 20, 22, 18)
         heading = QLabel("确定删除这条历史记录吗？")
-        heading.setProperty("headingLevel", "2")
+        apply_typography(heading, FontRole.SECTION_TITLE)
         root.addWidget(heading)
         record_title = QLabel(title)
         record_title.setWordWrap(True)
         root.addWidget(record_title)
         explanation = QLabel("只会删除本软件中的历史记录，不会删除已经下载的视频文件。")
-        explanation.setProperty("secondary", True)
+        apply_typography(explanation, FontRole.SECONDARY)
         explanation.setWordWrap(True)
         root.addWidget(explanation)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
@@ -34,3 +35,4 @@ class DeleteHistoryDialog(QDialog):
         buttons.addButton(delete_button, QDialogButtonBox.ButtonRole.DestructiveRole)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
+        apply_typography_tree(self)

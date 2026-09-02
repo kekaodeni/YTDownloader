@@ -5,7 +5,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from yt_downloader import __version__
-from yt_downloader.ui.typography import FontRole
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 
 
 PROJECT_URL = "https://github.com/kekaodeni/YTDownloader"
@@ -24,24 +24,23 @@ class AboutPage(QWidget):
         root.setContentsMargins(32, 28, 32, 24)
         root.setSpacing(14)
         heading = QLabel("关于")
-        heading.setProperty("headingLevel", "1")
+        apply_typography(heading, FontRole.PAGE_TITLE)
         root.addWidget(heading)
         card = QWidget()
         card.setProperty("fluentRole", "card")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(24, 22, 24, 22)
         name = QLabel("YT Downloader")
-        name.setProperty("headingLevel", "2")
+        apply_typography(name, FontRole.CARD_TITLE)
         layout.addWidget(name)
         layout.addWidget(QLabel(f"版本 {__version__}"))
         description = QLabel("简洁的 Windows 11 YouTube 单视频下载器，由 yt-dlp、FFmpeg 与 PySide6 驱动。")
         description.setWordWrap(True)
-        description.setProperty("secondary", True)
+        apply_typography(description, FontRole.SECONDARY)
         layout.addWidget(description)
         legal = QLabel("本软件与 YouTube 无关联。请仅下载您有权保存的内容。第三方组件许可见发布目录。")
         legal.setWordWrap(True)
-        legal.setProperty("secondary", True)
-        legal.setProperty("typographyRole", FontRole.CAPTION.value)
+        apply_typography(legal, FontRole.CAPTION)
         layout.addWidget(legal)
         project_row = QHBoxLayout()
         self.project_button = QPushButton("在 GitHub 查看项目")
@@ -58,12 +57,13 @@ class AboutPage(QWidget):
         project_row.addStretch()
         layout.addLayout(project_row)
         self.link_status = QLabel("")
-        self.link_status.setProperty("secondary", True)
+        apply_typography(self.link_status, FontRole.SECONDARY)
         self.link_status.setWordWrap(True)
         self.link_status.hide()
         layout.addWidget(self.link_status)
         root.addWidget(card)
         root.addStretch()
+        apply_typography_tree(self)
 
     def _open_project(self) -> None:
         if self._url_opener(QUrl(PROJECT_URL)):

@@ -13,6 +13,7 @@ from yt_downloader.ui.pages.about_page import AboutPage
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.history_page import HistoryPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
+from yt_downloader.ui.typography import apply_typography_tree
 from yt_downloader.infrastructure.runtime import resource_path
 
 
@@ -71,6 +72,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
         self.nav_buttons[0].setChecked(True)
         self._select_page(0)
+        apply_typography_tree(self)
 
     def _nav_button(self, label: str, icon_name: str, index: int) -> QToolButton:
         button = QToolButton()

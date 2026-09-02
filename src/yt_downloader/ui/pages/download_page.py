@@ -15,6 +15,13 @@ from yt_downloader.core.formatting import format_bytes, format_duration
 from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, TaskStatus, VideoInfo
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
+from yt_downloader.ui.typography import (
+    FontRole,
+    WrappingLabel,
+    apply_typography,
+    apply_typography_tree,
+    set_typographic_text,
+)
 from yt_downloader.ui.widgets.task_card import DownloadTaskCard
 
 if TYPE_CHECKING:
@@ -52,10 +59,10 @@ class DownloadPage(QWidget):
         root.setContentsMargins(32, 28, 32, 24)
         root.setSpacing(18)
         heading = QLabel("下载")
-        heading.setProperty("headingLevel", "1")
+        apply_typography(heading, FontRole.PAGE_TITLE)
         root.addWidget(heading)
         subtitle = QLabel("粘贴一个 YouTube 视频链接，选择画质后开始下载。")
-        subtitle.setProperty("secondary", True)
+        apply_typography(subtitle, FontRole.SECONDARY)
         root.addWidget(subtitle)
 
         url_card = QWidget()
@@ -76,7 +83,7 @@ class DownloadPage(QWidget):
         row.addWidget(self.parse_button)
         url_layout.addLayout(row)
         self.clipboard_hint = QLabel("")
-        self.clipboard_hint.setProperty("secondary", True)
+        apply_typography(self.clipboard_hint, FontRole.TERTIARY)
         self.clipboard_hint.setVisible(False)
         url_layout.addWidget(self.clipboard_hint)
         self.metadata_busy = QProgressBar()
@@ -100,28 +107,33 @@ class DownloadPage(QWidget):
         info_root.addWidget(self.thumbnail, 0, Qt.AlignmentFlag.AlignTop)
         details = QVBoxLayout()
         details.setSpacing(9)
-        self.video_title = QLabel()
-        self.video_title.setProperty("headingLevel", "2")
-        self.video_title.setWordWrap(True)
+        self.video_title = WrappingLabel()
+        apply_typography(self.video_title, FontRole.CARD_TITLE)
         details.addWidget(self.video_title)
         self.video_meta = QLabel()
-        self.video_meta.setProperty("secondary", True)
+        apply_typography(self.video_meta, FontRole.SECONDARY)
         details.addWidget(self.video_meta)
         quality_row = QHBoxLayout()
-        quality_row.addWidget(QLabel("清晰度"))
+        quality_label = QLabel("清晰度")
+        apply_typography(quality_label, FontRole.FORM_LABEL)
+        quality_row.addWidget(quality_label)
         self.format_combo = QComboBox()
         self.format_combo.setAccessibleName("下载清晰度")
         self.format_combo.currentIndexChanged.connect(self._format_changed)
         quality_row.addWidget(self.format_combo, 1)
         details.addLayout(quality_row)
         filename_row = QHBoxLayout()
-        filename_row.addWidget(QLabel("文件名"))
+        filename_label = QLabel("文件名")
+        apply_typography(filename_label, FontRole.FORM_LABEL)
+        filename_row.addWidget(filename_label)
         self.filename_input = QLineEdit()
         self.filename_input.setAccessibleName("输出文件名")
         filename_row.addWidget(self.filename_input, 1)
         details.addLayout(filename_row)
         directory_row = QHBoxLayout()
-        directory_row.addWidget(QLabel("保存到"))
+        directory_label = QLabel("保存到")
+        apply_typography(directory_label, FontRole.FORM_LABEL)
+        directory_row.addWidget(directory_label)
         self.directory_input = QLineEdit(download_directory)
         self.directory_input.setAccessibleName("下载目录")
         self.directory_input.textEdited.connect(self._mark_directory_overridden)
@@ -132,9 +144,8 @@ class DownloadPage(QWidget):
         directory_row.addWidget(self.directory_input, 1)
         directory_row.addWidget(browse)
         details.addLayout(directory_row)
-        self.technical_info = QLabel()
-        self.technical_info.setProperty("secondary", True)
-        self.technical_info.setWordWrap(True)
+        self.technical_info = WrappingLabel()
+        apply_typography(self.technical_info, FontRole.TERTIARY)
         details.addWidget(self.technical_info)
         actions = QHBoxLayout()
         self.download_button = QPushButton("下载")
@@ -149,7 +160,7 @@ class DownloadPage(QWidget):
         root.addWidget(self.video_card)
 
         self.tasks_heading = QLabel("下载任务")
-        self.tasks_heading.setProperty("headingLevel", "2")
+        apply_typography(self.tasks_heading, FontRole.SECTION_TITLE)
         self.tasks_heading.hide()
         root.addWidget(self.tasks_heading)
         self.task_host = QWidget()
@@ -162,6 +173,7 @@ class DownloadPage(QWidget):
         root.addStretch()
         self.page_scroll.setWidget(page_host)
         outer.addWidget(self.page_scroll)
+        apply_typography_tree(self)
 
     def set_clipboard_hint(self, text: str) -> None:
         try:
@@ -193,7 +205,7 @@ class DownloadPage(QWidget):
         self.video = video
         self._directory_overridden = False
         self.directory_input.setText(self._default_directory)
-        self.video_title.setText(video.title)
+        set_typographic_text(self.video_title, video.title, FontRole.CARD_TITLE)
         self.video_meta.setText(f"{video.channel}  ·  {format_duration(video.duration)}")
         self.thumbnail.clear()
         self.thumbnail.setText("暂无封面")
