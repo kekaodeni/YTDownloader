@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QW
 
 from yt_downloader.core.formatting import format_bytes, format_eta, format_speed
 from yt_downloader.core.models import DownloadProgress, STATUS_TEXT, TaskStatus
+from yt_downloader.ui.typography import FontRole
 
 
 class ProgressWidget(QWidget):
@@ -20,6 +21,7 @@ class ProgressWidget(QWidget):
         self.status_label = QLabel("等待下载")
         self.status_label.setProperty("secondary", True)
         self.percent_label = QLabel("—%")
+        self.percent_label.setProperty("typographyRole", FontRole.NUMERIC.value)
         self.percent_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         top.addWidget(self.status_label)
         top.addStretch()
@@ -33,10 +35,13 @@ class ProgressWidget(QWidget):
         bottom = QHBoxLayout()
         self.speed_label = QLabel("—")
         self.speed_label.setProperty("secondary", True)
+        self.speed_label.setProperty("typographyRole", FontRole.NUMERIC.value)
         self.size_label = QLabel("— / —")
         self.size_label.setProperty("secondary", True)
+        self.size_label.setProperty("typographyRole", FontRole.NUMERIC.value)
         self.eta_label = QLabel("剩余 —")
         self.eta_label.setProperty("secondary", True)
+        self.eta_label.setProperty("typographyRole", FontRole.NUMERIC.value)
         bottom.addWidget(self.speed_label)
         bottom.addStretch()
         bottom.addWidget(self.size_label)

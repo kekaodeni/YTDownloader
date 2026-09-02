@@ -8,6 +8,8 @@ from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+from yt_downloader.ui.typography import FontFamilies, resolve_font_families, typography_qss
+
 
 @dataclass(frozen=True, slots=True)
 class FluentTokens:
@@ -44,9 +46,10 @@ DARK = FluentTokens(
 )
 
 
-def _qss(t: FluentTokens) -> str:
+def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
+    fonts = fonts or resolve_font_families()
     return f"""
-    * {{ font-family: "Segoe UI Variable Text", "Segoe UI"; font-size: 14px; color: {t.text}; }}
+    * {{ color: {t.text}; }}
     QMainWindow, QDialog {{ background: {t.background}; }}
     QWidget#navigationRail {{ background: {t.layer_alt}; border-right: 1px solid {t.stroke}; }}
     QWidget[fluentRole="card"] {{ background: {t.layer}; border: 1px solid {t.stroke}; border-radius: 10px; }}
@@ -102,7 +105,7 @@ def _qss(t: FluentTokens) -> str:
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QFrame[separator="true"] {{ background: {t.stroke}; max-height: 1px; }}
     QToolTip {{ background: {t.layer}; color: {t.text}; border: 1px solid {t.stroke}; padding: 5px; }}
-    """
+    """ + typography_qss(fonts)
 
 
 class ThemeManager(QObject):
@@ -113,6 +116,7 @@ class ThemeManager(QObject):
         self.app = app
         self.mode = "system"
         self.resolved_mode = "light"
+        self.fonts = resolve_font_families(system_default=app.font().family())
         hints = app.styleHints()
         if hasattr(hints, "colorSchemeChanged"):
             hints.colorSchemeChanged.connect(self._system_changed)
@@ -148,6 +152,6 @@ class ThemeManager(QObject):
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(tokens.text_disabled))
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, QColor(tokens.text_disabled))
         self.app.setPalette(palette)
-        self.app.setStyleSheet(_qss(tokens))
+        self.app.setStyleSheet(_qss(tokens, self.fonts))
         self.app.setProperty("fluentTheme", self.resolved_mode)
         self.theme_changed.emit(self.resolved_mode)

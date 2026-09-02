@@ -11,7 +11,7 @@ import threading
 import uuid
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 import yt_dlp.version
 
@@ -34,6 +34,7 @@ from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
 from yt_downloader.ui.main_window import MainWindow
 from yt_downloader.ui.theme import ThemeManager
+from yt_downloader.ui.typography import application_font, resolve_font_families
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
@@ -375,7 +376,7 @@ def create_application(argv: list[str] | None = None) -> tuple[QApplication, App
     app.setOrganizationName("YTDownloader")
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(True)
-    app.setFont(QFont("Segoe UI Variable Text", 10))
+    app.setFont(application_font(resolve_font_families(system_default=app.font().family())))
     QLocale.setDefault(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
     paths = AppPaths.discover()
     paths.ensure()

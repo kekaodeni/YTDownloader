@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from yt_downloader.core.models import AppSettings
+from yt_downloader.ui.typography import FontRole
 
 
 class SettingsPage(QWidget):
@@ -90,6 +91,7 @@ class SettingsPage(QWidget):
         self.network_test_button.clicked.connect(self._request_network_test)
         self.network_test_status = QLabel("")
         self.network_test_status.setProperty("secondary", True)
+        self.network_test_status.setProperty("typographyRole", FontRole.CAPTION.value)
         self.network_test_status.setWordWrap(True)
         network_test_layout.addWidget(self.network_test_button)
         network_test_layout.addWidget(self.network_test_status, 1)

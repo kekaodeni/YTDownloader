@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from yt_downloader import __version__
+from yt_downloader.ui.typography import FontRole
 
 
 class AboutPage(QWidget):
@@ -28,7 +29,7 @@ class AboutPage(QWidget):
         legal = QLabel("本软件与 YouTube 无关联。请仅下载您有权保存的内容。第三方组件许可见发布目录。")
         legal.setWordWrap(True)
         legal.setProperty("secondary", True)
+        legal.setProperty("typographyRole", FontRole.CAPTION.value)
         layout.addWidget(legal)
         root.addWidget(card)
         root.addStretch()
-
