@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
@@ -15,6 +16,9 @@ from yt_downloader.core.models import DownloadProgress, DownloadRequest, Downloa
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.ui.widgets.task_card import DownloadTaskCard
 
+if TYPE_CHECKING:
+    from yt_downloader.ui.motion import MotionManager
+
 
 class DownloadPage(QWidget):
     parse_requested = Signal(str)
@@ -23,8 +27,15 @@ class DownloadPage(QWidget):
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
 
-    def __init__(self, download_directory: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        download_directory: str,
+        parent: QWidget | None = None,
+        *,
+        motion: "MotionManager | None" = None,
+    ) -> None:
         super().__init__(parent)
+        self.motion = motion
         self.video: VideoInfo | None = None
         self.cards: dict[str, DownloadTaskCard] = {}
         self._terminal_task_ids: set[str] = set()
@@ -162,6 +173,8 @@ class DownloadPage(QWidget):
 
     def _request_parse(self) -> None:
         if self.url_input.text().strip():
+            if self.motion:
+                self.motion.feedback(self.parse_button)
             self.parse_requested.emit(self.url_input.text().strip())
 
     def set_loading(self, loading: bool) -> None:
@@ -198,7 +211,10 @@ class DownloadPage(QWidget):
         self.format_combo.setCurrentIndex(selected)
         self.filename_input.setText(sanitize_filename(video.title))
         self._format_changed()
-        self.video_card.show()
+        if self.motion:
+            self.motion.reveal(self.video_card)
+        else:
+            self.video_card.show()
 
     def _format_changed(self) -> None:
         option = self.format_combo.currentData()
@@ -229,6 +245,8 @@ class DownloadPage(QWidget):
     def _request_download(self) -> None:
         option = self.format_combo.currentData()
         if self.video and option:
+            if self.motion:
+                self.motion.feedback(self.download_button)
             self.download_requested.emit(self.video, option, self.filename_input.text(), self.directory_input.text())
 
     def add_task(self, request: DownloadRequest) -> None:
@@ -240,6 +258,8 @@ class DownloadPage(QWidget):
         self.task_layout.insertWidget(self.task_layout.count() - 1, card)
         self.tasks_heading.show()
         self.task_host.show()
+        if self.motion:
+            self.motion.reveal(card)
 
     def update_task(self, progress: DownloadProgress) -> None:
         card = self.cards.get(progress.task_id)

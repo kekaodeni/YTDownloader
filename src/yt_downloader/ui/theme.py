@@ -28,6 +28,9 @@ class FluentTokens:
     danger: str
     selection: str
     selection_hover: str
+    surface_tint: str
+    surface_subtle: str
+    surface_highlight: str
 
 
 LIGHT = FluentTokens(
@@ -36,6 +39,8 @@ LIGHT = FluentTokens(
     stroke="#D1D1D1", stroke_focus="#0067C0", accent="#0067C0",
     accent_hover="#1975C5", accent_pressed="#005A9E", accent_text="#FFFFFF",
     danger="#C42B1C", selection="#DDEAF7", selection_hover="#C9DFF2",
+    surface_tint="rgba(255, 255, 255, 238)", surface_subtle="rgba(255, 255, 255, 168)",
+    surface_highlight="#FFFFFF",
 )
 DARK = FluentTokens(
     background="#202020", layer="#2B2B2B", layer_alt="#252525",
@@ -43,6 +48,8 @@ DARK = FluentTokens(
     stroke="#4A4A4A", stroke_focus="#60CDFF", accent="#60CDFF",
     accent_hover="#75D4FF", accent_pressed="#4CC2FF", accent_text="#102027",
     danger="#FF99A4", selection="#153B52", selection_hover="#234C63",
+    surface_tint="rgba(45, 45, 45, 238)", surface_subtle="rgba(255, 255, 255, 10)",
+    surface_highlight="#525252",
 )
 
 
@@ -52,8 +59,8 @@ def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
     * {{ color: {t.text}; }}
     QMainWindow, QDialog {{ background: {t.background}; }}
     QWidget#navigationRail {{ background: {t.layer_alt}; border-right: 1px solid {t.stroke}; }}
-    QWidget[fluentRole="card"] {{ background: {t.layer}; border: 1px solid {t.stroke}; border-radius: 10px; }}
-    QWidget[fluentRole="subtle"] {{ background: {t.layer_alt}; border-radius: 8px; }}
+    QWidget[fluentRole="card"] {{ background: {t.surface_tint}; border: 1px solid {t.stroke}; border-radius: 10px; }}
+    QWidget[fluentRole="subtle"] {{ background: {t.surface_subtle}; border: 1px solid {t.surface_highlight}; border-radius: 8px; }}
     QLabel[headingLevel="1"] {{ font-family: "Segoe UI Variable Display", "Segoe UI"; font-size: 28px; font-weight: 600; }}
     QLabel[headingLevel="2"] {{ font-size: 19px; font-weight: 600; }}
     QLabel[headingLevel="3"] {{ font-size: 15px; font-weight: 600; }}

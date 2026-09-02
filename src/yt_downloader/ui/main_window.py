@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.icons import FluentIconService
+from yt_downloader.ui.motion import MotionManager
 from yt_downloader.ui.pages.about_page import AboutPage
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.history_page import HistoryPage
@@ -34,6 +35,7 @@ class MainWindow(QMainWindow):
         self._busy = False
         self._closing_after_cancel = False
         self.icons = icons or FluentIconService()
+        self.motion = MotionManager(settings.reduce_motion, self)
         shell = QWidget()
         self.setCentralWidget(shell)
         layout = QHBoxLayout(shell)
@@ -46,7 +48,7 @@ class MainWindow(QMainWindow):
         nav.setContentsMargins(10, 18, 10, 12)
         nav.setSpacing(6)
         self.stack = QStackedWidget()
-        self.download_page = DownloadPage(settings.download_directory)
+        self.download_page = DownloadPage(settings.download_directory, motion=self.motion)
         self.history_page = HistoryPage()
         self.settings_page = SettingsPage(settings, ytdlp_version=ytdlp_version, ffmpeg_description=ffmpeg_description)
         self.about_page = AboutPage()
@@ -87,7 +89,7 @@ class MainWindow(QMainWindow):
         return button
 
     def _select_page(self, index: int) -> None:
-        self.stack.setCurrentIndex(index)
+        self.motion.switch_page(self.stack, index)
         for button_index, button in enumerate(self.nav_buttons):
             selected = button_index == index
             button.setChecked(selected)
@@ -111,6 +113,9 @@ class MainWindow(QMainWindow):
         if not busy and self._closing_after_cancel:
             self._closing_after_cancel = False
             self.close()
+
+    def set_reduce_motion(self, enabled: bool) -> None:
+        self.motion.set_reduce_motion(enabled)
 
     def resizeEvent(self, event) -> None:
         compact = self.width() < 900

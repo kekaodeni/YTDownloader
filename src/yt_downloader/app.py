@@ -285,6 +285,7 @@ class AppController:
             self.theme.set_mode(settings.theme)
             self.window.settings_page.mark_saved(settings)
             self.window.download_page.set_default_directory(settings.download_directory)
+            self.window.set_reduce_motion(settings.reduce_motion)
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
