@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$SkipZip
+    [switch]$SkipZip,
+    [switch]$ValidationOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,25 +22,63 @@ foreach ($Path in $Required) {
     }
 }
 
-& $Python (Join-Path $RepoRoot "scripts\generate_assets.py")
-& $Python -m pytest
-if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
+$Version = (& $Python -c "from yt_downloader import __version__; print(__version__)").Trim()
+if ($ValidationOnly) {
+    $ValidationRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot ".tool-stage\package-validation"))
+    if (-not $ValidationRoot.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe validation target: $ValidationRoot"
+    }
+    if (Test-Path -LiteralPath $ValidationRoot) {
+        Remove-Item -LiteralPath $ValidationRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $ValidationRoot | Out-Null
+    $BuildRoot = Join-Path $ValidationRoot "build"
+    $DistRoot = Join-Path $ValidationRoot "dist"
+    $SmokeData = Join-Path $ValidationRoot "smoke-data"
+    $SkipZip = $true
+} else {
+    & $Python (Join-Path $RepoRoot "scripts\generate_assets.py")
+    $BuildRoot = Join-Path $RepoRoot "build"
+    $DistRoot = Join-Path $RepoRoot "dist"
+    $SmokeData = Join-Path $RepoRoot ".package-smoke-data"
+    $CleanTargets = @($BuildRoot, $DistRoot)
+    foreach ($Target in $CleanTargets) {
+        $ResolvedTarget = [System.IO.Path]::GetFullPath($Target)
+        if (-not $ResolvedTarget.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unsafe build target: $ResolvedTarget"
+        }
+        if (Test-Path -LiteralPath $ResolvedTarget) {
+            Remove-Item -LiteralPath $ResolvedTarget -Recurse -Force
+        }
+    }
+}
 
-foreach ($Name in @("build", "dist", "release")) {
-    $Target = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Name))
-    if (-not $Target.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Unsafe build target: $Target"
-    }
-    if (Test-Path -LiteralPath $Target) {
-        Remove-Item -LiteralPath $Target -Recurse -Force
-    }
+if ($ValidationOnly) {
+    $TestTempBase = $ValidationRoot
+}
+else {
+    $TestTempBase = Join-Path $RepoRoot ".tool-stage"
+}
+$TestTemp = Join-Path $TestTempBase "build-pytest"
+New-Item -ItemType Directory -Force -Path $TestTemp | Out-Null
+$OriginalTemp = $env:TEMP
+$OriginalTmp = $env:TMP
+$env:TEMP = $TestTemp
+$env:TMP = $TestTemp
+try {
+    & $Python -m pytest --basetemp (Join-Path $TestTemp "run") -p no:cacheprovider
+    if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
+}
+finally {
+    $env:TEMP = $OriginalTemp
+    $env:TMP = $OriginalTmp
 }
 
 Push-Location $RepoRoot
 try {
     $OriginalPath = $env:PATH
     $env:PATH = (($env:PATH -split ";") | Where-Object { $_ -and $_ -notmatch "\\.cache\\codex-runtimes\\" }) -join ";"
-    & $Python -m PyInstaller --clean --noconfirm "YTDownloader.spec"
+    & $Python -m PyInstaller --clean --noconfirm --workpath $BuildRoot --distpath $DistRoot "YTDownloader.spec"
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 }
 finally {
@@ -47,9 +86,13 @@ finally {
     Pop-Location
 }
 
-$Dist = Join-Path $RepoRoot "dist\YTDownloader"
+$Dist = Join-Path $DistRoot "YTDownloader"
 $Exe = Join-Path $Dist "YTDownloader.exe"
 if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "Packaged executable was not created." }
+$ExeBytes = [System.IO.File]::ReadAllBytes($Exe)
+$PeOffset = [System.BitConverter]::ToInt32($ExeBytes, 0x3c)
+$Subsystem = [System.BitConverter]::ToUInt16($ExeBytes, $PeOffset + 24 + 68)
+if ($Subsystem -ne 2) { throw "Packaged executable is not a Windows GUI application (subsystem=$Subsystem)." }
 $ThirdParty = Join-Path $Dist "third_party_licenses"
 New-Item -ItemType Directory -Force -Path $ThirdParty | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $RepoRoot "licenses") -File | ForEach-Object {
@@ -58,8 +101,9 @@ Get-ChildItem -LiteralPath (Join-Path $RepoRoot "licenses") -File | ForEach-Obje
 Copy-Item -LiteralPath (Join-Path $RepoRoot "THIRD_PARTY_NOTICES.md") -Destination $ThirdParty -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "assets\icons\LICENSE.txt") -Destination (Join-Path $ThirdParty "FLUENT-ICONS-MIT.txt") -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "vendor\sources\ffmpeg-source-089a48eb36.tar.gz") -Destination (Join-Path $ThirdParty "ffmpeg-source-089a48eb36.tar.gz")
+& $Python (Join-Path $RepoRoot "scripts\collect_runtime_licenses.py") $ThirdParty
+if ($LASTEXITCODE -ne 0) { throw "Runtime license collection failed." }
 
-$SmokeData = Join-Path $RepoRoot ".package-smoke-data"
 $PreviousData = $env:YT_DOWNLOADER_DATA_DIR
 $PreviousVideos = $env:YT_DOWNLOADER_VIDEOS_DIR
 $env:YT_DOWNLOADER_DATA_DIR = $SmokeData
@@ -75,6 +119,10 @@ try {
     if (-not (Test-Path -LiteralPath $SelfTestReport -PathType Leaf)) {
         throw "Packaged offline self-test did not create its report."
     }
+    $SelfTestResult = Get-Content -LiteralPath $SelfTestReport -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($SelfTestResult.status -ne "ok" -or $SelfTestResult.app_version -ne $Version) {
+        throw "Packaged offline self-test report is invalid."
+    }
     $Process = Start-Process -FilePath $Exe -ArgumentList "--smoke-test" -PassThru -WindowStyle Hidden
     if (-not $Process.WaitForExit(15000)) {
         $Process.Kill()
@@ -87,16 +135,27 @@ finally {
     $env:YT_DOWNLOADER_VIDEOS_DIR = $PreviousVideos
 }
 
-$Manifest = Get-ChildItem -LiteralPath $Dist -File -Recurse | ForEach-Object {
+$ToolVersions = Get-Content -LiteralPath (Join-Path $RepoRoot "tools.lock.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$BuildInfo = [ordered]@{
+    app_version = $Version
+    built_at_utc = [DateTime]::UtcNow.ToString("o")
+    validation_only = [bool]$ValidationOnly
+    tools = $ToolVersions
+}
+$BuildInfo | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Dist "BUILD-INFO.json") -Encoding UTF8
+$Manifest = Get-ChildItem -LiteralPath $Dist -File -Recurse | Where-Object { $_.Name -ne "SHA256SUMS.json" } | ForEach-Object {
     $Hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
-    [PSCustomObject]@{ SHA256 = $Hash.Hash.ToLowerInvariant(); Path = [System.IO.Path]::GetRelativePath($Dist, $_.FullName) }
+    $RelativePath = $_.FullName.Substring($Dist.Length).TrimStart([char[]]"\/")
+    [PSCustomObject]@{ SHA256 = $Hash.Hash.ToLowerInvariant(); Path = $RelativePath }
 }
 $Manifest | Sort-Object Path | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Dist "SHA256SUMS.json") -Encoding UTF8
 
-$Release = Join-Path $RepoRoot "release"
-New-Item -ItemType Directory -Force -Path $Release | Out-Null
 if (-not $SkipZip) {
-    $Zip = Join-Path $Release "YTDownloader-0.1.0-win64.zip"
+    $Release = Join-Path $RepoRoot "release"
+    New-Item -ItemType Directory -Force -Path $Release | Out-Null
+    $Zip = Join-Path $Release "YTDownloader-$Version-win64.zip"
+    if (Test-Path -LiteralPath $Zip) { Remove-Item -LiteralPath $Zip -Force }
+    if (Test-Path -LiteralPath "$Zip.sha256.txt") { Remove-Item -LiteralPath "$Zip.sha256.txt" -Force }
     Compress-Archive -LiteralPath $Dist -DestinationPath $Zip -CompressionLevel Optimal
     Get-FileHash -LiteralPath $Zip -Algorithm SHA256 | Format-List | Out-File -LiteralPath "$Zip.sha256.txt" -Encoding UTF8
 }

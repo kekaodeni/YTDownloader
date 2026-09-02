@@ -26,7 +26,7 @@ binaries = yt_bins + ejs_bins + [
     (str(required["ffprobe"]), "tools/ffmpeg"),
     (str(required["deno"]), "tools/deno"),
 ]
-hiddenimports = yt_hidden + ejs_hidden
+hiddenimports = yt_hidden + ejs_hidden + ["socks"]
 
 a = Analysis(
     [str(root / "src" / "yt_downloader" / "__main__.py")],

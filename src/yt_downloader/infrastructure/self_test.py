@@ -7,7 +7,9 @@ from pathlib import Path
 import tempfile
 
 import yt_dlp_ejs
+import socks
 
+from yt_downloader import __version__
 from yt_downloader.core.formats import normalize_formats
 from yt_downloader.infrastructure.runtime import resource_path
 from yt_downloader.services.ffmpeg_service import FfmpegService
@@ -39,14 +41,20 @@ def run_packaged_self_test(*, cache_directory: Path, ffmpeg: FfmpegService, deno
         ], timeout=30, stage="Packaged FFmpeg self-test")
         if not ffmpeg.has_audio_and_video(media):
             raise RuntimeError("Packaged FFmpeg stream validation failed")
+        cover = ffmpeg.extract_frame(media, 0.5, Path(temporary) / "自检封面.jpg", duration=1.0)
+        cover_result = ffmpeg.embed_cover(media, cover)
+        if not cover_result.media_validated:
+            raise RuntimeError("Packaged FFmpeg cover embedding validation failed")
     report = cache_directory / "package-self-test.json"
     report.write_text(json.dumps({
         "status": "ok",
+        "app_version": __version__,
         "deno": str(deno_path),
         "ffmpeg": str(ffmpeg.ffmpeg_path),
         "yt_dlp_ejs": str(Path(yt_dlp_ejs.__file__).name),
+        "pysocks": getattr(socks, "__version__", "available"),
         "metadata_mock": "ok",
         "ffmpeg_audio_video": "ok",
+        "ffmpeg_cover_embedding": "ok",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
-
