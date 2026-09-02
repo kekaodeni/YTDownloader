@@ -1,4 +1,4 @@
-# YT Downloader 0.2.0
+# YT Downloader 0.2.1
 
 YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Widgets 与统一的 Fluent 2 语义 Token；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
@@ -107,8 +107,8 @@ cache\thumbnails\
 dist\YTDownloader\YTDownloader.exe
 dist\YTDownloader\third_party_licenses\
 dist\YTDownloader\SHA256SUMS.json
-release\YTDownloader-0.2.0-win64.zip
-release\YTDownloader-0.2.0-win64.zip.sha256.txt
+release\YTDownloader-0.2.1-win64.zip
+release\YTDownloader-0.2.1-win64.zip.sha256.txt
 ```
 
 FFmpeg 使用启用了 GPL 组件的静态构建。分发目录包含 GPL/LGPL 文本、Python 运行时依赖版本与许可清单、构建来源、精确 FFmpeg 源码归档及其校验信息。详情见 `THIRD_PARTY_NOTICES.md`、`licenses/FFMPEG-SOURCE.txt` 和 `tools.lock.json`。
@@ -135,4 +135,4 @@ licenses/            第三方许可与对应源码信息
 - 4K 视频通常需要较大临时空间并在下载后合并。
 - 没有代码签名与安装器；Windows SmartScreen 可能提示未知发布者。
 - MP4/M4V/MOV 可无损写入内嵌封面；其他容器不会被自动转码或改容器。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
-- 当前 `develop` 工作只保留在本地；没有创建 `v0.2.0` 标签、push、代码签名或线上发布。
+- 当前 `develop` 工作只保留在本地；没有创建 `v0.2.1` 标签、push、代码签名或线上发布。
