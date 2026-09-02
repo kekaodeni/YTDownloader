@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from yt_downloader.core.errors import OperationCancelled
+from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.youtube_service import YoutubeService
 
 
@@ -80,3 +81,38 @@ def test_cancellation_after_thumbnail_response_discards_metadata() -> None:
 
     with pytest.raises(OperationCancelled):
         service.fetch_metadata("https://youtu.be/dQw4w9WgXcQ", cancel)
+
+
+def test_metadata_and_thumbnail_share_the_same_custom_network_policy() -> None:
+    calls: list[dict] = []
+
+    class FakeSession:
+        trust_env = True
+
+        def get(self, _url, **kwargs):
+            calls.append({"trust_env": self.trust_env, **kwargs})
+            return FakeResponse()
+
+        def close(self):
+            return None
+
+    policy = NetworkPolicy(
+        "custom",
+        "socks5://127.0.0.1:1080",
+        session_factory=FakeSession,
+    )
+    service = YoutubeService(
+        ydl_factory=FakeYdl,
+        deno_path="C:/tools/deno.exe",
+        require_deno=False,
+        network_policy=policy,
+    )
+
+    service.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
+
+    assert FakeYdl.last_options["proxy"] == "socks5://127.0.0.1:1080"
+    assert calls[0]["trust_env"] is False
+    assert calls[0]["proxies"] == {
+        "http": "socks5://127.0.0.1:1080",
+        "https": "socks5://127.0.0.1:1080",
+    }

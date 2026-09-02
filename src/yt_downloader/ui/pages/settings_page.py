@@ -13,6 +13,7 @@ from yt_downloader.core.models import AppSettings
 
 class SettingsPage(QWidget):
     save_requested = Signal(object)
+    network_test_requested = Signal(str, str)
     theme_preview_requested = Signal(str)
     open_logs_requested = Signal()
     copy_system_info_requested = Signal()
@@ -61,6 +62,39 @@ class SettingsPage(QWidget):
         index = self.quality_combo.findData(settings.default_quality)
         self.quality_combo.setCurrentIndex(max(0, index))
         form.addRow("默认画质", self.quality_combo)
+        self.fragments_combo = QComboBox()
+        for label, value in (("自动", 0), ("1", 1), ("2", 2), ("4", 4), ("8", 8)):
+            self.fragments_combo.addItem(label, value)
+        self.fragments_combo.setCurrentIndex(max(0, self.fragments_combo.findData(settings.concurrent_fragments)))
+        self.fragments_combo.setAccessibleName("分片并发数")
+        self.fragments_combo.setToolTip("自动模式使用实测确认的稳健并发数；分片并发只对支持分片的格式有效。")
+        form.addRow("分片并发", self.fragments_combo)
+
+        self.proxy_combo = QComboBox()
+        for label, value in (("系统代理", "system"), ("直连", "direct"), ("自定义代理", "custom")):
+            self.proxy_combo.addItem(label, value)
+        self.proxy_combo.setCurrentIndex(max(0, self.proxy_combo.findData(settings.proxy_mode)))
+        self.proxy_combo.setAccessibleName("网络代理模式")
+        form.addRow("网络连接", self.proxy_combo)
+        self.proxy_input = QLineEdit(settings.custom_proxy_url)
+        self.proxy_input.setPlaceholderText("例如 http://127.0.0.1:8080 或 socks5://127.0.0.1:1080")
+        self.proxy_input.setAccessibleName("自定义代理地址")
+        self.proxy_input.setToolTip("支持 HTTP、HTTPS、SOCKS4、SOCKS5 和 SOCKS5H；日志不会记录用户名或密码。")
+        form.addRow("自定义代理", self.proxy_input)
+        network_test_row = QWidget()
+        network_test_layout = QHBoxLayout(network_test_row)
+        network_test_layout.setContentsMargins(0, 0, 0, 0)
+        self.network_test_button = QPushButton("测试连接")
+        self.network_test_button.setAccessibleName("测试当前网络连接")
+        self.network_test_button.setToolTip("使用当前代理选项连接 YouTube；不会保存设置。")
+        self.network_test_button.clicked.connect(self._request_network_test)
+        self.network_test_status = QLabel("")
+        self.network_test_status.setProperty("secondary", True)
+        self.network_test_status.setWordWrap(True)
+        network_test_layout.addWidget(self.network_test_button)
+        network_test_layout.addWidget(self.network_test_status, 1)
+        form.addRow("连接诊断", network_test_row)
+        self._update_proxy_controls()
         content.addWidget(download_card)
 
         content.addWidget(self._section("外观"))
@@ -128,6 +162,9 @@ class SettingsPage(QWidget):
 
         self.directory_input.textChanged.connect(self._mark_dirty)
         self.quality_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
+        self.fragments_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
+        self.proxy_combo.currentIndexChanged.connect(self._proxy_changed)
+        self.proxy_input.textChanged.connect(self._mark_dirty)
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
         self.reduce_motion.toggled.connect(self._mark_dirty_immediately)
         self.ffmpeg_input.textChanged.connect(self._mark_dirty)
@@ -152,6 +189,34 @@ class SettingsPage(QWidget):
         self._mark_dirty_immediately()
         self.theme_preview_requested.emit(str(self.theme_combo.currentData()))
 
+    def _proxy_changed(self) -> None:
+        self._update_proxy_controls()
+        self.network_test_status.clear()
+        self._mark_dirty_immediately()
+
+    def _update_proxy_controls(self) -> None:
+        self.proxy_input.setEnabled(self.proxy_combo.currentData() == "custom")
+
+    def _request_network_test(self) -> None:
+        self.set_network_test_busy(True)
+        self.network_test_requested.emit(
+            str(self.proxy_combo.currentData()),
+            self.proxy_input.text().strip(),
+        )
+
+    def set_network_test_busy(self, busy: bool) -> None:
+        self.network_test_button.setEnabled(not busy)
+        self.network_test_button.setText("正在测试…" if busy else "测试连接")
+        if busy:
+            self.network_test_status.setText("正在使用当前设置测试连接…")
+
+    def set_network_test_result(self, success: bool, message: str) -> None:
+        self.set_network_test_busy(False)
+        self.network_test_status.setProperty("status", "success" if success else "error")
+        self.network_test_status.setText(message)
+        self.network_test_status.style().unpolish(self.network_test_status)
+        self.network_test_status.style().polish(self.network_test_status)
+
     def _mark_dirty(self, *_args) -> None:
         self._status_hide_timer.stop()
         self.unsaved_label.setText("有未保存的更改")
@@ -170,9 +235,9 @@ class SettingsPage(QWidget):
             theme=str(self.theme_combo.currentData()),
             reduce_motion=self.reduce_motion.isChecked(),
             ffmpeg_directory=self.ffmpeg_input.text().strip(),
-            proxy_mode=self._saved.proxy_mode,
-            custom_proxy_url=self._saved.custom_proxy_url,
-            concurrent_fragments=self._saved.concurrent_fragments,
+            proxy_mode=str(self.proxy_combo.currentData()),
+            custom_proxy_url=self.proxy_input.text().strip(),
+            concurrent_fragments=int(self.fragments_combo.currentData()),
         )
 
     def _save(self) -> None:

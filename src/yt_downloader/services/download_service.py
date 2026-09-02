@@ -25,6 +25,8 @@ from yt_downloader.core.models import DownloadProgress, DownloadRequest, Downloa
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.ffmpeg_service import FfmpegService
+from yt_downloader.services.network_policy import NetworkPolicy
+from yt_downloader.services.download_tuning import AUTO_FRAGMENT_COUNT
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +127,8 @@ class DownloadService:
         require_tools: bool = True,
         media_validator: Callable[[Path], bool] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        network_policy: NetworkPolicy | None = None,
+        concurrent_fragments: int = 0,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.deno_path = Path(deno_path) if deno_path else find_tool("deno")
@@ -132,6 +136,10 @@ class DownloadService:
         self.require_tools = require_tools
         self.clock = clock
         self.media_validator = media_validator
+        self.network_policy = network_policy
+        if concurrent_fragments not in {0, 1, 2, 4, 8}:
+            raise ValueError("concurrent_fragments must be auto (0), 1, 2, 4, or 8")
+        self.concurrent_fragments = concurrent_fragments
 
     @staticmethod
     def _validate_output_directory(directory: Path, required_bytes: int | None) -> None:
@@ -314,10 +322,13 @@ class DownloadService:
             "socket_timeout": 30,
             "retries": 5,
             "fragment_retries": 5,
+            "concurrent_fragment_downloads": self.concurrent_fragments or AUTO_FRAGMENT_COUNT,
             "ffmpeg_location": str(self.ffmpeg_path.parent) if self.ffmpeg_path else None,
             # Kept private to this app; test doubles use it without parsing an output template.
             "final_path": str(final_path),
         }
+        if self.network_policy:
+            options.update(self.network_policy.ytdlp_options())
         try:
             with _interruptible_ytdlp_ffmpeg(cancel_event, context):
                 with self.ydl_factory(options) as ydl:

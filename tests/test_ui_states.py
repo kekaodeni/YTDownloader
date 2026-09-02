@@ -163,3 +163,51 @@ def test_saved_default_directory_applies_to_new_videos_without_overwriting_manua
 
     page.show_video(replace(source, video_id="next-video"))
     assert page.directory_input.text() == str(tmp_path / "third-default")
+
+
+def test_network_settings_round_trip_through_auto_save(qtbot, tmp_path) -> None:
+    page = SettingsPage(
+        AppSettings(
+            download_directory=str(tmp_path),
+            proxy_mode="custom",
+            custom_proxy_url="http://127.0.0.1:8080",
+            concurrent_fragments=4,
+        ),
+        ytdlp_version="test",
+        ffmpeg_description="test",
+    )
+    qtbot.addWidget(page)
+
+    assert page.proxy_combo.currentData() == "custom"
+    assert page.proxy_input.text() == "http://127.0.0.1:8080"
+    assert page.fragments_combo.currentData() == 4
+    assert page.proxy_input.isEnabled()
+
+    with qtbot.waitSignal(page.save_requested, timeout=1000) as signal:
+        page.proxy_combo.setCurrentIndex(page.proxy_combo.findData("direct"))
+
+    changed = signal.args[0]
+    assert changed.proxy_mode == "direct"
+    assert changed.concurrent_fragments == 4
+    assert not page.proxy_input.isEnabled()
+
+
+def test_network_test_is_separate_from_save_and_has_inline_result(qtbot, tmp_path) -> None:
+    page = SettingsPage(
+        AppSettings(download_directory=str(tmp_path), proxy_mode="direct"),
+        ytdlp_version="test",
+        ffmpeg_description="test",
+    )
+    qtbot.addWidget(page)
+
+    with qtbot.waitSignal(page.network_test_requested, timeout=500) as signal:
+        qtbot.mouseClick(page.network_test_button, Qt.MouseButton.LeftButton)
+
+    assert signal.args == ["direct", ""]
+    assert not page.network_test_button.isEnabled()
+    assert page.network_test_button.text() == "正在测试…"
+
+    page.set_network_test_result(True, "连接成功（0.25 秒） · 直连")
+
+    assert page.network_test_button.isEnabled()
+    assert page.network_test_status.text().startswith("连接成功")

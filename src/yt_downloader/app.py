@@ -29,6 +29,7 @@ from yt_downloader.services.download_service import DownloadService
 from yt_downloader.services.error_report_service import build_error_report
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.history_service import HistoryRepository
+from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
 from yt_downloader.ui.main_window import MainWindow
@@ -87,8 +88,14 @@ class AppController:
             self.history = _MemoryHistory()
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
         self.deno_path = find_tool("deno")
-        self.youtube = YoutubeService(deno_path=self.deno_path)
-        self.download_service = DownloadService(deno_path=self.deno_path, ffmpeg_path=self.ffmpeg.ffmpeg_path)
+        self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
+        self.youtube = YoutubeService(deno_path=self.deno_path, network_policy=self.network)
+        self.download_service = DownloadService(
+            deno_path=self.deno_path,
+            ffmpeg_path=self.ffmpeg.ffmpeg_path,
+            network_policy=self.network,
+            concurrent_fragments=self.settings.concurrent_fragments,
+        )
         ffmpeg_description = str(self.ffmpeg.ffmpeg_path) if self.ffmpeg.ffmpeg_path else "未找到"
         self.window = MainWindow(
             self.settings,
@@ -98,6 +105,7 @@ class AppController:
         self.queue = DownloadQueueController(self.download_service, self.window)
         self._metadata_cancel: threading.Event | None = None
         self._metadata_workers: list[FunctionWorker] = []
+        self._settings_workers: list[FunctionWorker] = []
         self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
         self._pending_retry: HistoryRecord | None = None
         self._dialogs: list[object] = []
@@ -122,6 +130,7 @@ class AppController:
         history.retry_requested.connect(self._retry_record)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
+        settings.network_test_requested.connect(self.test_network_connection)
         settings.theme_preview_requested.connect(self.theme.set_mode)
         self.theme.theme_changed.connect(self.window.apply_theme)
         settings.open_logs_requested.connect(lambda: self._open_directory(self.paths.logs))
@@ -260,15 +269,44 @@ class AppController:
                 if not (directory / "ffmpeg.exe").is_file() or not (directory / "ffprobe.exe").is_file():
                     raise ValueError("所选目录必须同时包含 ffmpeg.exe 和 ffprobe.exe。")
             self.settings_service.save(settings)
+            self.network.configure(settings.proxy_mode, settings.custom_proxy_url)
             self.settings = settings
             self.theme.set_mode(settings.theme)
             self.window.settings_page.mark_saved(settings)
             self.window.download_page.set_default_directory(settings.download_directory)
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
+            self.download_service.concurrent_fragments = settings.concurrent_fragments
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))
+
+    def test_network_connection(self, mode: str, custom_proxy_url: str) -> None:
+        try:
+            policy = NetworkPolicy(mode, custom_proxy_url)
+        except ValueError as exc:
+            self.window.settings_page.set_network_test_result(False, str(exc))
+            return
+        worker = FunctionWorker(policy.test_connection)
+        self._settings_workers.append(worker)
+        worker.signals.result.connect(self._network_test_succeeded)
+        worker.signals.error.connect(self._network_test_failed)
+        worker.signals.finished.connect(lambda current=worker: self._settings_worker_finished(current))
+        QThreadPool.globalInstance().start(worker)
+
+    def _network_test_succeeded(self, result: NetworkTestResult) -> None:
+        self.window.settings_page.set_network_test_result(
+            True,
+            f"连接成功（{result.elapsed_seconds:.2f} 秒） · {result.description}",
+        )
+
+    def _network_test_failed(self, error: AppError) -> None:
+        logger.warning("Network connection test failed: %s", error.technical_message)
+        self.window.settings_page.set_network_test_result(False, error.user_message)
+
+    def _settings_worker_finished(self, worker: FunctionWorker) -> None:
+        if worker in self._settings_workers:
+            self._settings_workers.remove(worker)
 
     def copy_system_info(self) -> None:
         QGuiApplication.clipboard().setText(build_system_info(

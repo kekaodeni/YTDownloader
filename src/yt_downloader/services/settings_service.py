@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from yt_downloader.core.models import AppSettings
+from yt_downloader.services.network_policy import NetworkPolicy
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,8 @@ class SettingsService:
         proxy_mode = str(data.get("proxy_mode") or "system")
         if proxy_mode not in _PROXY_MODES:
             raise ValueError("invalid proxy mode")
+        custom_proxy_url = str(data.get("custom_proxy_url") or "")
+        NetworkPolicy(proxy_mode, custom_proxy_url).snapshot()
         concurrent_fragments = int(data.get("concurrent_fragments", 0))
         if concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("invalid fragment concurrency")
@@ -64,7 +67,7 @@ class SettingsService:
             reduce_motion=bool(data.get("reduce_motion", False)),
             ffmpeg_directory=str(data.get("ffmpeg_directory") or ""),
             proxy_mode=proxy_mode,
-            custom_proxy_url=str(data.get("custom_proxy_url") or ""),
+            custom_proxy_url=custom_proxy_url,
             concurrent_fragments=concurrent_fragments,
         ), source_schema
 
@@ -105,6 +108,7 @@ class SettingsService:
             raise ValueError("代理模式无效。")
         if settings.concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("分片并发设置无效。")
+        NetworkPolicy(settings.proxy_mode, settings.custom_proxy_url).snapshot()
         directory = Path(settings.download_directory).expanduser()
         if not directory.is_absolute():
             raise ValueError("默认下载目录必须是绝对路径。")

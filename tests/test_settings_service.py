@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from yt_downloader.core.models import AppSettings
 from yt_downloader.services.settings_service import SettingsService
 
@@ -61,3 +63,34 @@ def test_migrates_schema_one_with_a_copy_first_backup(tmp_path: Path) -> None:
     backup = tmp_path / "settings.v1.backup.json"
     assert json.loads(backup.read_text(encoding="utf-8"))["schema_version"] == 1
     assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 2
+
+
+def test_rejects_invalid_custom_proxy_without_overwriting_saved_settings(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    service = SettingsService(path, default_download_directory=tmp_path)
+    saved = AppSettings(download_directory=str(tmp_path), proxy_mode="direct")
+    service.save(saved)
+
+    with pytest.raises(ValueError, match="自定义代理"):
+        service.save(AppSettings(
+            download_directory=str(tmp_path),
+            proxy_mode="custom",
+            custom_proxy_url="not-a-proxy",
+        ))
+
+    assert service.load() == saved
+
+
+def test_invalid_custom_proxy_in_existing_file_recovers_to_safe_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({
+        "schema_version": 2,
+        "download_directory": str(tmp_path),
+        "proxy_mode": "custom",
+        "custom_proxy_url": "broken-value",
+    }), encoding="utf-8")
+
+    loaded = SettingsService(path, default_download_directory=tmp_path).load()
+
+    assert loaded.proxy_mode == "system"
+    assert loaded.custom_proxy_url == ""

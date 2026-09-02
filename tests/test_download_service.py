@@ -18,6 +18,7 @@ from yt_downloader.core.models import (
     VideoInfo,
 )
 from yt_downloader.services.download_service import DownloadService
+from yt_downloader.services.network_policy import NetworkPolicy
 
 
 def _request(tmp_path: Path) -> DownloadRequest:
@@ -101,6 +102,8 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
         ffmpeg_path=tmp_path / "ffmpeg.exe",
         require_tools=False,
         media_validator=lambda _path: True,
+        network_policy=NetworkPolicy("direct"),
+        concurrent_fragments=4,
     )
 
     result = service.download(request, events.append, threading.Event())
@@ -131,6 +134,8 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
     assert options["format"] == "137+140"
     assert options["remote_components"] == []
     assert options["merge_output_format"] == "mp4"
+    assert options["proxy"] == ""
+    assert options["concurrent_fragment_downloads"] == 4
 
 
 class FakeYDLWithFfmpegChild(FakeYDL):
