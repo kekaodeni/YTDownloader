@@ -16,6 +16,7 @@ class TaskStatus(StrEnum):
     DOWNLOADING_AUDIO = "DOWNLOADING_AUDIO"
     MERGING = "MERGING"
     POST_PROCESSING = "POST_PROCESSING"
+    CANCELLING = "CANCELLING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -29,6 +30,7 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
     TaskStatus.DOWNLOADING_AUDIO: "正在下载音频",
     TaskStatus.MERGING: "正在合并视频与音频",
     TaskStatus.POST_PROCESSING: "正在处理文件",
+    TaskStatus.CANCELLING: "正在取消…",
     TaskStatus.COMPLETED: "下载完成",
     TaskStatus.FAILED: "下载失败",
     TaskStatus.CANCELLED: "已取消",
@@ -124,4 +126,3 @@ class AppSettings:
     theme: str = "system"
     reduce_motion: bool = False
     ffmpeg_directory: str = ""
-

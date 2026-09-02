@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -14,6 +16,7 @@ import traceback
 from typing import Any, Callable
 
 import yt_dlp
+from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
@@ -25,6 +28,54 @@ from yt_downloader.services.ffmpeg_service import FfmpegService
 
 
 logger = logging.getLogger(__name__)
+_YTDLP_FFMPEG_PATCH_LOCK = threading.RLock()
+
+
+def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext):
+    base = ytdlp_ffmpeg.Popen
+
+    class CancellablePopen(base):
+        @classmethod
+        def run(cls, *args, timeout=None, input=None, **kwargs):
+            if input is not None and kwargs.get("stdin") is None:
+                kwargs["stdin"] = subprocess.PIPE
+            started = time.monotonic()
+            with cls(*args, **kwargs) as process:
+                pending_input = input
+                while True:
+                    if cancel_event.is_set():
+                        logger.info("Stopping task-owned FFmpeg process pid=%s", process.pid)
+                        process.kill(timeout=None)
+                        stdout, stderr = process.communicate()
+                        logger.info(
+                            "Task-owned FFmpeg process pid=%s stopped in %.3fs",
+                            process.pid,
+                            time.monotonic() - started,
+                        )
+                        raise OperationCancelled(context)
+                    try:
+                        stdout, stderr = process.communicate(input=pending_input, timeout=0.1)
+                        default = "" if kwargs.get("text") or kwargs.get("encoding") else b""
+                        return stdout or default, stderr or default, process.returncode
+                    except subprocess.TimeoutExpired:
+                        pending_input = None
+                        if timeout is not None and time.monotonic() - started >= timeout:
+                            process.kill(timeout=None)
+                            stdout, stderr = process.communicate()
+                            raise subprocess.TimeoutExpired(args[0] if args else None, timeout, stdout, stderr)
+
+    return CancellablePopen
+
+
+@contextmanager
+def _interruptible_ytdlp_ffmpeg(cancel_event: threading.Event, context: ErrorContext):
+    with _YTDLP_FFMPEG_PATCH_LOCK:
+        original = ytdlp_ffmpeg.Popen
+        ytdlp_ffmpeg.Popen = _cancellable_popen_type(cancel_event, context)
+        try:
+            yield
+        finally:
+            ytdlp_ffmpeg.Popen = original
 
 
 class _DownloadLogger:
@@ -217,8 +268,9 @@ class DownloadService:
             "final_path": str(final_path),
         }
         try:
-            with self.ydl_factory(options) as ydl:
-                exit_code = ydl.download([request.video.url])
+            with _interruptible_ytdlp_ffmpeg(cancel_event, context):
+                with self.ydl_factory(options) as ydl:
+                    exit_code = ydl.download([request.video.url])
             if cancel_event.is_set():
                 raise OperationCancelled(context)
             if exit_code:

@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import subprocess
+import sys
 import threading
+import time
 
+import pytest
+from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
+
+from yt_downloader.core.errors import OperationCancelled
 from yt_downloader.core.models import (
     DownloadRequest,
     FormatOption,
@@ -117,3 +124,51 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
     assert options["format"] == "137+140"
     assert options["remote_components"] == []
     assert options["merge_output_format"] == "mp4"
+
+
+class FakeYDLWithFfmpegChild(FakeYDL):
+    def download(self, _urls: list[str]) -> int:
+        marker = Path(self.options["final_path"]).with_suffix(".child-lock")
+        script = (
+            "from pathlib import Path; import sys, time; "
+            "p=Path(sys.argv[1]); f=p.open('wb'); f.write(b'locked'); f.flush(); "
+            "time.sleep(3); f.close()"
+        )
+        ytdlp_ffmpeg.Popen.run(
+            [sys.executable, "-c", script, str(marker)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        return 0
+
+
+def test_cancel_interrupts_task_owned_ffmpeg_and_closes_handles(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    cancel = threading.Event()
+    marker = (tmp_path / "标题.mp4").with_suffix(".child-lock")
+    service = DownloadService(
+        ydl_factory=FakeYDLWithFfmpegChild,
+        deno_path=tmp_path / "deno.exe",
+        ffmpeg_path=tmp_path / "ffmpeg.exe",
+        require_tools=False,
+        media_validator=lambda _path: True,
+    )
+
+    def cancel_after_child_starts() -> None:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not marker.exists():
+            time.sleep(0.01)
+        cancel.set()
+
+    watcher = threading.Thread(target=cancel_after_child_starts)
+    watcher.start()
+    started = time.monotonic()
+    with pytest.raises(OperationCancelled):
+        service.download(request, lambda _event: None, cancel)
+    elapsed = time.monotonic() - started
+    watcher.join(timeout=1)
+
+    probe = marker.with_suffix(".unlock-probe")
+    marker.rename(probe)
+    probe.rename(marker)
+    assert elapsed < 1.5

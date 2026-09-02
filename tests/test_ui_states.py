@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QPalette
 from PySide6.QtWidgets import QPushButton
@@ -10,6 +12,8 @@ from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
+from test_download_service import _request
+from yt_downloader.core.models import DownloadProgress, TaskStatus
 
 
 def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) -> None:
@@ -58,3 +62,21 @@ def test_error_dialog_copies_prebuilt_redacted_report(qtbot) -> None:
     copy = next(button for button in dialog.findChildren(QPushButton) if button.text() == "复制错误报告")
     qtbot.mouseClick(copy, Qt.MouseButton.LeftButton)
     assert QGuiApplication.clipboard().text() == "safe report"
+
+
+def test_task_card_enters_cancelling_immediately(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    request = replace(_request(tmp_path), task_id="cancel-ui")
+    page.add_task(request)
+    page.update_task(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 31, 31, 100, 5000, 7))
+
+    page.cancel_task(request.task_id)
+
+    card = page.cards[request.task_id]
+    assert card.progress.status_label.text() == "正在取消…"
+    assert not card.cancel_button.isEnabled()
+    assert card.cancel_button.text() == "正在取消…"
+    assert card.progress.progress_bar.maximum() == 100
+    assert card.progress.speed_label.text() == "—"
+    assert card.progress.eta_label.text() == "剩余 —"

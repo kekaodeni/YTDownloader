@@ -218,6 +218,11 @@ class DownloadPage(QWidget):
         if card:
             card.update_progress(progress)
 
+    def cancel_task(self, task_id: str) -> None:
+        card = self.cards.get(task_id)
+        if card:
+            card.set_cancelling()
+
     def complete_task(self, result: DownloadResult) -> None:
         card = self.cards.get(result.task_id)
         if card:

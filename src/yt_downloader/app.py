@@ -125,6 +125,7 @@ class AppController:
         settings.open_logs_requested.connect(lambda: self._open_directory(self.paths.logs))
         settings.copy_system_info_requested.connect(self.copy_system_info)
         self.queue.task_queued.connect(download.add_task)
+        self.queue.cancelling.connect(self._cancelling)
         self.queue.progress.connect(self._progress)
         self.queue.completed.connect(self._completed)
         self.queue.failed.connect(self._failed)
@@ -196,6 +197,13 @@ class AppController:
             self.history.update_status(progress.task_id, progress.status)
         except Exception:
             logger.exception("Failed to persist task progress")
+
+    def _cancelling(self, task_id: str) -> None:
+        self.window.download_page.cancel_task(task_id)
+        try:
+            self.history.update_status(task_id, TaskStatus.CANCELLING)
+        except Exception:
+            logger.exception("Failed to persist cancelling task")
 
     def _completed(self, result) -> None:
         self.window.download_page.complete_task(result)

@@ -85,9 +85,10 @@ class FfmpegService:
             if cancel_event and cancel_event.is_set():
                 process.terminate()
                 try:
-                    process.wait(timeout=2)
+                    stdout, stderr = process.communicate(timeout=2)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    stdout, stderr = process.communicate()
                 raise OperationCancelled(ErrorContext(stage=stage))
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -193,4 +194,3 @@ class FfmpegService:
             return destination
         finally:
             temporary.unlink(missing_ok=True)
-

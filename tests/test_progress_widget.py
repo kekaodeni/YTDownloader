@@ -14,3 +14,17 @@ def test_progress_bar_percent_and_speed_are_always_visible(qtbot) -> None:
     assert widget.percent_label.text() == "—%"
     assert widget.speed_label.text() == "—"
 
+
+def test_cancelling_freezes_progress_and_clears_live_metrics(qtbot) -> None:
+    widget = ProgressWidget()
+    qtbot.addWidget(widget)
+    widget.set_progress(DownloadProgress("x", TaskStatus.DOWNLOADING_VIDEO, 42, 42, 100, 2_000_000, 9))
+
+    widget.set_progress(DownloadProgress("x", TaskStatus.CANCELLING))
+
+    assert widget.status_label.text() == "正在取消…"
+    assert (widget.progress_bar.minimum(), widget.progress_bar.maximum()) == (0, 100)
+    assert widget.progress_bar.value() == 42
+    assert widget.percent_label.text() == "42%"
+    assert widget.speed_label.text() == "—"
+    assert widget.eta_label.text() == "剩余 —"

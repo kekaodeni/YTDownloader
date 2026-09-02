@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from yt_downloader.core.formatting import format_bytes, format_eta, format_speed
-from yt_downloader.core.models import DownloadProgress, STATUS_TEXT
+from yt_downloader.core.models import DownloadProgress, STATUS_TEXT, TaskStatus
 
 
 class ProgressWidget(QWidget):
@@ -12,6 +12,7 @@ class ProgressWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._last_percent: int | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
@@ -45,16 +46,26 @@ class ProgressWidget(QWidget):
 
     def set_progress(self, progress: DownloadProgress) -> None:
         self.status_label.setText(STATUS_TEXT[progress.status])
-        if progress.percent is None:
+        stopping = progress.status in {
+            TaskStatus.CANCELLING,
+            TaskStatus.CANCELLED,
+            TaskStatus.FAILED,
+        }
+        if stopping:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(self._last_percent or 0)
+            self.percent_label.setText(f"{self._last_percent}%" if self._last_percent is not None else "—%")
+        elif progress.percent is None:
             self.progress_bar.setRange(0, 0)
             self.percent_label.setText("—%")
         else:
             value = round(progress.percent)
+            self._last_percent = value
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(value)
             self.percent_label.setText(f"{value}%")
-        self.speed_label.setText(format_speed(progress.speed))
-        self.size_label.setText(f"{format_bytes(progress.downloaded_bytes)} / {format_bytes(progress.total_bytes)}")
-        eta = format_eta(progress.eta)
+        self.speed_label.setText("—" if stopping else format_speed(progress.speed))
+        if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
+            self.size_label.setText(f"{format_bytes(progress.downloaded_bytes)} / {format_bytes(progress.total_bytes)}")
+        eta = "—" if stopping else format_eta(progress.eta)
         self.eta_label.setText(f"剩余 {eta}" if eta != "—" else "剩余 —")
-

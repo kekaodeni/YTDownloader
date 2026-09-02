@@ -68,6 +68,11 @@ class DownloadTaskCard(QWidget):
     def update_progress(self, progress: DownloadProgress) -> None:
         self.progress.set_progress(progress)
 
+    def set_cancelling(self) -> None:
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setText("正在取消…")
+        self.progress.set_progress(DownloadProgress(self.request.task_id, TaskStatus.CANCELLING))
+
     def set_completed(self, result: DownloadResult) -> None:
         self.file_path = result.file_path
         self.progress.set_progress(DownloadProgress(result.task_id, TaskStatus.COMPLETED, 100, result.file_size, result.file_size))
@@ -78,4 +83,3 @@ class DownloadTaskCard(QWidget):
     def set_terminal_status(self, status: TaskStatus) -> None:
         self.progress.set_progress(DownloadProgress(self.request.task_id, status))
         self.cancel_button.hide()
-
