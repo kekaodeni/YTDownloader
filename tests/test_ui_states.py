@@ -11,7 +11,7 @@ from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
-from yt_downloader.ui.theme import ThemeManager
+from yt_downloader.ui.theme import DARK, LIGHT, ThemeManager, _qss
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from test_download_service import _request
 from yt_downloader.core.models import DownloadProgress, DownloadResult, TaskStatus
@@ -38,6 +38,39 @@ def test_theme_manager_updates_qpalette(qapp) -> None:
     assert qapp.palette().color(QPalette.ColorRole.Window).lightness() < 80
     manager.set_mode("light")
     assert qapp.palette().color(QPalette.ColorRole.Window).lightness() > 200
+
+
+def _contrast_ratio(first, second) -> float:
+    def luminance(color) -> float:
+        channels = []
+        for value in (color.redF(), color.greenF(), color.blueF()):
+            channels.append(value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    high, low = sorted((luminance(first), luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def test_combo_selection_palette_remains_readable_in_both_themes(qapp) -> None:
+    manager = ThemeManager(qapp)
+    for mode, tokens in (("light", LIGHT), ("dark", DARK)):
+        manager.set_mode(mode)
+        palette = qapp.palette()
+        selected_background = palette.color(QPalette.ColorRole.Highlight)
+        selected_text = palette.color(QPalette.ColorRole.HighlightedText)
+
+        assert selected_background.name().upper() == tokens.selection.upper()
+        assert selected_text.name().upper() == tokens.text.upper()
+        assert _contrast_ratio(selected_background, selected_text) >= 4.5
+
+
+def test_generated_qss_covers_combo_selected_hover_focus_and_disabled_states() -> None:
+    stylesheet = _qss(LIGHT)
+
+    assert "QComboBox QAbstractItemView::item:selected:hover" in stylesheet
+    assert "QComboBox QAbstractItemView:focus" in stylesheet
+    assert "QComboBox QAbstractItemView::item:disabled" in stylesheet
+    assert f"selection-color: {LIGHT.text}" in stylesheet
 
 
 def test_fluent_icons_use_theme_contrast_and_selected_variant(qapp) -> None:

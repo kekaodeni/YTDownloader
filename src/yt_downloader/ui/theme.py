@@ -25,6 +25,7 @@ class FluentTokens:
     accent_text: str
     danger: str
     selection: str
+    selection_hover: str
 
 
 LIGHT = FluentTokens(
@@ -32,14 +33,14 @@ LIGHT = FluentTokens(
     text="#1A1A1A", text_secondary="#616161", text_disabled="#9E9E9E",
     stroke="#D1D1D1", stroke_focus="#0067C0", accent="#0067C0",
     accent_hover="#1975C5", accent_pressed="#005A9E", accent_text="#FFFFFF",
-    danger="#C42B1C", selection="#DDEAF7",
+    danger="#C42B1C", selection="#DDEAF7", selection_hover="#C9DFF2",
 )
 DARK = FluentTokens(
     background="#202020", layer="#2B2B2B", layer_alt="#252525",
     text="#FFFFFF", text_secondary="#C5C5C5", text_disabled="#777777",
     stroke="#4A4A4A", stroke_focus="#60CDFF", accent="#60CDFF",
     accent_hover="#75D4FF", accent_pressed="#4CC2FF", accent_text="#102027",
-    danger="#FF99A4", selection="#153B52",
+    danger="#FF99A4", selection="#153B52", selection_hover="#234C63",
 )
 
 
@@ -61,6 +62,20 @@ def _qss(t: FluentTokens) -> str:
     }}
     QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {t.text_secondary}; }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-bottom-color: {t.stroke_focus}; }}
+    QComboBox QAbstractItemView {{
+        background: {t.layer}; color: {t.text}; border: 1px solid {t.stroke};
+        border-radius: 8px; outline: none; padding: 4px;
+        selection-background-color: {t.selection}; selection-color: {t.text};
+    }}
+    QComboBox QAbstractItemView:focus {{ border: 1px solid {t.stroke_focus}; }}
+    QComboBox QAbstractItemView::item {{
+        background: {t.layer}; color: {t.text}; border: none; border-radius: 6px;
+        min-height: 28px; padding: 7px 10px; margin: 1px;
+    }}
+    QComboBox QAbstractItemView::item:hover {{ background: {t.layer_alt}; color: {t.text}; }}
+    QComboBox QAbstractItemView::item:selected {{ background: {t.selection}; color: {t.text}; }}
+    QComboBox QAbstractItemView::item:selected:hover {{ background: {t.selection_hover}; color: {t.text}; }}
+    QComboBox QAbstractItemView::item:disabled {{ background: {t.layer}; color: {t.text_disabled}; }}
     QPushButton, QToolButton {{
         background: {t.layer}; border: 1px solid {t.stroke}; border-radius: 6px;
         padding: 7px 14px; min-height: 20px;
@@ -126,11 +141,13 @@ class ThemeManager(QObject):
         palette.setColor(QPalette.ColorRole.Text, QColor(tokens.text))
         palette.setColor(QPalette.ColorRole.Button, QColor(tokens.layer))
         palette.setColor(QPalette.ColorRole.ButtonText, QColor(tokens.text))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(tokens.accent))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(tokens.accent_text))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(tokens.selection))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(tokens.text))
         palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(tokens.text_secondary))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(tokens.text_disabled))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(tokens.text_disabled))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, QColor(tokens.text_disabled))
         self.app.setPalette(palette)
         self.app.setStyleSheet(_qss(tokens))
         self.app.setProperty("fluentTheme", self.resolved_mode)
         self.theme_changed.emit(self.resolved_mode)
-
