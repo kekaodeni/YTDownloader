@@ -27,6 +27,7 @@ class DownloadPage(QWidget):
         super().__init__(parent)
         self.video: VideoInfo | None = None
         self.cards: dict[str, DownloadTaskCard] = {}
+        self._terminal_task_ids: set[str] = set()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.page_scroll = QScrollArea()
@@ -161,6 +162,11 @@ class DownloadPage(QWidget):
             self.parse_requested.emit(self.url_input.text().strip())
 
     def set_loading(self, loading: bool) -> None:
+        if loading:
+            self.video = None
+            self.video_card.hide()
+            self.thumbnail.clear()
+            self.thumbnail.setText("暂无封面")
         self.url_input.setEnabled(not loading)
         self.parse_button.setEnabled(not loading)
         self.parse_button.setText("解析中…" if loading else "解析")
@@ -170,6 +176,8 @@ class DownloadPage(QWidget):
         self.video = video
         self.video_title.setText(video.title)
         self.video_meta.setText(f"{video.channel}  ·  {format_duration(video.duration)}")
+        self.thumbnail.clear()
+        self.thumbnail.setText("暂无封面")
         pixmap = QPixmap()
         if video.thumbnail_bytes:
             pixmap.loadFromData(video.thumbnail_bytes)
@@ -227,8 +235,32 @@ class DownloadPage(QWidget):
         card = self.cards.get(result.task_id)
         if card:
             card.set_completed(result)
+            self._mark_terminal(result.task_id)
 
     def fail_task(self, task_id: str, status: TaskStatus) -> None:
         card = self.cards.get(task_id)
         if card:
             card.set_terminal_status(status)
+            self._mark_terminal(task_id)
+
+    def _mark_terminal(self, task_id: str) -> None:
+        for previous_id in tuple(self._terminal_task_ids):
+            if previous_id != task_id:
+                self._remove_task(previous_id)
+        self._terminal_task_ids.add(task_id)
+
+    def task_started(self, task_id: str) -> None:
+        for terminal_id in tuple(self._terminal_task_ids):
+            if terminal_id != task_id:
+                self._remove_task(terminal_id)
+
+    def _remove_task(self, task_id: str) -> None:
+        card = self.cards.pop(task_id, None)
+        self._terminal_task_ids.discard(task_id)
+        if card:
+            self.task_layout.removeWidget(card)
+            card.hide()
+            card.deleteLater()
+        if not self.cards:
+            self.tasks_heading.hide()
+            self.task_host.hide()

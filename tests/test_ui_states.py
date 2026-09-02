@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication, QPalette
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
+from PySide6.QtGui import QGuiApplication, QPalette, QPixmap
 from PySide6.QtWidgets import QPushButton
 
 from yt_downloader.core.errors import AppError
@@ -13,7 +13,7 @@ from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from test_download_service import _request
-from yt_downloader.core.models import DownloadProgress, TaskStatus
+from yt_downloader.core.models import DownloadProgress, DownloadResult, TaskStatus
 
 
 def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) -> None:
@@ -80,3 +80,42 @@ def test_task_card_enters_cancelling_immediately(qtbot, tmp_path) -> None:
     assert card.progress.progress_bar.maximum() == 100
     assert card.progress.speed_label.text() == "—"
     assert card.progress.eta_label.text() == "剩余 —"
+
+
+def test_new_metadata_clears_the_previous_thumbnail_when_image_is_missing(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    source = _request(tmp_path).video
+    image = QPixmap(4, 4)
+    image.fill(Qt.GlobalColor.blue)
+    encoded = QByteArray()
+    buffer = QBuffer(encoded)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    assert image.save(buffer, "PNG")
+    png = bytes(encoded)
+    first = replace(source, video_id="first-video", title="A", thumbnail_bytes=png)
+    second = replace(source, video_id="second-video", title="B", thumbnail_bytes=None)
+
+    page.show_video(first)
+    assert not page.thumbnail.pixmap().isNull()
+
+    page.show_video(second)
+
+    assert page.thumbnail.pixmap().isNull()
+    assert page.thumbnail.text() == "暂无封面"
+
+
+def test_starting_the_next_task_retires_older_terminal_cards(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    first = replace(_request(tmp_path), task_id="first")
+    second = replace(_request(tmp_path), task_id="second")
+    page.add_task(first)
+    page.add_task(second)
+    page.complete_task(DownloadResult("first", tmp_path / "first.mp4", 10, "now"))
+
+    assert set(page.cards) == {"first", "second"}
+
+    page.task_started("second")
+
+    assert set(page.cards) == {"second"}

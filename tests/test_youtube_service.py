@@ -1,6 +1,10 @@
 from contextlib import AbstractContextManager
+import threading
 from typing import Any
 
+import pytest
+
+from yt_downloader.core.errors import OperationCancelled
 from yt_downloader.services.youtube_service import YoutubeService
 
 
@@ -58,3 +62,21 @@ def test_fetches_metadata_through_python_api_and_downloads_thumbnail() -> None:
     assert FakeYdl.last_options["noplaylist"] is True
     assert FakeYdl.last_options["remote_components"] == []
     assert FakeYdl.last_options["js_runtimes"]["deno"]["path"].endswith("deno.exe")
+
+
+def test_cancellation_after_thumbnail_response_discards_metadata() -> None:
+    cancel = threading.Event()
+
+    def cancelling_get(*_args, **_kwargs):
+        cancel.set()
+        return FakeResponse()
+
+    service = YoutubeService(
+        ydl_factory=FakeYdl,
+        http_get=cancelling_get,
+        deno_path="C:/tools/deno.exe",
+        require_deno=False,
+    )
+
+    with pytest.raises(OperationCancelled):
+        service.fetch_metadata("https://youtu.be/dQw4w9WgXcQ", cancel)

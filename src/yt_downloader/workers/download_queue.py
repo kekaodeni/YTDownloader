@@ -50,6 +50,7 @@ class _DownloadWorker(QObject):
 
 class DownloadQueueController(QObject):
     task_queued = Signal(object)
+    task_started = Signal(str)
     cancelling = Signal(str)
     progress = Signal(object)
     completed = Signal(object)
@@ -141,6 +142,7 @@ class DownloadQueueController(QObject):
         self._active_cancel = cancel_event
         self._active_thread = thread
         self._active_worker = worker
+        self.task_started.emit(request.task_id)
         thread.start()
 
     @Slot(object)

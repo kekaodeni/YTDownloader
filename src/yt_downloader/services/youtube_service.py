@@ -136,12 +136,20 @@ class YoutubeService:
             thumbnail_url = str(info.get("thumbnail") or "") or None
             thumbnail_bytes: bytes | None = None
             if thumbnail_url:
+                if cancel_event and cancel_event.is_set():
+                    raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                 try:
                     response = self.http_get(thumbnail_url, timeout=20, headers={"User-Agent": "YTDownloader/0.1"})
+                    if cancel_event and cancel_event.is_set():
+                        raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                     response.raise_for_status()
                     thumbnail_bytes = bytes(response.content)
+                except OperationCancelled:
+                    raise
                 except Exception as exc:  # Thumbnail failure is an optional capability failure.
                     logger.warning("Thumbnail download failed: %s", redact_sensitive(str(exc)))
+            if cancel_event and cancel_event.is_set():
+                raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
 
             return VideoInfo(
                 video_id=str(info.get("id") or normalized.rsplit("=", 1)[-1]),
@@ -172,4 +180,3 @@ class YoutubeService:
                     log_excerpt="\n".join(ydl_logger.lines),
                 ),
             ) from exc
-
