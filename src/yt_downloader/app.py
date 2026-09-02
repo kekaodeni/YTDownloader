@@ -33,6 +33,7 @@ from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResu
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
 from yt_downloader.ui.main_window import MainWindow
+from yt_downloader.ui.localization import install_qt_zh_cn_translator
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.typography import application_font, resolve_font_families
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
@@ -416,8 +417,10 @@ def create_application(argv: list[str] | None = None) -> tuple[QApplication, App
     app.setOrganizationName("YTDownloader")
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(True)
-    app.setFont(application_font(resolve_font_families(system_default=app.font().family())))
     QLocale.setDefault(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+    if not install_qt_zh_cn_translator(app):
+        logger.warning("Qt Simplified Chinese translation resource is unavailable")
+    app.setFont(application_font(resolve_font_families(system_default=app.font().family())))
     paths = AppPaths.discover()
     paths.ensure()
     configure_logging(paths.logs)

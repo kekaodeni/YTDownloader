@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from yt_downloader.core.errors import AppError
 from yt_downloader.core.formatting import format_duration
 from yt_downloader.services.ffmpeg_service import CoverEmbedResult, FfmpegService
+from yt_downloader.ui.localization import localize_dialog_button_box
 from yt_downloader.workers.function_worker import FunctionWorker
 
 
@@ -64,6 +65,7 @@ class ThumbnailDialog(QDialog):
         time_row.addWidget(self.spin)
         root.addLayout(time_row)
         actions = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        localize_dialog_button_box(actions)
         actions.rejected.connect(self.reject)
         self.close_button = actions.button(QDialogButtonBox.StandardButton.Cancel)
         self.preview_button = QPushButton("预览")

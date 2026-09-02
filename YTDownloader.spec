@@ -1,10 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+from PySide6.QtCore import QLibraryInfo
 from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPEC).resolve().parent
 yt_datas, yt_bins, yt_hidden = collect_all("yt_dlp")
 ejs_datas, ejs_bins, ejs_hidden = collect_all("yt_dlp_ejs")
+qt_translations = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
 
 required = {
     "ffmpeg": root / "vendor" / "tools" / "ffmpeg" / "ffmpeg.exe",
@@ -20,6 +22,7 @@ datas = yt_datas + ejs_datas + [
     (str(root / "licenses"), "third_party_licenses"),
     (str(root / "README.md"), "."),
     (str(root / "tools.lock.json"), "."),
+    (str(qt_translations / "qtbase_zh_CN.qm"), "PySide6/translations"),
 ]
 binaries = yt_bins + ejs_bins + [
     (str(required["ffmpeg"]), "tools/ffmpeg"),

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from yt_downloader.ui.localization import action_text, localize_dialog_button_box
+
 
 class DeleteHistoryDialog(QDialog):
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
@@ -24,7 +26,8 @@ class DeleteHistoryDialog(QDialog):
         explanation.setWordWrap(True)
         root.addWidget(explanation)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
-        delete_button = QPushButton("删除记录")
+        localize_dialog_button_box(buttons)
+        delete_button = QPushButton(action_text("delete"))
         delete_button.setProperty("fluentAppearance", "danger")
         delete_button.setAccessibleName("确认删除历史记录")
         delete_button.clicked.connect(self.accept)

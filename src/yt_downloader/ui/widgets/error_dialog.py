@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 from yt_downloader.core.errors import AppError
+from yt_downloader.ui.localization import localize_dialog_button_box
 
 
 class ErrorDialog(QDialog):
@@ -40,6 +41,7 @@ class ErrorDialog(QDialog):
         copy_button.setAccessibleName("复制错误报告")
         copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(report))
         close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        localize_dialog_button_box(close_box)
         close_box.rejected.connect(self.reject)
         actions.addWidget(copy_button)
         actions.addStretch()
