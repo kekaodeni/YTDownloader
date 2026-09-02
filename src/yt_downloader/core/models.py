@@ -40,8 +40,8 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
 @dataclass(frozen=True, slots=True)
 class FormatOption:
     label: str
-    height: int
-    fps: float
+    height: int | None
+    fps: float | None
     vcodec: str
     acodec: str
     container: str
@@ -53,6 +53,15 @@ class FormatOption:
     audio_format_id: str | None = None
     is_recommended: bool = False
     size_is_estimate: bool = False
+    width: int | None = None
+
+    @property
+    def display_height(self) -> int | None:
+        if self.height is None:
+            return None
+        if self.width is not None and self.height > self.width:
+            return self.width
+        return self.height
 
     @property
     def technical_summary(self) -> str:
