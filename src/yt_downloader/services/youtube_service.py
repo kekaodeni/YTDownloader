@@ -15,7 +15,7 @@ from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.core.formats import normalize_formats
-from yt_downloader.core.models import VideoInfo
+from yt_downloader.core.models import CodecPreference, VideoInfo
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
@@ -79,12 +79,14 @@ class YoutubeService:
         deno_path: str | Path | None = None,
         require_deno: bool = True,
         network_policy: NetworkPolicy | None = None,
+        codec_preference: CodecPreference = CodecPreference.AUTO,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
         self.deno_path = Path(deno_path) if deno_path else find_tool("deno")
         self.require_deno = require_deno
         self.network_policy = network_policy
+        self.codec_preference = codec_preference
 
     def fetch_metadata(self, url: str, cancel_event: threading.Event | None = None) -> VideoInfo:
         try:
@@ -133,6 +135,7 @@ class YoutubeService:
             formats = tuple(normalize_formats(
                 raw_formats if isinstance(raw_formats, list) else [],
                 duration=duration,
+                codec_preference=self.codec_preference,
             ))
             if not formats:
                 raise AppError(

@@ -7,7 +7,7 @@ from PySide6.QtGui import QFont, QGuiApplication, QPalette, QPixmap
 from PySide6.QtWidgets import QPushButton, QSizePolicy, QToolButton
 
 from yt_downloader.core.errors import AppError, CancellationCleanupReport
-from yt_downloader.core.models import AppSettings
+from yt_downloader.core.models import AppSettings, CodecPreference
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
@@ -298,7 +298,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(qtbot, tmp_pat
         page.directory_input.setText(str(changed))
 
     saved = signal.args[0]
-    assert saved.schema_version == 2
+    assert saved.schema_version == 3
     assert saved.download_directory == str(changed)
     assert page.unsaved_label.text() == "正在保存…"
 
@@ -353,6 +353,26 @@ def test_network_settings_round_trip_through_auto_save(qtbot, tmp_path) -> None:
     assert changed.proxy_mode == "direct"
     assert changed.concurrent_fragments == 4
     assert not page.proxy_input.isEnabled()
+
+
+def test_codec_preference_is_an_advanced_auto_saved_setting(qtbot, tmp_path) -> None:
+    page = SettingsPage(
+        AppSettings(
+            download_directory=str(tmp_path),
+            codec_preference=CodecPreference.VP9,
+        ),
+        ytdlp_version="test",
+        ffmpeg_description="test",
+    )
+    qtbot.addWidget(page)
+
+    assert page.codec_combo.currentData() == CodecPreference.VP9.value
+    with qtbot.waitSignal(page.save_requested, timeout=1000) as signal:
+        page.codec_combo.setCurrentIndex(
+            page.codec_combo.findData(CodecPreference.AV1.value),
+        )
+
+    assert signal.args[0].codec_preference is CodecPreference.AV1
 
 
 def test_network_test_is_separate_from_save_and_has_inline_result(qtbot, tmp_path) -> None:

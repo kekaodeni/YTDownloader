@@ -100,7 +100,11 @@ class AppController:
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
         self.deno_path = find_tool("deno")
         self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
-        self.youtube = YoutubeService(deno_path=self.deno_path, network_policy=self.network)
+        self.youtube = YoutubeService(
+            deno_path=self.deno_path,
+            network_policy=self.network,
+            codec_preference=self.settings.codec_preference,
+        )
         self.download_service = DownloadService(
             deno_path=self.deno_path,
             ffmpeg_path=self.ffmpeg.ffmpeg_path,
@@ -295,6 +299,7 @@ class AppController:
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
+            self.youtube.codec_preference = settings.codec_preference
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))

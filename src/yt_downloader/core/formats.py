@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Iterable, Mapping
 
-from .models import FormatOption
+from .models import CodecPreference, FormatOption, SizeKind
+from yt_downloader.services.format_resolver import YtDlpFormatResolver
 
 
 def _size(
     item: Mapping[str, Any],
-    duration: float | None = None,
+    _duration: float | None = None,
 ) -> tuple[int | None, bool]:
     exact = item.get("filesize")
     if isinstance(exact, (int, float)) and exact > 0:
@@ -18,45 +19,7 @@ def _size(
     estimate = item.get("filesize_approx")
     if isinstance(estimate, (int, float)) and estimate > 0:
         return int(estimate), True
-    bitrate = item.get("tbr")
-    if (
-        isinstance(bitrate, (int, float))
-        and bitrate > 0
-        and isinstance(duration, (int, float))
-        and duration > 0
-    ):
-        # This is the same calculation used by yt-dlp's filesize_from_tbr.
-        # It gives fragmented streams a stable pre-download denominator even
-        # when their per-fragment hook estimates continually change.
-        return int(float(duration) * float(bitrate) * (1000 / 8)), True
     return None, False
-
-
-def _codec_score(codec: str) -> int:
-    value = codec.lower()
-    if value.startswith(("avc1", "h264")):
-        return 40
-    if value.startswith(("vp9", "vp0")):
-        return 30
-    if value.startswith(("av01", "av1")):
-        return 20
-    return 10
-
-
-def _video_score(item: Mapping[str, Any]) -> tuple[int, int, float]:
-    ext = str(item.get("ext") or "")
-    progressive = int(item.get("acodec") not in {None, "none"})
-    return (
-        _codec_score(str(item.get("vcodec") or "")) + (5 if ext == "mp4" else 0),
-        progressive,
-        float(item.get("tbr") or item.get("vbr") or 0),
-    )
-
-
-def _audio_score(item: Mapping[str, Any], video_ext: str) -> tuple[int, float]:
-    ext = str(item.get("ext") or "")
-    compatible = int((video_ext == "mp4" and ext in {"m4a", "mp4"}) or (video_ext == "webm" and ext == "webm"))
-    return compatible, float(item.get("abr") or item.get("tbr") or 0)
 
 
 def _display_height(width: int | None, height: int | None) -> int | None:
@@ -83,6 +46,8 @@ def normalize_formats(
     raw_formats: Iterable[Mapping[str, Any]],
     *,
     duration: float | None = None,
+    codec_preference: CodecPreference = CodecPreference.AUTO,
+    resolver: YtDlpFormatResolver | None = None,
 ) -> list[FormatOption]:
     formats = [dict(item) for item in raw_formats]
     videos = [
@@ -104,8 +69,12 @@ def normalize_formats(
         grouped.setdefault((height, orientation_width, fps_bucket), []).append(item)
 
     options: list[FormatOption] = []
+    resolver = resolver or YtDlpFormatResolver()
     for (height, _orientation_width, _fps_bucket), candidates in grouped.items():
-        video = max(candidates, key=_video_score)
+        resolved = resolver.resolve(candidates, audios, codec_preference)
+        if resolved is None:
+            continue
+        video = dict(resolved.video)
         video_id = str(video.get("format_id") or "")
         if not video_id:
             continue
@@ -113,9 +82,7 @@ def normalize_formats(
         width = int(video["width"]) if isinstance(video.get("width"), (int, float)) else None
         fps = float(video["fps"]) if isinstance(video.get("fps"), (int, float)) else None
         has_audio = video.get("acodec") not in {None, "none"}
-        audio: dict[str, Any] | None = None
-        if not has_audio and audios:
-            audio = max(audios, key=lambda item: _audio_score(item, video_ext))
+        audio = dict(resolved.audio) if resolved.audio else None
 
         audio_id = str(audio.get("format_id")) if audio else None
         selector = video_id if has_audio or not audio_id else f"{video_id}+{audio_id}"
@@ -160,6 +127,15 @@ def normalize_formats(
             video_size_is_estimate=video_size_is_estimate,
             audio_size=audio_size,
             audio_size_is_estimate=audio_size_is_estimate,
+            video_protocol=str(video.get("protocol") or ""),
+            audio_protocol=str(audio.get("protocol") or "") if audio else "",
+            size_kind=(
+                SizeKind.UNKNOWN
+                if estimated is None
+                else SizeKind.ESTIMATED
+                if size_is_estimate
+                else SizeKind.EXACT
+            ),
         ))
 
     options.sort(
@@ -175,7 +151,6 @@ def normalize_formats(
             option for option in options
             if option.display_height is not None
             and option.display_height <= 1080
-            and option.final_ext == "mp4"
         ]
         recommended = max(
             compatible,

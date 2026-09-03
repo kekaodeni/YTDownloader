@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from yt_downloader.core.models import AppSettings
+from yt_downloader.core.models import AppSettings, CodecPreference
 from yt_downloader.services.network_policy import NetworkPolicy
 
 
@@ -24,6 +24,7 @@ class SettingsService:
         self.path = Path(path)
         self.default_download_directory = Path(default_download_directory)
         self._migration_pending = False
+        self._migration_source_schema: int | None = None
 
     def defaults(self) -> AppSettings:
         return AppSettings(download_directory=str(self.default_download_directory))
@@ -34,7 +35,8 @@ class SettingsService:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             settings, source_schema = self._from_mapping(data)
-            self._migration_pending = source_schema == 1
+            self._migration_pending = source_schema < 3
+            self._migration_source_schema = source_schema if source_schema < 3 else None
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring invalid settings file %s: %s", self.path, exc)
@@ -44,7 +46,7 @@ class SettingsService:
         if not isinstance(data, dict):
             raise ValueError("settings root must be an object")
         source_schema = int(data.get("schema_version", 1))
-        if source_schema not in {1, 2}:
+        if source_schema not in {1, 2, 3}:
             raise ValueError("unsupported settings schema")
         theme = str(data.get("theme", "system"))
         if theme not in _THEMES:
@@ -59,8 +61,12 @@ class SettingsService:
         concurrent_fragments = int(data.get("concurrent_fragments", 0))
         if concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("invalid fragment concurrency")
+        try:
+            codec_preference = CodecPreference(str(data.get("codec_preference") or "auto"))
+        except ValueError as exc:
+            raise ValueError("invalid codec preference") from exc
         return AppSettings(
-            schema_version=2,
+            schema_version=3,
             download_directory=directory,
             default_quality=quality,
             theme=theme,
@@ -69,15 +75,17 @@ class SettingsService:
             proxy_mode=proxy_mode,
             custom_proxy_url=custom_proxy_url,
             concurrent_fragments=concurrent_fragments,
+            codec_preference=codec_preference,
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:
         self.validate(settings)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        normalized = replace(settings, schema_version=2)
+        normalized = replace(settings, schema_version=3)
         payload = json.dumps(asdict(normalized), ensure_ascii=False, indent=2) + "\n"
-        backup = self.path.with_name("settings.v1.backup.json")
+        source_schema = self._migration_source_schema or 2
+        backup = self.path.with_name(f"settings.v{source_schema}.backup.json")
         backup_temporary = backup.with_suffix(backup.suffix + ".tmp")
         try:
             if self._migration_pending and self.path.is_file() and not backup.exists():
@@ -93,6 +101,7 @@ class SettingsService:
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
             self._migration_pending = False
+            self._migration_source_schema = None
         finally:
             if temporary.exists():
                 temporary.unlink(missing_ok=True)
@@ -108,6 +117,8 @@ class SettingsService:
             raise ValueError("代理模式无效。")
         if settings.concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("分片并发设置无效。")
+        if settings.codec_preference not in set(CodecPreference):
+            raise ValueError("视频编码偏好设置无效。")
         NetworkPolicy(settings.proxy_mode, settings.custom_proxy_url).snapshot()
         directory = Path(settings.download_directory).expanduser()
         if not directory.is_absolute():
