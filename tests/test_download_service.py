@@ -8,9 +8,10 @@ import threading
 import time
 
 import pytest
+from yt_dlp.downloader.fragment import FragmentFD
 from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 
-from yt_downloader.core.errors import OperationCancelled
+from yt_downloader.core.errors import ErrorContext, OperationCancelled
 from yt_downloader.core.models import (
     DownloadRequest,
     FormatOption,
@@ -18,7 +19,7 @@ from yt_downloader.core.models import (
     TaskStatus,
     VideoInfo,
 )
-from yt_downloader.services.download_service import DownloadService
+from yt_downloader.services.download_service import DownloadService, _interruptible_ytdlp_resources
 from yt_downloader.services.network_policy import NetworkPolicy
 
 
@@ -331,6 +332,36 @@ class FakeYDLWithOwnedPartial(FakeYDL):
                 })
 
 
+class FakeYDLWithLeakedFragmentTraceback(FakeYDL):
+    """Mimic yt-dlp HLS: cancellation bypasses its destination close call."""
+
+    started = threading.Event()
+
+    def download(self, _urls: list[str]) -> int:
+        part_path = Path(self.options["final_path"]).with_suffix(".part")
+        handle = part_path.open("wb")
+        handle.write(b"fragment")
+        handle.flush()
+        fragment_context = {"dest_stream": handle}
+
+        def retained_progress_hook() -> object:
+            return fragment_context["dest_stream"]
+
+        fragment_context["progress_hook"] = retained_progress_hook
+        type(self).started.set()
+        time.sleep(0.05)
+        self.options["progress_hooks"][0]({
+            "status": "downloading",
+            "downloaded_bytes": 8,
+            "total_bytes_estimate": 8,
+            "fragment_index": 1,
+            "fragment_count": 2,
+            "info_dict": {"format_id": "137"},
+        })
+        handle.close()
+        return 0
+
+
 def test_user_cancellation_removes_only_the_task_owned_partial_files(
     tmp_path: Path,
 ) -> None:
@@ -359,6 +390,32 @@ def test_user_cancellation_removes_only_the_task_owned_partial_files(
     assert unrelated.read_bytes() == b"user file"
     assert cancelled.value.cleanup_report is not None
     assert cancelled.value.cleanup_report.succeeded
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows holds open files during deletion")
+def test_user_cancellation_releases_fragment_handle_retained_by_traceback(
+    tmp_path: Path,
+) -> None:
+    FakeYDLWithLeakedFragmentTraceback.started = threading.Event()
+    request = _request(tmp_path)
+    cancel = threading.Event()
+    service = DownloadService(
+        ydl_factory=FakeYDLWithLeakedFragmentTraceback,
+        require_tools=False,
+        media_validator=lambda _path: True,
+    )
+
+    watcher = threading.Thread(
+        target=lambda: (FakeYDLWithLeakedFragmentTraceback.started.wait(2), cancel.set()),
+    )
+    watcher.start()
+    with pytest.raises(OperationCancelled) as cancelled:
+        service.download(request, lambda _event: None, cancel)
+    watcher.join(timeout=1)
+
+    assert cancelled.value.cleanup_report is not None
+    assert cancelled.value.cleanup_report.succeeded
+    assert not (tmp_path / ".ytdownloader-tmp").exists()
 
 
 class FakeYDLWithRapidHooks(FakeYDL):
@@ -441,3 +498,36 @@ def test_cancel_interrupts_task_owned_ffmpeg_and_closes_handles(tmp_path: Path) 
     assert not marker.exists()
     assert not (tmp_path / ".ytdownloader-tmp").exists()
     assert elapsed < 1.5
+
+
+def test_cancel_exception_unwinds_ffmpeg_patch_without_replacing_the_error() -> None:
+    cancel = threading.Event()
+    context = ErrorContext(stage="Downloading video")
+
+    with pytest.raises(OperationCancelled):
+        with _interruptible_ytdlp_resources(cancel, context):
+            raise OperationCancelled(context)
+
+
+def test_cancel_closes_ytdlp_fragment_destination_before_context_restores(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cancel = threading.Event()
+    context = ErrorContext(stage="Downloading video")
+    destination = tmp_path / "fragment.part"
+
+    def leaky_fragment_download(_self, fragment_context, *_args, **_kwargs):
+        fragment_context["dest_stream"] = destination.open("wb")
+        cancel.set()
+        raise OperationCancelled(context)
+
+    monkeypatch.setattr(FragmentFD, "download_and_append_fragments", leaky_fragment_download)
+    fragment_context: dict[str, object] = {}
+
+    with pytest.raises(OperationCancelled):
+        with _interruptible_ytdlp_resources(cancel, context):
+            FragmentFD.download_and_append_fragments(object(), fragment_context, [], {})
+
+    assert fragment_context["dest_stream"].closed is True
+    assert FragmentFD.download_and_append_fragments is leaky_fragment_download

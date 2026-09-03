@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import deque
-from contextlib import contextmanager
 from datetime import datetime, timezone
+import gc
 import logging
 from pathlib import Path
 import shutil
@@ -16,6 +16,7 @@ import traceback
 from typing import Any, Callable
 
 import yt_dlp
+from yt_dlp.downloader.fragment import FragmentFD
 from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 from yt_dlp.utils import DownloadError
 
@@ -38,7 +39,7 @@ from yt_downloader.services.task_artifacts import TaskArtifactRegistry
 
 
 logger = logging.getLogger(__name__)
-_YTDLP_FFMPEG_PATCH_LOCK = threading.RLock()
+_YTDLP_RESOURCE_PATCH_LOCK = threading.RLock()
 
 
 def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext):
@@ -77,15 +78,82 @@ def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext
     return CancellablePopen
 
 
-@contextmanager
-def _interruptible_ytdlp_ffmpeg(cancel_event: threading.Event, context: ErrorContext):
-    with _YTDLP_FFMPEG_PATCH_LOCK:
-        original = ytdlp_ffmpeg.Popen
-        ytdlp_ffmpeg.Popen = _cancellable_popen_type(cancel_event, context)
+class _InterruptibleYtdlpResources:
+    """Temporarily patch yt-dlp's FFmpeg process without rewriting exceptions.
+
+    ``contextlib.contextmanager`` assigns ``__traceback__`` while unwinding.
+    Domain errors are frozen dataclasses, so that assignment can replace the
+    original cancellation with a ``TypeError``.  A regular context manager
+    restores the process type and lets the original exception pass through.
+    """
+
+    def __init__(self, cancel_event: threading.Event, context: ErrorContext) -> None:
+        self.cancel_event = cancel_event
+        self.context = context
+        self.original: type | None = None
+        self.original_fragment_download: Callable[..., Any] | None = None
+
+    def __enter__(self) -> "_InterruptibleYtdlpResources":
+        _YTDLP_RESOURCE_PATCH_LOCK.acquire()
         try:
-            yield
+            self.original = ytdlp_ffmpeg.Popen
+            self.original_fragment_download = FragmentFD.download_and_append_fragments
+            ytdlp_ffmpeg.Popen = _cancellable_popen_type(self.cancel_event, self.context)
+            original_fragment_download = self.original_fragment_download
+            cancel_event = self.cancel_event
+
+            def cancellable_fragment_download(
+                downloader,
+                fragment_context,
+                *args,
+                **kwargs,
+            ):
+                try:
+                    return original_fragment_download(
+                        downloader,
+                        fragment_context,
+                        *args,
+                        **kwargs,
+                    )
+                except BaseException:
+                    if cancel_event.is_set():
+                        destination = fragment_context.get("dest_stream")
+                        if destination is not None and not getattr(destination, "closed", True):
+                            try:
+                                destination.close()
+                            except OSError as close_error:
+                                logger.warning(
+                                    "Unable to close task-owned fragment stream: %s",
+                                    close_error,
+                                )
+                    raise
+
+            FragmentFD.download_and_append_fragments = cancellable_fragment_download
+        except BaseException:
+            if self.original is not None:
+                ytdlp_ffmpeg.Popen = self.original
+            if self.original_fragment_download is not None:
+                FragmentFD.download_and_append_fragments = self.original_fragment_download
+            _YTDLP_RESOURCE_PATCH_LOCK.release()
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc, traceback_object) -> bool:
+        try:
+            if self.original is not None:
+                ytdlp_ffmpeg.Popen = self.original
+            if self.original_fragment_download is not None:
+                FragmentFD.download_and_append_fragments = self.original_fragment_download
         finally:
-            ytdlp_ffmpeg.Popen = original
+            _YTDLP_RESOURCE_PATCH_LOCK.release()
+        return False
+
+
+def _interruptible_ytdlp_resources(
+    cancel_event: threading.Event,
+    context: ErrorContext,
+) -> _InterruptibleYtdlpResources:
+    return _InterruptibleYtdlpResources(cancel_event, context)
 
 
 class _DownloadLogger:
@@ -123,6 +191,25 @@ def _download_error(message: str) -> tuple[str, str]:
     if "requested format" in lowered:
         return "format_unavailable", "所选画质已不可用，请重新解析视频。"
     return "download_failed", "下载未能完成。"
+
+
+def _release_cancelled_stack_resources(error: BaseException) -> None:
+    """Drop exited stack-frame locals before deleting task-owned artifacts.
+
+    yt-dlp's fragmented downloader does not close its destination stream when
+    a progress hook raises.  The exited frame (and therefore the open stream)
+    remains reachable through the exception traceback until that traceback is
+    collected.  Clearing exited frames releases the handle deterministically;
+    the currently executing service frame is intentionally left alone by the
+    standard-library helper.
+    """
+
+    if error.__traceback__ is not None:
+        traceback.clear_frames(error.__traceback__)
+    # yt-dlp's fragment context and its progress-hook closure form a cycle
+    # containing the destination stream.  Collect it before bounded deletion
+    # retries so Windows no longer sees the task-owned .part file as open.
+    gc.collect()
 
 
 class DownloadService:
@@ -324,7 +411,7 @@ class DownloadService:
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:
-            with _interruptible_ytdlp_ffmpeg(cancel_event, context):
+            with _interruptible_ytdlp_resources(cancel_event, context):
                 with self.ydl_factory(options) as ydl:
                     exit_code = ydl.download([request.video.url])
             if cancel_event.is_set():
@@ -370,14 +457,17 @@ class DownloadService:
                 datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             )
         except OperationCancelled as exc:
+            cancellation_context = exc.context or context
+            _release_cancelled_stack_resources(exc)
             cleanup_report = artifacts.cleanup()
-            raise OperationCancelled(exc.context or context, cleanup_report) from exc
+            raise OperationCancelled(cancellation_context, cleanup_report) from None
         except AppError:
             raise
         except Exception as exc:
             if cancel_event.is_set():
+                _release_cancelled_stack_resources(exc)
                 cleanup_report = artifacts.cleanup()
-                raise OperationCancelled(context, cleanup_report) from exc
+                raise OperationCancelled(context, cleanup_report) from None
             technical = redact_sensitive(str(exc))
             code, user_message = _download_error(technical)
             raise AppError(
