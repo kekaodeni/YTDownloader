@@ -33,6 +33,17 @@ class MetadataProcessConfig:
     require_deno: bool = True
 
 
+def metadata_process_self_test_entry(
+    _send_connection: Connection,
+    _cancel_event: Any,
+    _url: str,
+    _config: MetadataProcessConfig,
+) -> None:
+    """Importable blocking target used to validate frozen spawn/termination."""
+    while True:
+        time.sleep(1)
+
+
 def _serialize_error(error: AppError) -> dict[str, Any]:
     return {
         "code": error.code,
@@ -295,3 +306,60 @@ class MetadataProcessController(QObject):
         self._cleanup_handles()
         self._token = None
         self._set_state(ParseState.IDLE)
+
+
+def run_metadata_process_self_test(app: QObject) -> int:
+    """Exercise frozen helper spawn, cancel, timeout and child cleanup."""
+    config = MetadataProcessConfig(
+        "", "direct", "", CodecPreference.AUTO, require_deno=False
+    )
+    cancel_controller = MetadataProcessController(
+        app,
+        entrypoint=metadata_process_self_test_entry,
+        force_cancel_ms=100,
+        soft_timeout_ms=2_000,
+        hard_timeout_ms=3_000,
+    )
+    timeout_controller = MetadataProcessController(
+        app,
+        entrypoint=metadata_process_self_test_entry,
+        force_cancel_ms=50,
+        soft_timeout_ms=50,
+        hard_timeout_ms=180,
+    )
+    outcome = {"exit_code": 9}
+
+    def fail() -> None:
+        outcome["exit_code"] = 2
+        app.exit(2)  # type: ignore[attr-defined]
+
+    def start_timeout(_token: RequestToken) -> None:
+        if cancel_controller.is_running:
+            fail()
+            return
+        timeout_controller.start(
+            RequestToken(2, "selftest-timeout"), "selftest-timeout", config
+        )
+
+    def finish_timeout(_token: RequestToken, _error: AppError) -> None:
+        if timeout_controller.is_running:
+            fail()
+            return
+        outcome["exit_code"] = 0
+        app.exit(0)  # type: ignore[attr-defined]
+
+    cancel_controller.cancelled.connect(start_timeout)
+    cancel_controller.failed.connect(lambda *_args: fail())
+    cancel_controller.timed_out.connect(lambda *_args: fail())
+    timeout_controller.timed_out.connect(finish_timeout)
+    timeout_controller.failed.connect(lambda *_args: fail())
+    timeout_controller.cancelled.connect(lambda *_args: fail())
+    cancel_controller.start(
+        RequestToken(1, "selftest-cancel"), "selftest-cancel", config
+    )
+    QTimer.singleShot(100, cancel_controller.cancel)
+    QTimer.singleShot(5_000, fail)
+    app.exec()  # type: ignore[attr-defined]
+    cancel_controller.shutdown()
+    timeout_controller.shutdown()
+    return int(outcome["exit_code"])

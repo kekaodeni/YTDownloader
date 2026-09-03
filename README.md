@@ -1,4 +1,4 @@
-# YT Downloader 0.2.1
+# YT Downloader 0.3.0
 
 YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Widgets 与统一的 Fluent 2 语义 Token；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
@@ -9,16 +9,16 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 ## 功能
 
 - 支持 `youtube.com/watch`、`youtu.be`、`shorts`、`live` 单视频地址；播放列表参数仅保留当前视频。
-- 异步解析标题、频道、时长、官方缩略图和可用画质。
+- 可取消、可超时的独立进程解析标题、频道、时长和可用画质；官方缩略图独立加载，不阻塞视频信息展示。
 - 用户只看到 `2160p 4K`、`1080p 60 FPS` 等稳定标签，不显示 yt-dlp format ID。
 - 自动组合兼容音频并用 FFmpeg 无损封装；下载完成后校验视频流和音频流。
 - 单活动任务队列；用户取消后等待 Worker、FFmpeg 和句柄全部结束，再安全清理该任务独占的临时文件，历史重试会从头开始。
 - 下载卡始终同时显示进度条、百分比、实时速度，并显示大小、ETA 和当前阶段。
-- SQLite 历史记录，支持右键/键盘菜单、打开文件、定位目录、复制链接、重试、设置视频内嵌封面和仅删除记录。
+- SQLite 历史记录，支持右键/键盘菜单、批量管理、打开文件、定位目录、复制链接、重试、设置视频内嵌封面和仅删除记录；重试只重新解析并预填选项，不会自动下载。
 - 系统代理、直连和 HTTP/HTTPS/SOCKS 自定义代理；系统代理在每个新任务开始时重新解析。
 - 自动或 1/2/4/8 分片并发。实测基准见 `docs/performance-benchmark-v0.2.0.md`；自动值保持稳健的 1。
 - 系统/浅色/深色主题、语义中文字体、响应式导航、高 DPI、键盘焦点和辅助功能名称。
-- 140/180/220ms 短动效和静态玻璃感层次；“减少动态效果”会关闭装饰动画。
+- 140/240/320ms 语义动效、快照式任务交接和静态玻璃感层次；“减少动态效果”会关闭装饰动画。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
 
 ## 支持范围与法律提示
@@ -107,8 +107,8 @@ cache\thumbnails\
 dist\YTDownloader\YTDownloader.exe
 dist\YTDownloader\third_party_licenses\
 dist\YTDownloader\SHA256SUMS.json
-release\YTDownloader-0.2.1-win64.zip
-release\YTDownloader-0.2.1-win64.zip.sha256.txt
+release\YTDownloader-0.3.0-win64.zip
+release\YTDownloader-0.3.0-win64.zip.sha256.txt
 ```
 
 FFmpeg 使用启用了 GPL 组件的静态构建。分发目录包含 GPL/LGPL 文本、Python 运行时依赖版本与许可清单、构建来源、精确 FFmpeg 源码归档及其校验信息。详情见 `THIRD_PARTY_NOTICES.md`、`licenses/FFMPEG-SOURCE.txt` 和 `tools.lock.json`。

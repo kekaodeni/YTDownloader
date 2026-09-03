@@ -42,7 +42,11 @@ from yt_downloader.ui.widgets.confirm_dialog import IncompleteCleanupDialog, Rem
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
-from yt_downloader.workers.metadata_process import MetadataProcessConfig, MetadataProcessController
+from yt_downloader.workers.metadata_process import (
+    MetadataProcessConfig,
+    MetadataProcessController,
+    run_metadata_process_self_test,
+)
 from yt_downloader.workers.request_gate import LatestRequestGate, RequestToken
 
 
@@ -585,11 +589,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--smoke-test", action="store_true", help="start the packaged GUI briefly and exit")
     parser.add_argument("--self-test", action="store_true", help="run offline packaged resource and FFmpeg checks")
+    parser.add_argument("--metadata-process-self-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--render-preview", type=Path, help="save a window preview image and exit")
     parser.add_argument("--theme", choices=("system", "light", "dark"), help="temporary theme override for visual testing")
     parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
     known, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
     app, controller = create_application([sys.argv[0], *qt_args])
+    if known.metadata_process_self_test:
+        return run_metadata_process_self_test(app)
     if known.self_test:
         try:
             run_packaged_self_test(

@@ -123,6 +123,14 @@ try {
     if ($SelfTestResult.status -ne "ok" -or $SelfTestResult.app_version -ne $Version) {
         throw "Packaged offline self-test report is invalid."
     }
+    $MetadataProcessTest = Start-Process -FilePath $Exe -ArgumentList "--metadata-process-self-test" -PassThru -WindowStyle Hidden
+    if (-not $MetadataProcessTest.WaitForExit(15000)) {
+        $MetadataProcessTest.Kill()
+        throw "Packaged metadata helper process self-test timed out."
+    }
+    if ($MetadataProcessTest.ExitCode -ne 0) {
+        throw "Packaged metadata helper process self-test failed with exit code $($MetadataProcessTest.ExitCode)."
+    }
     $Process = Start-Process -FilePath $Exe -ArgumentList "--smoke-test" -PassThru -WindowStyle Hidden
     if (-not $Process.WaitForExit(15000)) {
         $Process.Kill()
