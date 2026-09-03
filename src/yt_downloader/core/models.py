@@ -22,6 +22,17 @@ class TaskStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class ParseState(StrEnum):
+    IDLE = "IDLE"
+    RUNNING = "RUNNING"
+    SLOW = "SLOW"
+    CANCELLING = "CANCELLING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    TIMED_OUT = "TIMED_OUT"
+
+
 class TotalSource(StrEnum):
     UNKNOWN = "UNKNOWN"
     METADATA_FILESIZE = "METADATA_FILESIZE"

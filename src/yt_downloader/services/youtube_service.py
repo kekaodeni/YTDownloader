@@ -88,7 +88,13 @@ class YoutubeService:
         self.network_policy = network_policy
         self.codec_preference = codec_preference
 
-    def fetch_metadata(self, url: str, cancel_event: threading.Event | None = None) -> VideoInfo:
+    def fetch_metadata(
+        self,
+        url: str,
+        cancel_event: threading.Event | None = None,
+        *,
+        include_thumbnail: bool = True,
+    ) -> VideoInfo:
         try:
             normalized = normalize_youtube_url(url)
         except InvalidYoutubeUrl as exc:
@@ -113,9 +119,10 @@ class YoutubeService:
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
-            "socket_timeout": 20,
-            "retries": 2,
-            "fragment_retries": 2,
+            "socket_timeout": 10,
+            "retries": 1,
+            "fragment_retries": 1,
+            "extractor_retries": 1,
             "logger": ydl_logger,
             "js_runtimes": js_config,
             "remote_components": [],
@@ -147,7 +154,7 @@ class YoutubeService:
 
             thumbnail_url = str(info.get("thumbnail") or "") or None
             thumbnail_bytes: bytes | None = None
-            if thumbnail_url:
+            if thumbnail_url and include_thumbnail:
                 if cancel_event and cancel_event.is_set():
                     raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                 try:
@@ -173,7 +180,11 @@ class YoutubeService:
                 thumbnail_url=thumbnail_url,
                 thumbnail_bytes=thumbnail_bytes,
                 formats=formats,
-                raw=dict(info),
+                raw={
+                    "id": str(info.get("id") or ""),
+                    "webpage_url": normalized,
+                    "extractor": str(info.get("extractor") or "youtube"),
+                },
             )
         except OperationCancelled:
             raise
@@ -192,4 +203,32 @@ class YoutubeService:
                     traceback_text=redact_sensitive(traceback.format_exc()),
                     log_excerpt="\n".join(ydl_logger.lines),
                 ),
+            ) from exc
+
+    def fetch_thumbnail(
+        self,
+        thumbnail_url: str,
+        cancel_event: threading.Event | None = None,
+    ) -> bytes:
+        if cancel_event and cancel_event.is_set():
+            raise OperationCancelled(ErrorContext(stage="Fetching thumbnail"))
+        try:
+            request_get = self.network_policy.get if self.network_policy else self.http_get
+            response = request_get(
+                thumbnail_url,
+                timeout=10,
+                headers={"User-Agent": "YTDownloader/0.3"},
+            )
+            if cancel_event and cancel_event.is_set():
+                raise OperationCancelled(ErrorContext(stage="Fetching thumbnail"))
+            response.raise_for_status()
+            return bytes(response.content)
+        except OperationCancelled:
+            raise
+        except Exception as exc:
+            raise AppError(
+                "thumbnail_failed",
+                "视频信息已获取，但封面暂时无法加载。",
+                redact_sensitive(repr(exc)),
+                ErrorContext(stage="Fetching thumbnail"),
             ) from exc

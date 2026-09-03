@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -13,7 +14,9 @@ from PySide6.QtWidgets import (
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration
 from yt_downloader.core.errors import CancellationCleanupReport
-from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, TaskStatus, VideoInfo
+from yt_downloader.core.models import (
+    DownloadProgress, DownloadRequest, DownloadResult, ParseState, TaskStatus, VideoInfo,
+)
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.ui.typography import (
     FontRole,
@@ -30,6 +33,7 @@ if TYPE_CHECKING:
 
 class DownloadPage(QWidget):
     parse_requested = Signal(str)
+    parse_cancel_requested = Signal()
     download_requested = Signal(object, object, str, str)
     cancel_requested = Signal(str)
     open_file_requested = Signal(str)
@@ -49,6 +53,7 @@ class DownloadPage(QWidget):
         self._terminal_task_ids: set[str] = set()
         self._default_directory = download_directory
         self._directory_overridden = False
+        self.parse_state = ParseState.IDLE
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.page_scroll = QScrollArea()
@@ -93,6 +98,10 @@ class DownloadPage(QWidget):
         self.metadata_busy.setVisible(False)
         self.metadata_busy.setAccessibleName("正在解析视频")
         url_layout.addWidget(self.metadata_busy)
+        self.metadata_status = QLabel("")
+        apply_typography(self.metadata_status, FontRole.TERTIARY)
+        self.metadata_status.hide()
+        url_layout.addWidget(self.metadata_status)
         root.addWidget(url_card)
 
         self.video_card = QWidget()
@@ -187,21 +196,45 @@ class DownloadPage(QWidget):
         self.clipboard_hint.show()
 
     def _request_parse(self) -> None:
+        if self.parse_state in {ParseState.RUNNING, ParseState.SLOW}:
+            self.set_parse_state(ParseState.CANCELLING)
+            self.parse_cancel_requested.emit()
+            return
         if self.url_input.text().strip():
             if self.motion:
                 self.motion.feedback(self.parse_button)
             self.parse_requested.emit(self.url_input.text().strip())
 
     def set_loading(self, loading: bool) -> None:
-        if loading:
+        self.set_parse_state(ParseState.RUNNING if loading else ParseState.IDLE)
+
+    def set_parse_state(self, state: ParseState) -> None:
+        self.parse_state = state
+        if state is ParseState.RUNNING:
             self.video = None
             self.video_card.hide()
             self.thumbnail.clear()
             self.thumbnail.setText("暂无封面")
-        self.url_input.setEnabled(not loading)
-        self.parse_button.setEnabled(not loading)
-        self.parse_button.setText("解析中" if loading else "解析")
-        self.metadata_busy.setVisible(loading)
+        busy = state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}
+        cancelling = state is ParseState.CANCELLING
+        self.url_input.setEnabled(not busy)
+        self.parse_button.setEnabled(not cancelling)
+        self.parse_button.setText(
+            "正在取消…" if cancelling
+            else "取消解析" if busy
+            else "解析"
+        )
+        self.parse_button.setAccessibleName(
+            "正在取消解析" if cancelling
+            else "取消视频解析" if busy
+            else "解析视频链接"
+        )
+        self.metadata_busy.setVisible(busy)
+        if state is ParseState.SLOW:
+            self.metadata_status.setText("连接较慢，仍在尝试。你可以取消解析。")
+            self.metadata_status.show()
+        else:
+            self.metadata_status.hide()
 
     def show_video(self, video: VideoInfo, *, preferred_quality: str = "recommended") -> None:
         self.video = video
@@ -230,6 +263,21 @@ class DownloadPage(QWidget):
             self.motion.reveal(self.video_card)
         else:
             self.video_card.show()
+
+    def set_thumbnail(self, video_id: str, thumbnail_bytes: bytes) -> bool:
+        if self.video is None or self.video.video_id != video_id:
+            return False
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(thumbnail_bytes):
+            return False
+        self.video = replace(self.video, thumbnail_bytes=thumbnail_bytes)
+        self.thumbnail.clear()
+        self.thumbnail.setPixmap(pixmap.scaled(
+            self.thumbnail.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        ))
+        return True
 
     def _format_changed(self) -> None:
         option = self.format_combo.currentData()

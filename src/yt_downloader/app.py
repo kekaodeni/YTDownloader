@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+from dataclasses import replace
 import logging
 from pathlib import Path
 import sys
@@ -18,7 +19,7 @@ import yt_dlp.version
 from yt_downloader import __version__
 from yt_downloader.core.errors import AppError, ErrorContext
 from yt_downloader.core.filename import sanitize_filename
-from yt_downloader.core.models import DownloadProgress, DownloadRequest, FormatOption, HistoryRecord, TaskStatus, VideoInfo
+from yt_downloader.core.models import DownloadProgress, DownloadRequest, FormatOption, HistoryRecord, ParseState, TaskStatus, VideoInfo
 from yt_downloader.infrastructure.logging_config import configure_logging, install_exception_hook
 from yt_downloader.infrastructure.paths import AppPaths, default_videos_directory
 from yt_downloader.infrastructure.runtime import find_tool
@@ -40,6 +41,7 @@ from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
+from yt_downloader.workers.metadata_process import MetadataProcessConfig, MetadataProcessController
 from yt_downloader.workers.request_gate import LatestRequestGate, RequestToken
 
 
@@ -118,10 +120,12 @@ class AppController:
             ffmpeg_description=ffmpeg_description,
         )
         self.queue = DownloadQueueController(self.download_service, self.window)
-        self._metadata_cancel: threading.Event | None = None
-        self._metadata_workers: list[FunctionWorker] = []
+        self.metadata_process = MetadataProcessController(self.window)
+        self._thumbnail_cancel: threading.Event | None = None
+        self._thumbnail_workers: list[FunctionWorker] = []
         self._settings_workers: list[FunctionWorker] = []
         self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
+        self._thumbnail_gate: LatestRequestGate[object] = LatestRequestGate()
         self._pending_retry: HistoryRecord | None = None
         self._dialogs: list[object] = []
         self._wire()
@@ -133,6 +137,7 @@ class AppController:
     def _wire(self) -> None:
         download = self.window.download_page
         download.parse_requested.connect(self.fetch_metadata)
+        download.parse_cancel_requested.connect(self.metadata_process.cancel)
         download.download_requested.connect(self.enqueue_download)
         download.cancel_requested.connect(self.queue.cancel)
         download.open_file_requested.connect(self._open_file)
@@ -160,30 +165,29 @@ class AppController:
         self.queue.cancelled.connect(self._cancelled)
         self.queue.busy_changed.connect(self.window.set_download_busy)
         self.window.cancel_all_requested.connect(self.queue.cancel_all)
+        self.metadata_process.state_changed.connect(download.set_parse_state)
+        self.metadata_process.result.connect(self._metadata_result)
+        self.metadata_process.failed.connect(self._metadata_error)
+        self.metadata_process.timed_out.connect(self._metadata_error)
+        self.metadata_process.cancelled.connect(self._metadata_cancelled)
+        self.app.aboutToQuit.connect(self._shutdown_background_operations)
 
     def fetch_metadata(self, url: str) -> None:
-        if self._metadata_cancel:
-            self._metadata_cancel.set()
+        self._cancel_thumbnail()
         token = self._metadata_gate.begin(url.strip())
-        cancel = threading.Event()
-        self._metadata_cancel = cancel
-        self.window.download_page.set_loading(True)
-        worker = FunctionWorker(self.youtube.fetch_metadata, url, cancel)
-        self._metadata_workers.append(worker)
-        worker.signals.result.connect(lambda video, current=token: self._metadata_result(current, video))
-        worker.signals.error.connect(lambda error, current=token: self._metadata_error(current, error))
-        worker.signals.finished.connect(lambda w=worker, current=token: self._metadata_finished(w, cancel, current))
-        QThreadPool.globalInstance().start(worker)
-
-    def _metadata_finished(self, worker: FunctionWorker, cancel: threading.Event, token: RequestToken) -> None:
-        if worker in self._metadata_workers:
-            self._metadata_workers.remove(worker)
-        if self._metadata_cancel is cancel and self._metadata_gate.finish(token):
-            self._metadata_cancel = None
-            self.window.download_page.set_loading(False)
+        self.metadata_process.start(token, url, MetadataProcessConfig(
+            deno_path=str(self.deno_path or ""),
+            proxy_mode=self.settings.proxy_mode,
+            custom_proxy_url=self.settings.custom_proxy_url,
+            codec_preference=self.settings.codec_preference,
+            require_deno=True,
+        ))
 
     def _metadata_result(self, token: RequestToken, video) -> None:
-        self._metadata_gate.deliver(token, self._apply_metadata_result, video)
+        if not self._metadata_gate.deliver(token, self._apply_metadata_result, video):
+            return
+        self._metadata_gate.finish(token)
+        self._start_thumbnail(video)
 
     def _apply_metadata_result(self, video) -> None:
         retry = self._pending_retry
@@ -196,7 +200,59 @@ class AppController:
             self.enqueue_download(video, option, retry.file_path.stem or video.title, str(retry.file_path.parent))
 
     def _metadata_error(self, token: RequestToken, error: AppError) -> None:
-        self._metadata_gate.deliver(token, self._apply_metadata_error, error)
+        if self._metadata_gate.deliver(token, self._apply_metadata_error, error):
+            self._metadata_gate.finish(token)
+
+    def _metadata_cancelled(self, token: RequestToken) -> None:
+        if self._metadata_gate.finish(token):
+            self._pending_retry = None
+
+    def _start_thumbnail(self, video: VideoInfo) -> None:
+        if not video.thumbnail_url:
+            return
+        token = self._thumbnail_gate.begin(video.url)
+        cancel = threading.Event()
+        self._thumbnail_cancel = cancel
+        worker = FunctionWorker(self.youtube.fetch_thumbnail, video.thumbnail_url, cancel)
+        self._thumbnail_workers.append(worker)
+        worker.signals.result.connect(
+            lambda data, current=token, video_id=video.video_id: self._thumbnail_result(
+                current, video_id, data
+            )
+        )
+        worker.signals.error.connect(
+            lambda error, current=token: self._thumbnail_error(current, error)
+        )
+        worker.signals.finished.connect(
+            lambda current_worker=worker, current=token: self._thumbnail_finished(
+                current_worker, current
+            )
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _thumbnail_result(self, token: RequestToken, video_id: str, data: bytes) -> None:
+        if self._thumbnail_gate.is_current(token):
+            self.window.download_page.set_thumbnail(video_id, data)
+
+    def _thumbnail_error(self, token: RequestToken, error: AppError) -> None:
+        if self._thumbnail_gate.is_current(token):
+            logger.warning("Thumbnail request failed without failing metadata: %s", error.technical_message)
+
+    def _thumbnail_finished(self, worker: FunctionWorker, token: RequestToken) -> None:
+        if worker in self._thumbnail_workers:
+            self._thumbnail_workers.remove(worker)
+        if self._thumbnail_gate.finish(token):
+            self._thumbnail_cancel = None
+
+    def _cancel_thumbnail(self) -> None:
+        if self._thumbnail_cancel is not None:
+            self._thumbnail_cancel.set()
+        self._thumbnail_cancel = None
+        self._thumbnail_gate.current = None
+
+    def _shutdown_background_operations(self) -> None:
+        self._cancel_thumbnail()
+        self.metadata_process.shutdown()
 
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None

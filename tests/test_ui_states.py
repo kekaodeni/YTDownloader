@@ -26,8 +26,13 @@ def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) ->
     page.set_loading(True)
     assert page.metadata_busy.isVisible()
     assert not page.url_input.isEnabled()
-    assert not page.parse_button.isEnabled()
+    assert page.parse_button.isEnabled()
+    assert page.parse_button.text() == "取消解析"
     assert page.metadata_busy.maximum() == 0
+    with qtbot.waitSignal(page.parse_cancel_requested, timeout=500):
+        page.parse_button.click()
+    assert not page.parse_button.isEnabled()
+    assert page.parse_button.text() == "正在取消…"
     page.set_loading(False)
     assert page.url_input.isEnabled()
     assert page.parse_button.isEnabled()
@@ -54,7 +59,7 @@ def test_metadata_busy_label_is_never_clipped_by_feedback_motion(
         if delay:
             qtbot.wait(delay)
         qapp.processEvents()
-        assert page.parse_button.text().startswith("解析中")
+        assert page.parse_button.text() == "取消解析"
         assert page.parse_button.width() >= page.parse_button.sizeHint().width()
         assert page.parse_button.width() >= 80
 
