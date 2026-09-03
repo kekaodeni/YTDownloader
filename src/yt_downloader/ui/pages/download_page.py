@@ -77,6 +77,8 @@ class DownloadPage(QWidget):
         self.url_input.returnPressed.connect(self._request_parse)
         self.parse_button = QPushButton("解析")
         self.parse_button.setProperty("fluentAppearance", "primary")
+        self.parse_button.setMinimumWidth(80)
+        self.parse_button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.parse_button.setAccessibleName("解析视频链接")
         self.parse_button.clicked.connect(self._request_parse)
         row.addWidget(self.url_input, 1)
@@ -198,7 +200,7 @@ class DownloadPage(QWidget):
             self.thumbnail.setText("暂无封面")
         self.url_input.setEnabled(not loading)
         self.parse_button.setEnabled(not loading)
-        self.parse_button.setText("解析中…" if loading else "解析")
+        self.parse_button.setText("解析中" if loading else "解析")
         self.metadata_busy.setVisible(loading)
 
     def show_video(self, video: VideoInfo, *, preferred_quality: str = "recommended") -> None:

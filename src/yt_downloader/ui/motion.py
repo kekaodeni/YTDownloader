@@ -75,15 +75,16 @@ class MotionManager(QObject):
             return
         key = id(widget)
         self._finish(key, stopped=True)
-        original = widget.geometry()
-        shifted = original.translated(0, 2)
-        animation = QPropertyAnimation(widget, b"geometry", self)
+        effect = QGraphicsOpacityEffect(widget)
+        effect.setOpacity(1.0)
+        widget.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", self)
         animation.setDuration(int(MotionDuration.FAST))
-        animation.setStartValue(original)
-        animation.setKeyValueAt(0.35, shifted)
-        animation.setEndValue(original)
-        animation.setEasingCurve(QEasingCurve.Type.OutBack)
-        self._register(widget, animation, final_geometry=original)
+        animation.setStartValue(1.0)
+        animation.setKeyValueAt(0.35, 0.82)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._register(widget, animation, effect=effect)
 
     def _fade(
         self,

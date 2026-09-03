@@ -11,6 +11,7 @@ from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
+from yt_downloader.ui.motion import MotionManager
 from yt_downloader.ui.theme import DARK, LIGHT, ThemeManager, _qss
 from yt_downloader.ui.typography import FontRole
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
@@ -30,6 +31,32 @@ def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) ->
     page.set_loading(False)
     assert page.url_input.isEnabled()
     assert page.parse_button.isEnabled()
+
+
+def test_metadata_busy_label_is_never_clipped_by_feedback_motion(
+    qapp,
+    qtbot,
+    tmp_path,
+) -> None:
+    theme = ThemeManager(qapp)
+    theme.set_mode("light")
+    motion = MotionManager(reduce_motion=False)
+    page = DownloadPage(str(tmp_path), motion=motion)
+    qtbot.addWidget(page)
+    page.resize(1100, 720)
+    page.show()
+    page.url_input.setText("https://youtu.be/dQw4w9WgXcQ")
+    page.parse_requested.connect(lambda _url: page.set_loading(True))
+
+    page.parse_button.click()
+
+    for delay in (0, 80, 120):
+        if delay:
+            qtbot.wait(delay)
+        qapp.processEvents()
+        assert page.parse_button.text().startswith("解析中")
+        assert page.parse_button.width() >= page.parse_button.sizeHint().width()
+        assert page.parse_button.width() >= 80
 
 
 def test_url_clear_action_is_vertically_centered_by_qt_layout(qapp, qtbot, tmp_path) -> None:
