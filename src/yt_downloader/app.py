@@ -13,7 +13,7 @@ import uuid
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 import yt_dlp.version
 
 from yt_downloader import __version__
@@ -29,7 +29,7 @@ from yt_downloader.infrastructure.self_test import run_packaged_self_test
 from yt_downloader.services.download_service import DownloadService
 from yt_downloader.services.error_report_service import build_error_report
 from yt_downloader.services.ffmpeg_service import FfmpegService
-from yt_downloader.services.history_service import HistoryRepository
+from yt_downloader.services.history_service import HistoryDeleteResult, HistoryRepository
 from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
@@ -38,6 +38,7 @@ from yt_downloader.ui.localization import install_qt_zh_cn_translator
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.typography import application_font, install_typography_manager, resolve_font_families
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
+from yt_downloader.ui.widgets.confirm_dialog import IncompleteCleanupDialog, RemoveActiveTaskDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
@@ -75,6 +76,25 @@ class _MemoryHistory:
 
     def delete(self, task_id: str) -> bool:
         return self.records.pop(task_id, None) is not None
+
+    def delete_many(self, task_ids) -> HistoryDeleteResult:
+        unique_ids = tuple(dict.fromkeys(task_ids))
+        deleted = 0
+        for task_id in unique_ids:
+            record = self.records.get(task_id)
+            if record and record.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+                self.records.pop(task_id, None)
+                deleted += 1
+        return HistoryDeleteResult(deleted, len(unique_ids) - deleted)
+
+    def clear_terminal(self) -> HistoryDeleteResult:
+        deletable = tuple(
+            task_id for task_id, record in self.records.items()
+            if record.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        )
+        for task_id in deletable:
+            self.records.pop(task_id, None)
+        return HistoryDeleteResult(len(deletable), len(self.records))
 
     def mark_interrupted(self) -> int:
         return 0
@@ -127,6 +147,7 @@ class AppController:
         self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
         self._thumbnail_gate: LatestRequestGate[object] = LatestRequestGate()
         self._pending_retry: HistoryRecord | None = None
+        self._remove_intents: set[str] = set()
         self._dialogs: list[object] = []
         self._wire()
         self.refresh_history()
@@ -142,6 +163,7 @@ class AppController:
         download.cancel_requested.connect(self.queue.cancel)
         download.open_file_requested.connect(self._open_file)
         download.open_folder_requested.connect(self._reveal_file)
+        download.remove_requested.connect(self._remove_task_requested)
         history = self.window.history_page
         history.open_file_requested.connect(self._open_file)
         history.open_folder_requested.connect(self._reveal_file)
@@ -149,6 +171,8 @@ class AppController:
         history.thumbnail_requested.connect(self._change_thumbnail)
         history.retry_requested.connect(self._retry_record)
         history.delete_requested.connect(self._delete_history_record)
+        history.delete_many_requested.connect(self._delete_history_records)
+        history.clear_terminal_requested.connect(self._clear_terminal_history)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
         settings.network_test_requested.connect(self.test_network_connection)
@@ -309,6 +333,9 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist completed task")
         self.refresh_history()
+        if result.task_id in self._remove_intents:
+            self._remove_intents.discard(result.task_id)
+            self.window.download_page.remove_task(result.task_id)
 
     def _failed(self, task_id: str, error: AppError) -> None:
         self.window.download_page.fail_task(task_id, TaskStatus.FAILED)
@@ -317,6 +344,9 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist failed task")
         self.refresh_history()
+        if task_id in self._remove_intents:
+            self._remove_intents.discard(task_id)
+            self.window.download_page.remove_task(task_id)
         self.show_error(error)
 
     def _cancelled(self, task_id: str, cleanup_report) -> None:
@@ -331,6 +361,10 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist cancelled task")
         self.refresh_history()
+        if task_id in self._remove_intents:
+            self._remove_intents.discard(task_id)
+            if cleanup_report.succeeded or self._confirm_remove_after_incomplete_cleanup(cleanup_report):
+                self.window.download_page.remove_task(task_id)
 
     def refresh_history(self) -> None:
         try:
@@ -438,6 +472,58 @@ class AppController:
                 "无法删除这条历史记录；视频文件没有改变。",
                 repr(exc),
             ))
+
+    def _delete_history_records(self, task_ids: tuple[str, ...]) -> None:
+        try:
+            result = self.history.delete_many(task_ids)
+            self.refresh_history()
+            self.window.history_page.show_management_result(
+                result.deleted_count, result.retained_count
+            )
+        except Exception as exc:
+            self.show_error(AppError(
+                "history_batch_delete_failed",
+                "无法删除所选历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
+
+    def _clear_terminal_history(self) -> None:
+        try:
+            result = self.history.clear_terminal()
+            self.refresh_history()
+            self.window.history_page.show_management_result(
+                result.deleted_count, result.retained_count
+            )
+        except Exception as exc:
+            self.show_error(AppError(
+                "history_clear_failed",
+                "无法清空历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
+
+    def _remove_task_requested(self, task_id: str) -> None:
+        position = self.queue.task_position(task_id)
+        if position is None:
+            self.window.download_page.remove_task(task_id)
+            return
+        request = self.window.download_page.task_request(task_id)
+        if position == "active" and not self._confirm_cancel_and_remove(
+            request.video.title if request else "当前任务"
+        ):
+            return
+        self._remove_intents.add(task_id)
+        if not self.queue.cancel(task_id):
+            self._remove_intents.discard(task_id)
+
+    def _confirm_cancel_and_remove(self, title: str) -> bool:
+        return RemoveActiveTaskDialog(title, self.window).exec() == QDialog.DialogCode.Accepted
+
+    def _confirm_remove_after_incomplete_cleanup(self, cleanup_report) -> bool:
+        dialog = IncompleteCleanupDialog(self.window)
+        dialog.open_folder_requested.connect(
+            lambda: self._reveal_file(cleanup_report.output_directory)
+        )
+        return dialog.exec() == QDialog.DialogCode.Accepted
 
     def _thumbnail_saved(self, task_id: str, _result) -> None:
         try:

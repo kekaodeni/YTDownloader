@@ -180,6 +180,23 @@ def test_task_card_enters_cancelling_immediately(qtbot, tmp_path) -> None:
     assert card.progress.eta_label.text() == "剩余 —"
 
 
+def test_task_card_has_accessible_remove_action_and_uses_page_lifecycle(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    request = replace(_request(tmp_path), task_id="remove-card")
+    page.add_task(request)
+    card = page.cards[request.task_id]
+
+    assert card.remove_button.toolTip() == "删除任务"
+    assert card.remove_button.accessibleName() == f"删除任务 {request.video.title}"
+    with qtbot.waitSignal(page.remove_requested, timeout=500) as signal:
+        card.remove_button.click()
+    assert signal.args == [request.task_id]
+
+    page.remove_task(request.task_id)
+    assert request.task_id not in page.cards
+
+
 def test_cancel_cleanup_warning_offers_the_output_folder(qtbot, tmp_path) -> None:
     page = DownloadPage(str(tmp_path))
     qtbot.addWidget(page)

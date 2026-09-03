@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, STATUS_TEXT, TaskStatus
 from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
+from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.widgets.progress_widget import ProgressWidget
 
 
@@ -16,11 +17,13 @@ class DownloadTaskCard(QWidget):
     cancel_requested = Signal(str)
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
+    remove_requested = Signal(str)
 
     def __init__(self, request: DownloadRequest, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.request = request
         self.file_path: Path | None = None
+        self.status = TaskStatus.PENDING
         self.setProperty("fluentRole", "card")
         root = QHBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
@@ -66,17 +69,28 @@ class DownloadTaskCard(QWidget):
         actions.addStretch()
         content.addLayout(actions)
         root.addLayout(content, 1)
+        self.remove_button = QToolButton()
+        self.remove_button.setIcon(FluentIconService().icon("delete"))
+        self.remove_button.setIconSize(QSize(18, 18))
+        self.remove_button.setToolTip("删除任务")
+        self.remove_button.setAccessibleName(f"删除任务 {request.video.title}")
+        self.remove_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.remove_button.clicked.connect(lambda: self.remove_requested.emit(request.task_id))
+        root.addWidget(self.remove_button, 0, Qt.AlignmentFlag.AlignTop)
         apply_typography_tree(self)
 
     def update_progress(self, progress: DownloadProgress) -> None:
+        self.status = progress.status
         self.progress.set_progress(progress)
 
     def set_cancelling(self) -> None:
+        self.status = TaskStatus.CANCELLING
         self.cancel_button.setEnabled(False)
         self.cancel_button.setText("正在取消…")
         self.progress.set_progress(DownloadProgress(self.request.task_id, TaskStatus.CANCELLING))
 
     def set_completed(self, result: DownloadResult) -> None:
+        self.status = TaskStatus.COMPLETED
         self.file_path = result.file_path
         self.progress.set_progress(DownloadProgress(result.task_id, TaskStatus.COMPLETED, 100, result.file_size, result.file_size))
         self.cancel_button.hide()
@@ -88,6 +102,7 @@ class DownloadTaskCard(QWidget):
         status: TaskStatus,
         cleanup_report: CancellationCleanupReport | None = None,
     ) -> None:
+        self.status = status
         self.progress.set_progress(DownloadProgress(self.request.task_id, status))
         self.cancel_button.hide()
         if (

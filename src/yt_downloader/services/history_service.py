@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 from typing import Iterator
 
 from yt_downloader.core.models import HistoryRecord, TaskStatus
+
+
+_TERMINAL_VALUES = (
+    TaskStatus.COMPLETED.value,
+    TaskStatus.FAILED.value,
+    TaskStatus.CANCELLED.value,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryDeleteResult:
+    deleted_count: int
+    retained_count: int
 
 
 class HistoryRepository:
@@ -130,6 +144,32 @@ class HistoryRepository:
         with self._connection() as connection:
             cursor = connection.execute("DELETE FROM downloads WHERE task_id=?", (task_id,))
             return cursor.rowcount > 0
+
+    def delete_many(self, task_ids: tuple[str, ...] | list[str]) -> HistoryDeleteResult:
+        unique_ids = tuple(dict.fromkeys(str(task_id) for task_id in task_ids if task_id))
+        if not unique_ids:
+            return HistoryDeleteResult(0, 0)
+        placeholders = ",".join("?" for _ in unique_ids)
+        terminal_placeholders = ",".join("?" for _ in _TERMINAL_VALUES)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                f"DELETE FROM downloads WHERE task_id IN ({placeholders}) "
+                f"AND status IN ({terminal_placeholders})",
+                (*unique_ids, *_TERMINAL_VALUES),
+            )
+            deleted = max(0, int(cursor.rowcount))
+        return HistoryDeleteResult(deleted, len(unique_ids) - deleted)
+
+    def clear_terminal(self) -> HistoryDeleteResult:
+        placeholders = ",".join("?" for _ in _TERMINAL_VALUES)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                f"DELETE FROM downloads WHERE status IN ({placeholders})",
+                _TERMINAL_VALUES,
+            )
+            deleted = max(0, int(cursor.rowcount))
+            retained = int(connection.execute("SELECT COUNT(*) FROM downloads").fetchone()[0])
+        return HistoryDeleteResult(deleted, retained)
 
     def list_records(self, *, limit: int = 500) -> list[HistoryRecord]:
         with self._connection() as connection:

@@ -38,6 +38,7 @@ class DownloadPage(QWidget):
     cancel_requested = Signal(str)
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
+    remove_requested = Signal(str)
 
     def __init__(
         self,
@@ -317,6 +318,7 @@ class DownloadPage(QWidget):
         card.cancel_requested.connect(self.cancel_requested)
         card.open_file_requested.connect(self.open_file_requested)
         card.open_folder_requested.connect(self.open_folder_requested)
+        card.remove_requested.connect(self.remove_requested)
         self.cards[request.task_id] = card
         self.task_layout.insertWidget(self.task_layout.count() - 1, card)
         self.tasks_heading.show()
@@ -380,3 +382,14 @@ class DownloadPage(QWidget):
         if not self.cards:
             self.tasks_heading.hide()
             self.task_host.hide()
+
+    def remove_task(self, task_id: str) -> None:
+        self._retire_task(task_id)
+
+    def task_status(self, task_id: str) -> TaskStatus | None:
+        card = self.cards.get(task_id)
+        return card.status if card else None
+
+    def task_request(self, task_id: str) -> DownloadRequest | None:
+        card = self.cards.get(task_id)
+        return card.request if card else None

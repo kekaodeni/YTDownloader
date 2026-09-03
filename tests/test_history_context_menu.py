@@ -73,3 +73,50 @@ def test_shift_f10_opens_context_menu_for_keyboard_selection(qtbot, tmp_path: Pa
 
     assert captured
     assert _action(captured[0], "复制链接").isEnabled()
+
+
+def test_management_mode_selects_only_terminal_records_and_emits_batch_delete(
+    qtbot, tmp_path: Path, monkeypatch
+) -> None:
+    page = HistoryPage()
+    qtbot.addWidget(page)
+    page.set_records([
+        _record(tmp_path, "done", TaskStatus.COMPLETED),
+        _record(tmp_path, "active", TaskStatus.DOWNLOADING_VIDEO),
+        _record(tmp_path, "failed", TaskStatus.FAILED),
+    ])
+    monkeypatch.setattr(page, "_confirm_delete_many", lambda _count: True)
+
+    page.manage_button.click()
+    page.select_all_button.click()
+
+    assert page.model.management_mode
+    assert page.model.checked_task_ids() == ("done", "failed")
+    assert page.selection_count_label.text() == "已选择 2 项"
+    assert not page.model.flags(page.model.index(1, 0)) & Qt.ItemFlag.ItemIsUserCheckable
+    with qtbot.waitSignal(page.delete_many_requested, timeout=500) as signal:
+        page.delete_selected_button.click()
+    assert signal.args == [("done", "failed")]
+
+
+def test_management_keyboard_shortcuts_toggle_select_all_and_delete(
+    qtbot, tmp_path: Path, monkeypatch
+) -> None:
+    page = HistoryPage()
+    qtbot.addWidget(page)
+    page.resize(760, 520)
+    page.show()
+    page.set_records([
+        _record(tmp_path, "one", TaskStatus.COMPLETED),
+        _record(tmp_path, "two", TaskStatus.CANCELLED),
+    ])
+    monkeypatch.setattr(page, "_confirm_delete_many", lambda _count: True)
+    page.manage_button.click()
+    page.list_view.setCurrentIndex(page.model.index(0, 0))
+
+    qtbot.keyClick(page.list_view, Qt.Key.Key_Space)
+    assert page.model.checked_task_ids() == ("one",)
+    qtbot.keyClick(page.list_view, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    assert page.model.checked_task_ids() == ("one", "two")
+    with qtbot.waitSignal(page.delete_many_requested, timeout=500):
+        qtbot.keyClick(page.list_view, Qt.Key.Key_Delete)

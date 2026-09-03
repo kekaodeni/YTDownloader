@@ -3,7 +3,12 @@ from pathlib import Path
 from PySide6.QtWidgets import QPushButton
 
 from yt_downloader.core.errors import AppError
-from yt_downloader.ui.widgets.confirm_dialog import DeleteHistoryDialog
+from yt_downloader.ui.widgets.confirm_dialog import (
+    DeleteHistoryBatchDialog,
+    DeleteHistoryDialog,
+    IncompleteCleanupDialog,
+    RemoveActiveTaskDialog,
+)
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.ui.localization import ACTION_TEXT, install_qt_zh_cn_translator
@@ -26,6 +31,9 @@ def test_all_application_dialog_actions_are_localized(qtbot, tmp_path: Path) -> 
     media.write_bytes(b"test-media")
     dialogs = [
         DeleteHistoryDialog("测试记录"),
+        DeleteHistoryBatchDialog(2),
+        RemoveActiveTaskDialog("测试任务"),
+        IncompleteCleanupDialog(),
         ErrorDialog(AppError("test", "用户说明", "技术详情"), "safe report"),
         ThumbnailDialog(
             media,
@@ -43,8 +51,9 @@ def test_all_application_dialog_actions_are_localized(qtbot, tmp_path: Path) -> 
         assert _button_texts(dialog).isdisjoint(english_actions)
 
     assert "取消" in _button_texts(dialogs[0])
-    assert "关闭" in _button_texts(dialogs[1])
-    assert "取消" in _button_texts(dialogs[2])
+    assert "取消" in _button_texts(dialogs[1])
+    assert "关闭" in _button_texts(dialogs[4])
+    assert "取消" in _button_texts(dialogs[5])
 
 
 def test_action_map_covers_required_dialog_verbs() -> None:
