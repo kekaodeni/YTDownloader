@@ -11,7 +11,7 @@ import threading
 import uuid
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 import yt_dlp.version
 
@@ -29,14 +29,18 @@ from yt_downloader.services.download_service import DownloadService
 from yt_downloader.services.error_report_service import build_error_report
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.history_service import HistoryRepository
+from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
 from yt_downloader.ui.main_window import MainWindow
+from yt_downloader.ui.localization import install_qt_zh_cn_translator
 from yt_downloader.ui.theme import ThemeManager
+from yt_downloader.ui.typography import application_font, install_typography_manager, resolve_font_families
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
+from yt_downloader.workers.request_gate import LatestRequestGate, RequestToken
 
 
 logger = logging.getLogger(__name__)
@@ -59,7 +63,16 @@ class _MemoryHistory:
     def update_thumbnail(self, task_id, thumbnail_path) -> None:
         from dataclasses import replace
         if task_id in self.records:
-            self.records[task_id] = replace(self.records[task_id], thumbnail_path=Path(thumbnail_path))
+            self.records[task_id] = replace(
+                self.records[task_id],
+                thumbnail_path=Path(thumbnail_path) if thumbnail_path else None,
+            )
+
+    def get(self, task_id: str) -> HistoryRecord | None:
+        return self.records.get(task_id)
+
+    def delete(self, task_id: str) -> bool:
+        return self.records.pop(task_id, None) is not None
 
     def mark_interrupted(self) -> int:
         return 0
@@ -86,8 +99,14 @@ class AppController:
             self.history = _MemoryHistory()
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
         self.deno_path = find_tool("deno")
-        self.youtube = YoutubeService(deno_path=self.deno_path)
-        self.download_service = DownloadService(deno_path=self.deno_path, ffmpeg_path=self.ffmpeg.ffmpeg_path)
+        self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
+        self.youtube = YoutubeService(deno_path=self.deno_path, network_policy=self.network)
+        self.download_service = DownloadService(
+            deno_path=self.deno_path,
+            ffmpeg_path=self.ffmpeg.ffmpeg_path,
+            network_policy=self.network,
+            concurrent_fragments=self.settings.concurrent_fragments,
+        )
         ffmpeg_description = str(self.ffmpeg.ffmpeg_path) if self.ffmpeg.ffmpeg_path else "未找到"
         self.window = MainWindow(
             self.settings,
@@ -97,6 +116,8 @@ class AppController:
         self.queue = DownloadQueueController(self.download_service, self.window)
         self._metadata_cancel: threading.Event | None = None
         self._metadata_workers: list[FunctionWorker] = []
+        self._settings_workers: list[FunctionWorker] = []
+        self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
         self._pending_retry: HistoryRecord | None = None
         self._dialogs: list[object] = []
         self._wire()
@@ -118,13 +139,17 @@ class AppController:
         history.copy_link_requested.connect(lambda value: QGuiApplication.clipboard().setText(value))
         history.thumbnail_requested.connect(self._change_thumbnail)
         history.retry_requested.connect(self._retry_record)
+        history.delete_requested.connect(self._delete_history_record)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
+        settings.network_test_requested.connect(self.test_network_connection)
         settings.theme_preview_requested.connect(self.theme.set_mode)
         self.theme.theme_changed.connect(self.window.apply_theme)
         settings.open_logs_requested.connect(lambda: self._open_directory(self.paths.logs))
         settings.copy_system_info_requested.connect(self.copy_system_info)
         self.queue.task_queued.connect(download.add_task)
+        self.queue.task_started.connect(download.task_started)
+        self.queue.cancelling.connect(self._cancelling)
         self.queue.progress.connect(self._progress)
         self.queue.completed.connect(self._completed)
         self.queue.failed.connect(self._failed)
@@ -135,24 +160,28 @@ class AppController:
     def fetch_metadata(self, url: str) -> None:
         if self._metadata_cancel:
             self._metadata_cancel.set()
+        token = self._metadata_gate.begin(url.strip())
         cancel = threading.Event()
         self._metadata_cancel = cancel
         self.window.download_page.set_loading(True)
         worker = FunctionWorker(self.youtube.fetch_metadata, url, cancel)
         self._metadata_workers.append(worker)
-        worker.signals.result.connect(self._metadata_result)
-        worker.signals.error.connect(self._metadata_error)
-        worker.signals.finished.connect(lambda w=worker: self._metadata_finished(w, cancel))
+        worker.signals.result.connect(lambda video, current=token: self._metadata_result(current, video))
+        worker.signals.error.connect(lambda error, current=token: self._metadata_error(current, error))
+        worker.signals.finished.connect(lambda w=worker, current=token: self._metadata_finished(w, cancel, current))
         QThreadPool.globalInstance().start(worker)
 
-    def _metadata_finished(self, worker: FunctionWorker, cancel: threading.Event) -> None:
+    def _metadata_finished(self, worker: FunctionWorker, cancel: threading.Event, token: RequestToken) -> None:
         if worker in self._metadata_workers:
             self._metadata_workers.remove(worker)
-        if self._metadata_cancel is cancel:
+        if self._metadata_cancel is cancel and self._metadata_gate.finish(token):
             self._metadata_cancel = None
             self.window.download_page.set_loading(False)
 
-    def _metadata_result(self, video) -> None:
+    def _metadata_result(self, token: RequestToken, video) -> None:
+        self._metadata_gate.deliver(token, self._apply_metadata_result, video)
+
+    def _apply_metadata_result(self, video) -> None:
         retry = self._pending_retry
         preferred = retry.quality_label if retry else self.settings.default_quality
         self.window.download_page.show_video(video, preferred_quality=preferred)
@@ -162,7 +191,10 @@ class AppController:
             option = option or next((item for item in video.formats if item.is_recommended), video.formats[0])
             self.enqueue_download(video, option, retry.file_path.stem or video.title, str(retry.file_path.parent))
 
-    def _metadata_error(self, error: AppError) -> None:
+    def _metadata_error(self, token: RequestToken, error: AppError) -> None:
+        self._metadata_gate.deliver(token, self._apply_metadata_error, error)
+
+    def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
         self.show_error(error)
 
@@ -197,6 +229,13 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist task progress")
 
+    def _cancelling(self, task_id: str) -> None:
+        self.window.download_page.cancel_task(task_id)
+        try:
+            self.history.update_status(task_id, TaskStatus.CANCELLING)
+        except Exception:
+            logger.exception("Failed to persist cancelling task")
+
     def _completed(self, result) -> None:
         self.window.download_page.complete_task(result)
         try:
@@ -220,10 +259,15 @@ class AppController:
         self.refresh_history()
         self.show_error(error)
 
-    def _cancelled(self, task_id: str) -> None:
-        self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED)
+    def _cancelled(self, task_id: str, cleanup_report) -> None:
+        self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED, cleanup_report)
+        summary = (
+            "任务由用户取消，临时文件已清理。"
+            if cleanup_report.succeeded
+            else "任务由用户取消，但部分临时文件未能清理；可打开下载文件夹处理。"
+        )
         try:
-            self.history.update_status(task_id, TaskStatus.CANCELLED, error_summary="任务由用户取消；可重试并续传 .part 文件。")
+            self.history.update_status(task_id, TaskStatus.CANCELLED, error_summary=summary)
         except Exception:
             logger.exception("Failed to persist cancelled task")
         self.refresh_history()
@@ -242,14 +286,45 @@ class AppController:
                 if not (directory / "ffmpeg.exe").is_file() or not (directory / "ffprobe.exe").is_file():
                     raise ValueError("所选目录必须同时包含 ffmpeg.exe 和 ffprobe.exe。")
             self.settings_service.save(settings)
+            self.network.configure(settings.proxy_mode, settings.custom_proxy_url)
             self.settings = settings
             self.theme.set_mode(settings.theme)
             self.window.settings_page.mark_saved(settings)
-            self.window.download_page.directory_input.setText(settings.download_directory)
+            self.window.download_page.set_default_directory(settings.download_directory)
+            self.window.set_reduce_motion(settings.reduce_motion)
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
+            self.download_service.concurrent_fragments = settings.concurrent_fragments
         except (OSError, ValueError) as exc:
-            self.show_error(AppError("settings_invalid", "设置未保存。", repr(exc), ErrorContext(stage="Saving settings")))
+            logger.warning("Settings were not saved: %s", exc)
+            self.window.settings_page.mark_save_failed(str(exc))
+
+    def test_network_connection(self, mode: str, custom_proxy_url: str) -> None:
+        try:
+            policy = NetworkPolicy(mode, custom_proxy_url)
+        except ValueError as exc:
+            self.window.settings_page.set_network_test_result(False, str(exc))
+            return
+        worker = FunctionWorker(policy.test_connection)
+        self._settings_workers.append(worker)
+        worker.signals.result.connect(self._network_test_succeeded)
+        worker.signals.error.connect(self._network_test_failed)
+        worker.signals.finished.connect(lambda current=worker: self._settings_worker_finished(current))
+        QThreadPool.globalInstance().start(worker)
+
+    def _network_test_succeeded(self, result: NetworkTestResult) -> None:
+        self.window.settings_page.set_network_test_result(
+            True,
+            f"连接成功（{result.elapsed_seconds:.2f} 秒） · {result.description}",
+        )
+
+    def _network_test_failed(self, error: AppError) -> None:
+        logger.warning("Network connection test failed: %s", error.technical_message)
+        self.window.settings_page.set_network_test_result(False, error.user_message)
+
+    def _settings_worker_finished(self, worker: FunctionWorker) -> None:
+        if worker in self._settings_workers:
+            self._settings_workers.remove(worker)
 
     def copy_system_info(self) -> None:
         QGuiApplication.clipboard().setText(build_system_info(
@@ -262,7 +337,9 @@ class AppController:
         self._shell_action(lambda: open_path(value), "无法打开文件。")
 
     def _reveal_file(self, value: str) -> None:
-        self._shell_action(lambda: reveal_in_folder(value), "无法在文件夹中显示该文件。")
+        target = Path(value)
+        action = (lambda: open_path(target)) if target.is_dir() else (lambda: reveal_in_folder(target))
+        self._shell_action(action, "无法打开文件夹。")
 
     def _open_directory(self, value: Path) -> None:
         self._shell_action(lambda: open_path(value), "无法打开目录。")
@@ -276,7 +353,7 @@ class AppController:
     def _change_thumbnail(self, record: HistoryRecord) -> None:
         dialog = ThumbnailDialog(record.file_path, record.video_id, self.paths.thumbnails, self.ffmpeg, self.window)
         dialog.error.connect(self.show_error)
-        dialog.thumbnail_set.connect(lambda path, task=record.task_id: self._thumbnail_saved(task, path))
+        dialog.thumbnail_set.connect(lambda result, task=record.task_id: self._thumbnail_saved(task, result))
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
         self._dialogs.append(dialog)
@@ -288,12 +365,34 @@ class AppController:
         self.window.download_page.url_input.setText(record.url)
         self.fetch_metadata(record.url)
 
-    def _thumbnail_saved(self, task_id: str, path: str) -> None:
+    def _delete_history_record(self, record: HistoryRecord) -> None:
+        if record.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            return
         try:
-            self.history.update_thumbnail(task_id, path)
+            self.history.delete(record.task_id)
             self.refresh_history()
         except Exception as exc:
-            self.show_error(AppError("history_update_failed", "缩略图已生成，但历史记录更新失败。", repr(exc)))
+            self.show_error(AppError(
+                "history_delete_failed",
+                "无法删除这条历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
+
+    def _thumbnail_saved(self, task_id: str, _result) -> None:
+        try:
+            record = self.history.get(task_id)
+            previous = record.thumbnail_path if record else None
+            self.history.update_thumbnail(task_id, None)
+            if previous and previous.is_file():
+                try:
+                    previous.resolve().relative_to(self.paths.thumbnails.resolve())
+                except (OSError, ValueError):
+                    pass
+                else:
+                    previous.unlink(missing_ok=True)
+            self.refresh_history()
+        except Exception as exc:
+            self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
     def show_error(self, error: AppError) -> None:
         logger.error("%s: %s", error.code, error.technical_message)
@@ -318,8 +417,12 @@ def create_application(argv: list[str] | None = None) -> tuple[QApplication, App
     app.setOrganizationName("YTDownloader")
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(True)
-    app.setFont(QFont("Segoe UI Variable Text", 10))
     QLocale.setDefault(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+    if not install_qt_zh_cn_translator(app):
+        logger.warning("Qt Simplified Chinese translation resource is unavailable")
+    font_families = resolve_font_families(system_default=app.font().family())
+    app.setFont(application_font(font_families))
+    install_typography_manager(app, font_families)
     paths = AppPaths.discover()
     paths.ensure()
     configure_logging(paths.logs)

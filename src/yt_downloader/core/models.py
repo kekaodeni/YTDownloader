@@ -16,9 +16,18 @@ class TaskStatus(StrEnum):
     DOWNLOADING_AUDIO = "DOWNLOADING_AUDIO"
     MERGING = "MERGING"
     POST_PROCESSING = "POST_PROCESSING"
+    CANCELLING = "CANCELLING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+
+
+class ProgressTotalSource(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    METADATA = "METADATA"
+    HOOK = "HOOK"
+    MIXED = "MIXED"
+    FINAL = "FINAL"
 
 
 STATUS_TEXT: Mapping[TaskStatus, str] = {
@@ -29,6 +38,7 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
     TaskStatus.DOWNLOADING_AUDIO: "正在下载音频",
     TaskStatus.MERGING: "正在合并视频与音频",
     TaskStatus.POST_PROCESSING: "正在处理文件",
+    TaskStatus.CANCELLING: "正在取消…",
     TaskStatus.COMPLETED: "下载完成",
     TaskStatus.FAILED: "下载失败",
     TaskStatus.CANCELLED: "已取消",
@@ -38,8 +48,8 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
 @dataclass(frozen=True, slots=True)
 class FormatOption:
     label: str
-    height: int
-    fps: float
+    height: int | None
+    fps: float | None
     vcodec: str
     acodec: str
     container: str
@@ -50,6 +60,20 @@ class FormatOption:
     video_format_id: str
     audio_format_id: str | None = None
     is_recommended: bool = False
+    size_is_estimate: bool = False
+    width: int | None = None
+    video_size: int | None = None
+    video_size_is_estimate: bool = False
+    audio_size: int | None = None
+    audio_size_is_estimate: bool = False
+
+    @property
+    def display_height(self) -> int | None:
+        if self.height is None:
+            return None
+        if self.width is not None and self.height > self.width:
+            return self.width
+        return self.height
 
     @property
     def technical_summary(self) -> str:
@@ -90,6 +114,8 @@ class DownloadProgress:
     total_bytes: int | None = None
     speed: float | None = None
     eta: int | None = None
+    total_is_estimate: bool = False
+    total_source: ProgressTotalSource = ProgressTotalSource.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,10 +144,12 @@ class HistoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 1
+    schema_version: int = 2
     download_directory: str = ""
     default_quality: str = "recommended"
     theme: str = "system"
     reduce_motion: bool = False
     ffmpeg_directory: str = ""
-
+    proxy_mode: str = "system"
+    custom_proxy_url: str = ""
+    concurrent_fragments: int = 0

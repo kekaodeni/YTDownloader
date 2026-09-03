@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
 )
 
 from yt_downloader.core.errors import AppError
+from yt_downloader.ui.localization import localize_dialog_button_box
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
 
 
 class ErrorDialog(QDialog):
@@ -19,7 +21,7 @@ class ErrorDialog(QDialog):
         root.setContentsMargins(24, 22, 24, 20)
         root.setSpacing(12)
         title = QLabel("下载失败")
-        title.setProperty("headingLevel", "2")
+        apply_typography(title, FontRole.SECTION_TITLE)
         root.addWidget(title)
         summary = QLabel(error.user_message)
         summary.setWordWrap(True)
@@ -40,11 +42,13 @@ class ErrorDialog(QDialog):
         copy_button.setAccessibleName("复制错误报告")
         copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(report))
         close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        localize_dialog_button_box(close_box)
         close_box.rejected.connect(self.reject)
         actions.addWidget(copy_button)
         actions.addStretch()
         actions.addWidget(close_box)
         root.addLayout(actions)
+        apply_typography_tree(self)
 
     def _toggle_details(self, checked: bool) -> None:
         self.details.setVisible(checked)

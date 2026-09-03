@@ -11,3 +11,9 @@ def test_rejects_impossible_download_state_transition() -> None:
     with pytest.raises(ValueError):
         ensure_transition(TaskStatus.COMPLETED, TaskStatus.DOWNLOADING_VIDEO)
 
+
+def test_user_cancellation_has_an_explicit_non_terminal_stage() -> None:
+    ensure_transition(TaskStatus.DOWNLOADING_VIDEO, TaskStatus.CANCELLING)
+    ensure_transition(TaskStatus.CANCELLING, TaskStatus.CANCELLED)
+    with pytest.raises(ValueError):
+        ensure_transition(TaskStatus.CANCELLING, TaskStatus.DOWNLOADING_AUDIO)

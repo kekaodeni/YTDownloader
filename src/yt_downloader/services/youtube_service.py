@@ -19,6 +19,7 @@ from yt_downloader.core.models import VideoInfo
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
+from yt_downloader.services.network_policy import NetworkPolicy
 
 
 logger = logging.getLogger(__name__)
@@ -77,11 +78,13 @@ class YoutubeService:
         http_get: Callable[..., _Response] = requests.get,
         deno_path: str | Path | None = None,
         require_deno: bool = True,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
         self.deno_path = Path(deno_path) if deno_path else find_tool("deno")
         self.require_deno = require_deno
+        self.network_policy = network_policy
 
     def fetch_metadata(self, url: str, cancel_event: threading.Event | None = None) -> VideoInfo:
         try:
@@ -115,6 +118,8 @@ class YoutubeService:
             "js_runtimes": js_config,
             "remote_components": [],
         }
+        if self.network_policy:
+            options.update(self.network_policy.ytdlp_options())
         try:
             with self.ydl_factory(options) as ydl:
                 extracted = ydl.extract_info(normalized, download=False)
@@ -124,7 +129,11 @@ class YoutubeService:
             if not isinstance(info, Mapping):
                 raise TypeError("yt-dlp returned non-mapping metadata")
             raw_formats = info.get("formats") or []
-            formats = tuple(normalize_formats(raw_formats if isinstance(raw_formats, list) else []))
+            duration = float(info["duration"]) if isinstance(info.get("duration"), (int, float)) else None
+            formats = tuple(normalize_formats(
+                raw_formats if isinstance(raw_formats, list) else [],
+                duration=duration,
+            ))
             if not formats:
                 raise AppError(
                     "formats_unavailable",
@@ -136,19 +145,28 @@ class YoutubeService:
             thumbnail_url = str(info.get("thumbnail") or "") or None
             thumbnail_bytes: bytes | None = None
             if thumbnail_url:
+                if cancel_event and cancel_event.is_set():
+                    raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                 try:
-                    response = self.http_get(thumbnail_url, timeout=20, headers={"User-Agent": "YTDownloader/0.1"})
+                    request_get = self.network_policy.get if self.network_policy else self.http_get
+                    response = request_get(thumbnail_url, timeout=20, headers={"User-Agent": "YTDownloader/0.2"})
+                    if cancel_event and cancel_event.is_set():
+                        raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                     response.raise_for_status()
                     thumbnail_bytes = bytes(response.content)
+                except OperationCancelled:
+                    raise
                 except Exception as exc:  # Thumbnail failure is an optional capability failure.
                     logger.warning("Thumbnail download failed: %s", redact_sensitive(str(exc)))
+            if cancel_event and cancel_event.is_set():
+                raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
 
             return VideoInfo(
                 video_id=str(info.get("id") or normalized.rsplit("=", 1)[-1]),
                 url=normalized,
                 title=str(info.get("title") or "YouTube 视频"),
                 channel=str(info.get("channel") or info.get("uploader") or "未知频道"),
-                duration=float(info["duration"]) if isinstance(info.get("duration"), (int, float)) else None,
+                duration=duration,
                 thumbnail_url=thumbnail_url,
                 thumbnail_bytes=thumbnail_bytes,
                 formats=formats,
@@ -172,4 +190,3 @@ class YoutubeService:
                     log_excerpt="\n".join(ydl_logger.lines),
                 ),
             ) from exc
-
