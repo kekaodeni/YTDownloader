@@ -219,9 +219,10 @@ class AppController:
         self.window.download_page.show_video(video, preferred_quality=preferred)
         if retry:
             self._pending_retry = None
-            option = next((item for item in video.formats if item.label == retry.quality_label), None)
-            option = option or next((item for item in video.formats if item.is_recommended), video.formats[0])
-            self.enqueue_download(video, option, retry.file_path.stem or video.title, str(retry.file_path.parent))
+            self.window.download_page.set_retry_defaults(
+                retry.file_path.stem or video.title,
+                str(retry.file_path.parent),
+            )
 
     def _metadata_error(self, token: RequestToken, error: AppError) -> None:
         if self._metadata_gate.deliver(token, self._apply_metadata_error, error):

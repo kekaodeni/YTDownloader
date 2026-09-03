@@ -306,6 +306,12 @@ class DownloadPage(QWidget):
         if self.video is None or not self._directory_overridden:
             self.directory_input.setText(directory)
 
+    def set_retry_defaults(self, filename: str, directory: str) -> None:
+        """Prefill history choices while leaving the user in control of download."""
+        self.filename_input.setText(filename)
+        self.directory_input.setText(directory)
+        self._directory_overridden = True
+
     def _request_download(self) -> None:
         option = self.format_combo.currentData()
         if self.video and option:
