@@ -306,13 +306,21 @@ class DownloadPage(QWidget):
     def _mark_terminal(self, task_id: str) -> None:
         for previous_id in tuple(self._terminal_task_ids):
             if previous_id != task_id:
-                self._remove_task(previous_id)
+                self._retire_task(previous_id)
         self._terminal_task_ids.add(task_id)
 
     def task_started(self, task_id: str) -> None:
         for terminal_id in tuple(self._terminal_task_ids):
             if terminal_id != task_id:
-                self._remove_task(terminal_id)
+                self._retire_task(terminal_id)
+
+    def _retire_task(self, task_id: str) -> None:
+        self._terminal_task_ids.discard(task_id)
+        card = self.cards.get(task_id)
+        if card and self.motion and not self.motion.reduce_motion:
+            self.motion.retire(card, lambda current=task_id: self._remove_task(current))
+            return
+        self._remove_task(task_id)
 
     def _remove_task(self, task_id: str) -> None:
         card = self.cards.pop(task_id, None)

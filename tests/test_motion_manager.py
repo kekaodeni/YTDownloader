@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QLabel, QStackedWidget, QWidget
+from PySide6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
 
 from yt_downloader.ui.motion import MotionDuration, MotionManager
 from yt_downloader.ui.theme import DARK, LIGHT, _qss
@@ -39,6 +39,37 @@ def test_page_and_card_animations_remove_effects_after_finishing(qtbot) -> None:
     assert card.isVisible()
     qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
     assert card.graphicsEffect() is None
+
+
+def test_retire_collapses_layout_item_then_releases_effect_and_constraint(qapp, qtbot) -> None:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    first = QLabel("first")
+    second = QLabel("second")
+    first.setMinimumHeight(80)
+    second.setMinimumHeight(80)
+    layout.addWidget(first)
+    layout.addWidget(second)
+    qtbot.addWidget(host)
+    host.resize(320, 240)
+    host.show()
+    qapp.processEvents()
+    original_maximum_height = first.maximumHeight()
+    second_start = second.geometry().top()
+    completed = []
+    manager = MotionManager(reduce_motion=False)
+
+    manager.retire(first, lambda: completed.append(True))
+
+    assert first.isVisible()
+    assert first.graphicsEffect() is not None
+    qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
+    qapp.processEvents()
+    assert completed == [True]
+    assert not first.isVisible()
+    assert first.graphicsEffect() is None
+    assert first.maximumHeight() == original_maximum_height
+    assert second.geometry().top() < second_start
 
 
 def test_reduce_motion_stops_active_effects_and_future_switches_are_immediate(qtbot) -> None:

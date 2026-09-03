@@ -252,6 +252,39 @@ def test_starting_the_next_task_retires_older_terminal_cards(qtbot, tmp_path) ->
     assert set(page.cards) == {"second"}
 
 
+def test_task_replacement_motion_collapses_old_card_without_position_rebound(
+    qapp,
+    qtbot,
+    tmp_path,
+) -> None:
+    motion = MotionManager(reduce_motion=False)
+    page = DownloadPage(str(tmp_path), motion=motion)
+    qtbot.addWidget(page)
+    page.resize(1100, 720)
+    page.show()
+    first = replace(_request(tmp_path), task_id="first-motion")
+    second = replace(_request(tmp_path), task_id="second-motion")
+    page.add_task(first)
+    qtbot.waitUntil(lambda: motion.active_count == 0, timeout=1000)
+    page.complete_task(DownloadResult(first.task_id, tmp_path / "first.mp4", 10, "now"))
+    page.add_task(second)
+    qapp.processEvents()
+
+    page.task_started(second.task_id)
+    qapp.processEvents()
+
+    assert first.task_id in page.cards
+    positions = []
+    for _ in range(8):
+        positions.append(page.cards[second.task_id].geometry().top())
+        qtbot.wait(35)
+        qapp.processEvents()
+
+    qtbot.waitUntil(lambda: motion.active_count == 0, timeout=1000)
+    assert set(page.cards) == {second.task_id}
+    assert all(current <= previous for previous, current in zip(positions, positions[1:]))
+
+
 def test_settings_auto_save_after_text_edit_and_show_saved_status(qtbot, tmp_path) -> None:
     page = SettingsPage(
         AppSettings(download_directory=str(tmp_path)),
