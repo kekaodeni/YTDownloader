@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QW
 
 from yt_downloader.core.formatting import format_bytes, format_eta, format_speed
 from yt_downloader.core.models import DownloadProgress, STATUS_TEXT, TaskStatus
-from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree
+from yt_downloader.ui.typography import FontRole, apply_typography, apply_typography_tree, set_typographic_text
 
 
 class ProgressWidget(QWidget):
@@ -48,7 +48,7 @@ class ProgressWidget(QWidget):
         apply_typography_tree(self)
 
     def set_progress(self, progress: DownloadProgress) -> None:
-        self.status_label.setText(STATUS_TEXT[progress.status])
+        set_typographic_text(self.status_label, STATUS_TEXT[progress.status], FontRole.SECONDARY)
         stopping = progress.status in {
             TaskStatus.CANCELLING,
             TaskStatus.CANCELLED,
@@ -57,21 +57,33 @@ class ProgressWidget(QWidget):
         if stopping:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(self._last_percent or 0)
-            self.percent_label.setText(f"{self._last_percent}%" if self._last_percent is not None else "—%")
+            set_typographic_text(
+                self.percent_label,
+                f"{self._last_percent}%" if self._last_percent is not None else "—%",
+                FontRole.NUMERIC,
+            )
         elif progress.percent is None:
             self.progress_bar.setRange(0, 0)
-            self.percent_label.setText("—%")
+            set_typographic_text(self.percent_label, "—%", FontRole.NUMERIC)
         else:
             value = round(progress.percent)
             self._last_percent = value
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(value)
-            self.percent_label.setText(f"{value}%")
-        self.speed_label.setText("—" if stopping else format_speed(progress.speed))
+            set_typographic_text(self.percent_label, f"{value}%", FontRole.NUMERIC)
+        set_typographic_text(
+            self.speed_label, "—" if stopping else format_speed(progress.speed), FontRole.NUMERIC
+        )
         if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
             total_text = format_bytes(progress.total_bytes)
             if progress.total_is_estimate and progress.total_bytes is not None:
                 total_text = f"估算 {total_text}"
-            self.size_label.setText(f"{format_bytes(progress.downloaded_bytes)} / {total_text}")
+            set_typographic_text(
+                self.size_label,
+                f"{format_bytes(progress.downloaded_bytes)} / {total_text}",
+                FontRole.NUMERIC,
+            )
         eta = "—" if stopping else format_eta(progress.eta)
-        self.eta_label.setText(f"剩余 {eta}" if eta != "—" else "剩余 —")
+        set_typographic_text(
+            self.eta_label, f"剩余 {eta}" if eta != "—" else "剩余 —", FontRole.NUMERIC
+        )

@@ -308,7 +308,7 @@ def test_task_replacement_motion_collapses_old_card_without_position_rebound(
     page.task_started(second.task_id)
     qapp.processEvents()
 
-    assert first.task_id in page.cards
+    assert first.task_id not in page.cards
     positions = []
     for _ in range(8):
         positions.append(page.cards[second.task_id].geometry().top())

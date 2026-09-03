@@ -70,7 +70,8 @@ class DownloadTaskCard(QWidget):
         content.addLayout(actions)
         root.addLayout(content, 1)
         self.remove_button = QToolButton()
-        self.remove_button.setIcon(FluentIconService().icon("delete"))
+        self._icons = FluentIconService()
+        self.remove_button.setIcon(self._icons.icon("delete"))
         self.remove_button.setIconSize(QSize(18, 18))
         self.remove_button.setToolTip("删除任务")
         self.remove_button.setAccessibleName(f"删除任务 {request.video.title}")
@@ -78,6 +79,9 @@ class DownloadTaskCard(QWidget):
         self.remove_button.clicked.connect(lambda: self.remove_requested.emit(request.task_id))
         root.addWidget(self.remove_button, 0, Qt.AlignmentFlag.AlignTop)
         apply_typography_tree(self)
+
+    def apply_theme(self, theme: str) -> None:
+        self.remove_button.setIcon(self._icons.icon("delete", theme=theme))
 
     def update_progress(self, progress: DownloadProgress) -> None:
         self.status = progress.status

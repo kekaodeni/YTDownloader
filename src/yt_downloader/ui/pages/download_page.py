@@ -393,3 +393,7 @@ class DownloadPage(QWidget):
     def task_request(self, task_id: str) -> DownloadRequest | None:
         card = self.cards.get(task_id)
         return card.request if card else None
+
+    def apply_theme(self, theme: str) -> None:
+        for card in self.cards.values():
+            card.apply_theme(theme)

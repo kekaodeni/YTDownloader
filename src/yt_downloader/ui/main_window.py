@@ -109,6 +109,7 @@ class MainWindow(QMainWindow):
                     theme=theme,
                 )
             )
+        self.download_page.apply_theme(theme)
 
     def set_download_busy(self, busy: bool) -> None:
         self._busy = busy
