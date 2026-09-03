@@ -129,7 +129,11 @@ class YoutubeService:
             if not isinstance(info, Mapping):
                 raise TypeError("yt-dlp returned non-mapping metadata")
             raw_formats = info.get("formats") or []
-            formats = tuple(normalize_formats(raw_formats if isinstance(raw_formats, list) else []))
+            duration = float(info["duration"]) if isinstance(info.get("duration"), (int, float)) else None
+            formats = tuple(normalize_formats(
+                raw_formats if isinstance(raw_formats, list) else [],
+                duration=duration,
+            ))
             if not formats:
                 raise AppError(
                     "formats_unavailable",
@@ -162,7 +166,7 @@ class YoutubeService:
                 url=normalized,
                 title=str(info.get("title") or "YouTube 视频"),
                 channel=str(info.get("channel") or info.get("uploader") or "未知频道"),
-                duration=float(info["duration"]) if isinstance(info.get("duration"), (int, float)) else None,
+                duration=duration,
                 thumbnail_url=thumbnail_url,
                 thumbnail_bytes=thumbnail_bytes,
                 formats=formats,

@@ -102,6 +102,10 @@ class AggregateProgressTracker:
                 )
             total = data.get("total_bytes")
             estimate = data.get("total_bytes_estimate")
+            fragmented = any(
+                data.get(key) is not None
+                for key in ("fragment_index", "fragment_count")
+            )
             if isinstance(total, (int, float)) and total > 0:
                 self._component_totals[format_id] = int(total)
                 self._component_estimates[format_id] = False
@@ -109,16 +113,26 @@ class AggregateProgressTracker:
             elif (
                 isinstance(estimate, (int, float))
                 and estimate > 0
+                and not fragmented
                 and self._component_estimates.get(format_id, True)
             ):
                 self._component_totals[format_id] = int(estimate)
                 self._component_estimates[format_id] = True
                 self._component_sources[format_id] = ProgressTotalSource.HOOK
-            if finished and format_id in self._component_totals:
-                self._component_downloaded[format_id] = max(
-                    self._component_downloaded.get(format_id, 0),
-                    self._component_totals[format_id],
-                )
+            if finished:
+                final_downloaded = self._component_downloaded.get(format_id, 0)
+                if final_downloaded > 0 and (
+                    format_id not in self._component_totals
+                    or self._component_estimates.get(format_id, True)
+                ):
+                    self._component_totals[format_id] = final_downloaded
+                    self._component_estimates[format_id] = False
+                    self._component_sources[format_id] = ProgressTotalSource.HOOK
+                if format_id in self._component_totals:
+                    self._component_downloaded[format_id] = max(
+                        final_downloaded,
+                        self._component_totals[format_id],
+                    )
 
         aggregate = (
             sum(self._component_downloaded.values())

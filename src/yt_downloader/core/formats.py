@@ -8,13 +8,27 @@ from typing import Any, Iterable, Mapping
 from .models import FormatOption
 
 
-def _size(item: Mapping[str, Any]) -> tuple[int | None, bool]:
+def _size(
+    item: Mapping[str, Any],
+    duration: float | None = None,
+) -> tuple[int | None, bool]:
     exact = item.get("filesize")
     if isinstance(exact, (int, float)) and exact > 0:
         return int(exact), False
     estimate = item.get("filesize_approx")
     if isinstance(estimate, (int, float)) and estimate > 0:
         return int(estimate), True
+    bitrate = item.get("tbr")
+    if (
+        isinstance(bitrate, (int, float))
+        and bitrate > 0
+        and isinstance(duration, (int, float))
+        and duration > 0
+    ):
+        # This is the same calculation used by yt-dlp's filesize_from_tbr.
+        # It gives fragmented streams a stable pre-download denominator even
+        # when their per-fragment hook estimates continually change.
+        return int(float(duration) * float(bitrate) * (1000 / 8)), True
     return None, False
 
 
@@ -65,7 +79,11 @@ def _quality_label(width: int | None, height: int | None, fps: float | None) -> 
     return f"{vertical_resolution}p{suffix}{fps_text}{orientation}"
 
 
-def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOption]:
+def normalize_formats(
+    raw_formats: Iterable[Mapping[str, Any]],
+    *,
+    duration: float | None = None,
+) -> list[FormatOption]:
     formats = [dict(item) for item in raw_formats]
     videos = [
         item for item in formats
@@ -111,8 +129,8 @@ def normalize_formats(raw_formats: Iterable[Mapping[str, Any]]) -> list[FormatOp
         else:
             final_ext = "mkv"
 
-        video_size, video_size_is_estimate = _size(video)
-        audio_size, audio_size_is_estimate = _size(audio) if audio else (None, False)
+        video_size, video_size_is_estimate = _size(video, duration)
+        audio_size, audio_size_is_estimate = _size(audio, duration) if audio else (None, False)
         if audio:
             estimated = video_size + audio_size if video_size is not None and audio_size is not None else None
             size_is_estimate = video_size_is_estimate or audio_size_is_estimate

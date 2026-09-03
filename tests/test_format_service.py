@@ -52,6 +52,36 @@ def test_split_format_has_unknown_size_when_one_required_stream_size_is_missing(
     assert options[0].estimated_size is None
 
 
+def test_fragmented_format_uses_duration_and_bitrate_as_a_stable_size_estimate() -> None:
+    options = normalize_formats([
+        {
+            "format_id": "140",
+            "ext": "m4a",
+            "vcodec": "none",
+            "acodec": "mp4a.40.2",
+            "filesize": 2_410_324,
+        },
+        {
+            "format_id": "628",
+            "ext": "mp4",
+            "width": 3840,
+            "height": 2160,
+            "fps": 60,
+            "vcodec": "vp09.00.51.08",
+            "acodec": "none",
+            "tbr": 27_982.889,
+            "protocol": "m3u8_native",
+        },
+    ], duration=149)
+
+    option = options[0]
+    assert option.video_size == 521_181_307
+    assert option.video_size_is_estimate is True
+    assert option.audio_size == 2_410_324
+    assert option.estimated_size == 523_591_631
+    assert option.size_is_estimate is True
+
+
 def test_portrait_quality_uses_the_short_edge_and_preserves_dimensions() -> None:
     options = normalize_formats([
         {
