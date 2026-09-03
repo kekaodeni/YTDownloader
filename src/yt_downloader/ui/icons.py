@@ -11,9 +11,6 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
 from yt_downloader.infrastructure.runtime import resource_path
-from yt_downloader.ui.theme import DARK, LIGHT
-
-
 class FluentIconService:
     """Loads the regular/filled SVG pair shipped under Microsoft's MIT license."""
 
@@ -22,6 +19,8 @@ class FluentIconService:
         self._cache: dict[tuple[str, bool, str], QIcon] = {}
 
     def icon(self, name: str, *, selected: bool = False, theme: str | None = None) -> QIcon:
+        from yt_downloader.ui.theme import DARK, LIGHT
+
         if theme is None:
             app = QApplication.instance()
             theme = str(app.property("fluentTheme")) if app and app.property("fluentTheme") else "light"
@@ -46,3 +45,10 @@ class FluentIconService:
             icon.addPixmap(pixmap)
         self._cache[key] = icon
         return icon
+
+    @staticmethod
+    def stylesheet_url(name: str, *, theme: str) -> str:
+        """Return a QSS-safe URL for a pre-themed Fluent SVG resource."""
+        resolved_theme = "dark" if theme == "dark" else "light"
+        path = resource_path("assets", "icons", f"{name}_{resolved_theme}.svg")
+        return f'url("{path.as_posix()}")'

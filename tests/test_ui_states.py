@@ -121,6 +121,19 @@ def test_generated_qss_covers_combo_selected_hover_focus_and_disabled_states() -
     assert "QComboBox QAbstractItemView::item:selected:hover" in stylesheet
     assert "QComboBox QAbstractItemView:focus" in stylesheet
     assert "QComboBox QAbstractItemView::item:disabled" in stylesheet
+
+
+def test_generated_qss_fully_owns_combo_box_arrow_subcontrols(qapp) -> None:
+    stylesheet = _qss(LIGHT)
+
+    assert "QComboBox::drop-down" in stylesheet
+    assert "QComboBox::drop-down:hover" in stylesheet
+    assert "QComboBox::drop-down:pressed" in stylesheet
+    assert "QComboBox::down-arrow" in stylesheet
+    assert "QComboBox::down-arrow:on" in stylesheet
+    assert "border: none" in stylesheet
+    assert "chevron_down_light.svg" in stylesheet
+    assert "QComboBox:focus" in stylesheet
     assert f"selection-color: {LIGHT.text}" in stylesheet
 
 
