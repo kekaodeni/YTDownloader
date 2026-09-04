@@ -48,42 +48,55 @@ class ProgressWidget(QWidget):
         apply_typography_tree(self)
 
     def set_progress(self, progress: DownloadProgress) -> None:
-        set_typographic_text(self.status_label, STATUS_TEXT[progress.status], FontRole.SECONDARY)
+        self._set_text(self.status_label, STATUS_TEXT[progress.status], FontRole.SECONDARY)
         stopping = progress.status in {
             TaskStatus.CANCELLING,
             TaskStatus.CANCELLED,
             TaskStatus.FAILED,
         }
         if stopping:
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(self._last_percent or 0)
-            set_typographic_text(
+            self._set_range(0, 100)
+            self._set_value(self._last_percent or 0)
+            self._set_text(
                 self.percent_label,
                 f"{self._last_percent}%" if self._last_percent is not None else "—%",
                 FontRole.NUMERIC,
             )
         elif progress.percent is None:
-            self.progress_bar.setRange(0, 0)
-            set_typographic_text(self.percent_label, "—%", FontRole.NUMERIC)
+            self._set_range(0, 0)
+            self._set_text(self.percent_label, "—%", FontRole.NUMERIC)
         else:
             value = round(progress.percent)
             self._last_percent = value
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(value)
-            set_typographic_text(self.percent_label, f"{value}%", FontRole.NUMERIC)
-        set_typographic_text(
+            self._set_range(0, 100)
+            self._set_value(value)
+            self._set_text(self.percent_label, f"{value}%", FontRole.NUMERIC)
+        self._set_text(
             self.speed_label, "—" if stopping else format_speed(progress.speed), FontRole.NUMERIC
         )
         if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
             total_text = format_bytes(progress.total_bytes)
             if progress.total_is_estimate and progress.total_bytes is not None:
                 total_text = f"估算 {total_text}"
-            set_typographic_text(
+            self._set_text(
                 self.size_label,
                 f"{format_bytes(progress.downloaded_bytes)} / {total_text}",
                 FontRole.NUMERIC,
             )
         eta = "—" if stopping else format_eta(progress.eta)
-        set_typographic_text(
+        self._set_text(
             self.eta_label, f"剩余 {eta}" if eta != "—" else "剩余 —", FontRole.NUMERIC
         )
+
+    @staticmethod
+    def _set_text(label: QLabel, text: str, role: FontRole) -> None:
+        if label.text() != text:
+            set_typographic_text(label, text, role)
+
+    def _set_range(self, minimum: int, maximum: int) -> None:
+        if (self.progress_bar.minimum(), self.progress_bar.maximum()) != (minimum, maximum):
+            self.progress_bar.setRange(minimum, maximum)
+
+    def _set_value(self, value: int) -> None:
+        if self.progress_bar.value() != value:
+            self.progress_bar.setValue(value)

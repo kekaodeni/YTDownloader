@@ -41,7 +41,8 @@ class SettingsPage(QWidget):
         heading = QLabel("设置")
         apply_typography(heading, FontRole.PAGE_TITLE)
         root.addWidget(heading)
-        scroll = QScrollArea()
+        self.page_scroll = QScrollArea()
+        scroll = self.page_scroll
         scroll.setWidgetResizable(True)
         host = QWidget()
         content = QVBoxLayout(host)

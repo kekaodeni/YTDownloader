@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.motion import MotionManager
+from yt_downloader.ui.smooth_scroll import SmoothScrollController
 from yt_downloader.ui.pages.about_page import AboutPage
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.history_page import HistoryPage
@@ -55,6 +56,9 @@ class MainWindow(QMainWindow):
         self.about_page = AboutPage()
         for page in (self.download_page, self.history_page, self.settings_page, self.about_page):
             self.stack.addWidget(page)
+        self.smooth_scroll = SmoothScrollController(self.motion, self)
+        for area in (self.download_page.page_scroll, self.history_page.list_view, self.settings_page.page_scroll):
+            self.smooth_scroll.install(area)
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QToolButton] = []

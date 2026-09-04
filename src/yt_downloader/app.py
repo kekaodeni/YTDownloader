@@ -34,6 +34,7 @@ from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResu
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
 from yt_downloader.ui.main_window import MainWindow
+from yt_downloader.ui.progress_dispatch import ProgressEventCoalescer
 from yt_downloader.ui.localization import install_qt_zh_cn_translator
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.typography import application_font, install_typography_manager, resolve_font_families
@@ -153,6 +154,8 @@ class AppController:
         self._pending_retry: HistoryRecord | DownloadRequest | None = None
         self._remove_intents: set[str] = set()
         self._dialogs: list[object] = []
+        self._persisted_task_stages: dict[str, TaskStatus] = {}
+        self._progress_dispatch = ProgressEventCoalescer(self.window)
         self._wire()
         self.refresh_history()
         clipboard = QGuiApplication.clipboard().text().strip()
@@ -188,7 +191,8 @@ class AppController:
         self.queue.task_queued.connect(download.add_task)
         self.queue.task_started.connect(download.task_started)
         self.queue.cancelling.connect(self._cancelling)
-        self.queue.progress.connect(self._progress)
+        self.queue.progress.connect(self._progress_dispatch.push)
+        self._progress_dispatch.dispatched.connect(self._progress)
         self.queue.completed.connect(self._completed)
         self.queue.failed.connect(self._failed)
         self.queue.cancelled.connect(self._cancelled)
@@ -305,6 +309,7 @@ class AppController:
                 TaskStatus.PENDING, created,
             )
             self.history.upsert(record)
+            self._persisted_task_stages[request.task_id] = TaskStatus.PENDING
             self.refresh_history()
             self.queue.enqueue(request)
         except (OSError, ValueError) as exc:
@@ -317,6 +322,9 @@ class AppController:
 
     def _progress(self, progress) -> None:
         self.window.download_page.update_task(progress)
+        if self._persisted_task_stages.get(progress.task_id) is progress.status:
+            return
+        self._persisted_task_stages[progress.task_id] = progress.status
         try:
             self.history.update_status(progress.task_id, progress.status)
         except Exception:
@@ -324,12 +332,14 @@ class AppController:
 
     def _cancelling(self, task_id: str) -> None:
         self.window.download_page.cancel_task(task_id)
+        self._persisted_task_stages[task_id] = TaskStatus.CANCELLING
         try:
             self.history.update_status(task_id, TaskStatus.CANCELLING)
         except Exception:
             logger.exception("Failed to persist cancelling task")
 
     def _completed(self, result) -> None:
+        getattr(self, "_persisted_task_stages", {}).pop(result.task_id, None)
         self.window.download_page.complete_task(result)
         try:
             self.history.update_status(
@@ -347,6 +357,7 @@ class AppController:
             self.window.download_page.remove_task(result.task_id)
 
     def _failed(self, task_id: str, error: AppError) -> None:
+        getattr(self, "_persisted_task_stages", {}).pop(task_id, None)
         self.window.download_page.fail_task(task_id, TaskStatus.FAILED)
         try:
             self.history.update_status(task_id, TaskStatus.FAILED, error_summary=error.user_message)
@@ -359,6 +370,7 @@ class AppController:
         self.show_error(error)
 
     def _cancelled(self, task_id: str, cleanup_report) -> None:
+        getattr(self, "_persisted_task_stages", {}).pop(task_id, None)
         self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED, cleanup_report)
         summary = (
             "任务由用户取消，临时文件已清理。"
