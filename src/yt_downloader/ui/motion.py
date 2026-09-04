@@ -111,6 +111,8 @@ class _MotionState:
 
 
 class MotionManager(QObject):
+    reduced_motion_changed = Signal(bool)
+
     def __init__(self, reduce_motion: bool = False, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.reduce_motion = reduce_motion
@@ -123,7 +125,10 @@ class MotionManager(QObject):
         return len(self._active) + len(self._snapshots)
 
     def set_reduce_motion(self, enabled: bool) -> None:
-        self.reduce_motion = bool(enabled)
+        enabled = bool(enabled)
+        if enabled == self.reduce_motion:
+            return
+        self.reduce_motion = enabled
         if self.reduce_motion:
             for key in tuple(self._active):
                 self._finish(key, stopped=True)
@@ -131,6 +136,7 @@ class MotionManager(QObject):
                 if isValid(proxy):
                     proxy.cleanup()
             self._snapshots.clear()
+        self.reduced_motion_changed.emit(enabled)
 
     def switch_page(self, stack: QStackedWidget, index: int) -> None:
         if not 0 <= index < stack.count():

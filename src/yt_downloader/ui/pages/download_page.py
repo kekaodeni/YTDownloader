@@ -26,6 +26,7 @@ from yt_downloader.ui.typography import (
     set_typographic_text,
 )
 from yt_downloader.ui.widgets.task_card import DownloadTaskCard
+from yt_downloader.ui.widgets.thumbnail_crossfade import ThumbnailCrossFadeWidget
 
 if TYPE_CHECKING:
     from yt_downloader.ui.motion import MotionManager
@@ -113,10 +114,9 @@ class DownloadPage(QWidget):
         info_root = QHBoxLayout(self.video_card)
         info_root.setContentsMargins(16, 16, 16, 16)
         info_root.setSpacing(20)
-        self.thumbnail = QLabel("缩略图")
+        self.thumbnail = ThumbnailCrossFadeWidget(motion=motion)
         self.thumbnail.setProperty("fluentRole", "subtle")
         self.thumbnail.setFixedSize(300, 169)
-        self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info_root.addWidget(self.thumbnail, 0, Qt.AlignmentFlag.AlignTop)
         details = QVBoxLayout()
         details.setSpacing(9)
@@ -252,7 +252,7 @@ class DownloadPage(QWidget):
         if video.thumbnail_bytes:
             pixmap.loadFromData(video.thumbnail_bytes)
         if not pixmap.isNull():
-            self.thumbnail.setPixmap(pixmap.scaled(self.thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
+            self.thumbnail.setPixmap(pixmap)
         self.format_combo.clear()
         selected = 0
         for index, option in enumerate(video.formats):
@@ -276,11 +276,7 @@ class DownloadPage(QWidget):
             return False
         self.video = replace(self.video, thumbnail_bytes=thumbnail_bytes)
         self.thumbnail.clear()
-        self.thumbnail.setPixmap(pixmap.scaled(
-            self.thumbnail.size(),
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        ))
+        self.thumbnail.setPixmap(pixmap)
         return True
 
     def _format_changed(self) -> None:
