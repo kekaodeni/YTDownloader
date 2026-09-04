@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from yt_downloader.core.models import AppSettings, CodecPreference
+from yt_downloader import __version__
 from yt_downloader.ui.typography import (
     FontRole,
     apply_form_typography,
@@ -23,6 +24,7 @@ class SettingsPage(QWidget):
     theme_preview_requested = Signal(str)
     open_logs_requested = Signal()
     copy_system_info_requested = Signal()
+    update_check_requested = Signal()
 
     def __init__(self, settings: AppSettings, *, ytdlp_version: str, ffmpeg_description: str, parent=None) -> None:
         super().__init__(parent)
@@ -133,6 +135,29 @@ class SettingsPage(QWidget):
         appearance_form.addRow("", self.reduce_motion)
         content.addWidget(appearance)
 
+        content.addWidget(self._section("更新"))
+        updates = QWidget()
+        updates.setProperty("fluentRole", "card")
+        updates_form = QFormLayout(updates)
+        updates_form.setContentsMargins(18, 16, 18, 16)
+        updates_form.addRow("当前版本", QLabel(__version__))
+        self.update_channel_label = QLabel("稳定通道")
+        updates_form.addRow("更新通道", self.update_channel_label)
+        self.auto_check_updates = QCheckBox("自动检查更新")
+        self.auto_check_updates.setChecked(settings.auto_check_updates)
+        updates_form.addRow("", self.auto_check_updates)
+        update_row = QWidget()
+        update_layout = QHBoxLayout(update_row)
+        update_layout.setContentsMargins(0, 0, 0, 0)
+        self.update_check_button = QPushButton("检查更新")
+        self.update_check_button.clicked.connect(self.update_check_requested)
+        self.update_status_label = QLabel("尚未检查")
+        apply_typography(self.update_status_label, FontRole.CAPTION)
+        update_layout.addWidget(self.update_check_button)
+        update_layout.addWidget(self.update_status_label, 1)
+        updates_form.addRow("更新状态", update_row)
+        content.addWidget(updates)
+
         content.addWidget(self._section("工具与诊断"))
         tools = QWidget()
         tools.setProperty("fluentRole", "card")
@@ -189,8 +214,9 @@ class SettingsPage(QWidget):
         self.proxy_input.textChanged.connect(self._mark_dirty)
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
         self.reduce_motion.toggled.connect(self._mark_dirty_immediately)
+        self.auto_check_updates.toggled.connect(self._mark_dirty_immediately)
         self.ffmpeg_input.textChanged.connect(self._mark_dirty)
-        for current_form in (form, appearance_form, tools_form):
+        for current_form in (form, appearance_form, updates_form, tools_form):
             apply_form_typography(current_form)
         apply_typography_tree(self)
 
@@ -254,7 +280,7 @@ class SettingsPage(QWidget):
 
     def current_settings(self) -> AppSettings:
         return AppSettings(
-            schema_version=3,
+            schema_version=4,
             download_directory=self.directory_input.text().strip(),
             default_quality=str(self.quality_combo.currentData()),
             theme=str(self.theme_combo.currentData()),
@@ -264,7 +290,13 @@ class SettingsPage(QWidget):
             custom_proxy_url=self.proxy_input.text().strip(),
             concurrent_fragments=int(self.fragments_combo.currentData()),
             codec_preference=CodecPreference(str(self.codec_combo.currentData())),
+            auto_check_updates=self.auto_check_updates.isChecked(),
         )
+
+    def set_update_state(self, text: str, *, busy: bool = False) -> None:
+        self.update_status_label.setText(text)
+        self.update_check_button.setEnabled(not busy)
+        self.update_check_button.setText("正在检查…" if busy else "检查更新")
 
     def _save(self) -> None:
         self._autosave_timer.stop()

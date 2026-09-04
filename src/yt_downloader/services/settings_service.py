@@ -35,8 +35,8 @@ class SettingsService:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             settings, source_schema = self._from_mapping(data)
-            self._migration_pending = source_schema < 3
-            self._migration_source_schema = source_schema if source_schema < 3 else None
+            self._migration_pending = source_schema < 4
+            self._migration_source_schema = source_schema if source_schema < 4 else None
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring invalid settings file %s: %s", self.path, exc)
@@ -46,7 +46,7 @@ class SettingsService:
         if not isinstance(data, dict):
             raise ValueError("settings root must be an object")
         source_schema = int(data.get("schema_version", 1))
-        if source_schema not in {1, 2, 3}:
+        if source_schema not in {1, 2, 3, 4}:
             raise ValueError("unsupported settings schema")
         theme = str(data.get("theme", "system"))
         if theme not in _THEMES:
@@ -66,7 +66,7 @@ class SettingsService:
         except ValueError as exc:
             raise ValueError("invalid codec preference") from exc
         return AppSettings(
-            schema_version=3,
+            schema_version=4,
             download_directory=directory,
             default_quality=quality,
             theme=theme,
@@ -76,13 +76,14 @@ class SettingsService:
             custom_proxy_url=custom_proxy_url,
             concurrent_fragments=concurrent_fragments,
             codec_preference=codec_preference,
+            auto_check_updates=bool(data.get("auto_check_updates", True)),
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:
         self.validate(settings)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        normalized = replace(settings, schema_version=3)
+        normalized = replace(settings, schema_version=4)
         payload = json.dumps(asdict(normalized), ensure_ascii=False, indent=2) + "\n"
         source_schema = self._migration_source_schema or 2
         backup = self.path.with_name(f"settings.v{source_schema}.backup.json")

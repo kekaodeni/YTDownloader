@@ -78,6 +78,24 @@ class SecureUpdateHttpClient:
             session.close()
             raise
 
+    def get_bytes(self, url: str, *, max_bytes: int = 1024 * 1024) -> bytes:
+        if max_bytes <= 0:
+            raise ValueError('Update metadata size limit must be positive')
+        stream = self.open_stream(url, (10, 30))
+        chunks: list[bytes] = []
+        length = 0
+        try:
+            for chunk in stream.iter_content(64 * 1024):
+                if not chunk:
+                    continue
+                length += len(chunk)
+                if length > max_bytes:
+                    raise ValueError('Update metadata is too large')
+                chunks.append(chunk)
+            return b''.join(chunks)
+        finally:
+            stream.close()
+
 
 class _StreamingResponse:
     def __init__(self, response, session) -> None:

@@ -24,7 +24,7 @@ def test_round_trips_settings_atomically(tmp_path: Path) -> None:
     service.save(changed)
     assert service.load() == changed
     assert not path.with_suffix(".json.tmp").exists()
-    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 4
 
 
 def test_recovers_from_invalid_settings(tmp_path: Path) -> None:
@@ -54,7 +54,7 @@ def test_migrates_schema_one_with_a_copy_first_backup(tmp_path: Path) -> None:
 
     migrated = service.load()
 
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 4
     assert migrated.download_directory == "D:/旧目录"
     assert not (tmp_path / "settings.v1.backup.json").exists()
 
@@ -62,7 +62,7 @@ def test_migrates_schema_one_with_a_copy_first_backup(tmp_path: Path) -> None:
 
     backup = tmp_path / "settings.v1.backup.json"
     assert json.loads(backup.read_text(encoding="utf-8"))["schema_version"] == 1
-    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 4
 
 
 def test_rejects_invalid_custom_proxy_without_overwriting_saved_settings(tmp_path: Path) -> None:
@@ -110,8 +110,25 @@ def test_migrates_schema_two_to_codec_policy_with_copy_first_backup(tmp_path: Pa
 
     migrated = service.load()
 
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 4
     assert migrated.codec_preference is CodecPreference.AUTO
     service.save(migrated)
     assert json.loads((tmp_path / "settings.v2.backup.json").read_text(encoding="utf-8"))["schema_version"] == 2
-    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 4
+
+
+def test_migrates_schema_three_to_auto_update_setting_with_copy_first_backup(tmp_path: Path) -> None:
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({
+        'schema_version': 3,
+        'download_directory': str(tmp_path / '视频'),
+        'theme': 'dark', 'proxy_mode': 'direct', 'codec_preference': 'vp9',
+        'auto_check_updates': False,
+    }, ensure_ascii=False), encoding='utf-8')
+    service = SettingsService(path, default_download_directory=tmp_path)
+    migrated = service.load()
+    assert migrated.schema_version == 4
+    assert migrated.auto_check_updates is False
+    service.save(migrated)
+    assert json.loads((tmp_path / 'settings.v3.backup.json').read_text(encoding='utf-8'))['schema_version'] == 3
+    assert json.loads(path.read_text(encoding='utf-8'))['schema_version'] == 4

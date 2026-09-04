@@ -69,3 +69,14 @@ def test_action_map_covers_required_dialog_verbs() -> None:
 
 def test_qt_simplified_chinese_translation_is_available(qapp) -> None:
     assert install_qt_zh_cn_translator(qapp)
+def test_update_error_dialog_has_localized_retry_copy_and_close(qtbot):
+    retries = []
+    dialog = ErrorDialog(
+        AppError('update', '更新失败', 'detail'), 'report',
+        title_text='更新失败', retry_callback=lambda: retries.append(True),
+    )
+    qtbot.addWidget(dialog)
+    labels = {button.text() for button in dialog.findChildren(QPushButton)}
+    assert {'重试', '复制错误报告', '关闭'} <= labels
+    next(button for button in dialog.findChildren(QPushButton) if button.text() == '重试').click()
+    assert retries == [True]

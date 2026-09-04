@@ -57,3 +57,23 @@ def test_discovery_http_uses_proxy_without_netrc_cookies_or_credentials():
     assert session.proxies == snapshot.detected_proxies
     assert 'Authorization' not in session.headers and 'Cookie' not in session.headers
     assert session.call[1]['allow_redirects'] is False
+def test_update_metadata_bytes_are_bounded_and_use_release_asset_redirect_policy():
+    class Response:
+        status_code = 200
+        headers = {}
+        def __init__(self): self.closed = False
+        def iter_content(self, _size): yield b'abc'; yield b'def'
+        def raise_for_status(self): pass
+        def close(self): self.closed = True
+    response = Response()
+    class Session:
+        def __init__(self): self.headers={}; self.proxies={}; self.cookies=type('C',(),{'clear':lambda self:None})(); self.auth=None
+        def get(self, *_args, **_kwargs): return response
+        def close(self): pass
+    snapshot=type('S',(),{'mode':'direct','detected_proxies':{},'custom_proxy_url':''})()
+    policy=type('P',(),{'snapshot':lambda self:snapshot})()
+    client = SecureUpdateHttpClient(policy, session_factory=Session)
+    url = 'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.1/update-manifest.json'
+    assert client.get_bytes(url, max_bytes=6) == b'abcdef'
+    with pytest.raises(ValueError, match='large'):
+        client.get_bytes(url, max_bytes=5)

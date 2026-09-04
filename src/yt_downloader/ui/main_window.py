@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
+    QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from yt_downloader.core.models import AppSettings
@@ -21,6 +21,8 @@ from yt_downloader.infrastructure.runtime import resource_path
 
 class MainWindow(QMainWindow):
     cancel_all_requested = Signal()
+    cancel_update_requested = Signal()
+    show_update_requested = Signal()
 
     def __init__(
         self,
@@ -36,6 +38,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 720)
         self.setMinimumSize(820, 560)
         self._busy = False
+        self._update_busy = False
         self._closing_after_cancel = False
         self.icons = icons or FluentIconService()
         self.motion = MotionManager(settings.reduce_motion, self)
@@ -76,7 +79,26 @@ class MainWindow(QMainWindow):
         nav.addStretch()
         nav.addWidget(self._nav_button("关于", "info", 3))
         layout.addWidget(self.navigation)
-        layout.addWidget(self.stack, 1)
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+        self.update_banner = QWidget()
+        self.update_banner.setProperty("fluentRole", "card")
+        banner_layout = QHBoxLayout(self.update_banner)
+        banner_layout.setContentsMargins(18, 8, 18, 8)
+        self.update_banner_label = QLabel()
+        self.update_banner_open = QPushButton("查看更新")
+        self.update_banner_close = QPushButton("关闭")
+        self.update_banner_open.clicked.connect(self.show_update_requested)
+        self.update_banner_close.clicked.connect(self.update_banner.hide)
+        banner_layout.addWidget(self.update_banner_label, 1)
+        banner_layout.addWidget(self.update_banner_open)
+        banner_layout.addWidget(self.update_banner_close)
+        self.update_banner.hide()
+        right_layout.addWidget(self.update_banner)
+        right_layout.addWidget(self.stack, 1)
+        layout.addWidget(right, 1)
         self.nav_buttons[0].setChecked(True)
         self._select_page(0)
         apply_typography_tree(self)
@@ -118,9 +140,19 @@ class MainWindow(QMainWindow):
             )
         self.download_page.apply_theme(theme)
 
+    def show_update_available(self, version: str) -> None:
+        self.update_banner_label.setText(f"YT Downloader {version} 已可用")
+        self.update_banner.show()
+
     def set_download_busy(self, busy: bool) -> None:
         self._busy = busy
-        if not busy and self._closing_after_cancel:
+        if not busy and not self._update_busy and self._closing_after_cancel:
+            self._closing_after_cancel = False
+            self.close()
+
+    def set_update_busy(self, busy: bool) -> None:
+        self._update_busy = busy
+        if not busy and not self._busy and self._closing_after_cancel:
             self._closing_after_cancel = False
             self.close()
 
@@ -141,18 +173,21 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if not self._busy:
+        if not self._busy and not self._update_busy:
             event.accept()
             return
         box = QMessageBox(self)
-        box.setWindowTitle("下载仍在进行")
-        box.setText("仍有下载任务。你可以继续等待，或取消任务后退出。")
+        box.setWindowTitle("后台任务仍在进行")
+        box.setText("仍有下载或更新任务。你可以继续等待，或取消任务后退出。")
         wait_button = box.addButton("继续等待", QMessageBox.ButtonRole.RejectRole)
         cancel_button = box.addButton("取消任务并退出", QMessageBox.ButtonRole.DestructiveRole)
         box.setDefaultButton(wait_button)
         box.exec()
         if box.clickedButton() is cancel_button:
             self._closing_after_cancel = True
-            self.cancel_all_requested.emit()
+            if self._busy:
+                self.cancel_all_requested.emit()
+            if self._update_busy:
+                self.cancel_update_requested.emit()
             self.hide()
         event.ignore()

@@ -180,7 +180,7 @@ class HistoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 3
+    schema_version: int = 4
     download_directory: str = ""
     default_quality: str = "recommended"
     theme: str = "system"
@@ -190,3 +190,4 @@ class AppSettings:
     custom_proxy_url: str = ""
     concurrent_fragments: int = 0
     codec_preference: CodecPreference = CodecPreference.AUTO
+    auto_check_updates: bool = True

@@ -8,12 +8,15 @@ from dataclasses import replace
 import json
 import logging
 from pathlib import Path
+import os
+import subprocess
 import sys
 import threading
 import uuid
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 import yt_dlp.version
 
@@ -50,6 +53,15 @@ from yt_downloader.workers.metadata_process import (
     run_metadata_process_self_test,
 )
 from yt_downloader.workers.request_gate import LatestRequestGate, RequestToken
+from yt_downloader.updates.discovery import UpdateDiscoveryService
+from yt_downloader.updates.download import UpdatePackageDownloader
+from yt_downloader.updates.http import SecureUpdateHttpClient
+from yt_downloader.updates.models import UpdateCapability, UpdateState
+from yt_downloader.updates.service import UpdateService
+from yt_downloader.updates.signature import TrustedKeyring
+from yt_downloader.updates.state import UpdateStateStore, detect_update_capability
+from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS
+from yt_downloader.ui.widgets.update_dialog import UpdateDialog
 
 
 logger = logging.getLogger(__name__)
@@ -157,11 +169,32 @@ class AppController:
         self._dialogs: list[object] = []
         self._persisted_task_stages: dict[str, TaskStatus] = {}
         self._progress_dispatch = ProgressEventCoalescer(self.window)
+        self.update_http = SecureUpdateHttpClient(self.network)
+        self.update_capability = detect_update_capability(trusted_keys=PRODUCTION_TRUSTED_KEYS)
+        self.updates = UpdateService(
+            current_version=__version__,
+            discovery=UpdateDiscoveryService(self.update_http.get_json),
+            fetch_bytes=self.update_http.get_bytes,
+            keyring=TrustedKeyring(PRODUCTION_TRUSTED_KEYS),
+            state_store=UpdateStateStore(paths.update_state),
+            downloader=UpdatePackageDownloader(self.update_http.open_stream),
+            staging_root=paths.update_staging,
+            capability=self.update_capability,
+            backup_size=self._installed_tree_size,
+        )
+        self._update_dialog: UpdateDialog | None = None
+        self._update_install_pending = False
         self._wire()
         self.refresh_history()
+        restored_update = self.updates.restore_verified_package()
+        persisted_update = self.updates.state_store.load()
+        if persisted_update.last_checked_at and not restored_update:
+            self.window.settings_page.set_update_state(f"上次检查：{persisted_update.last_checked_at}")
         clipboard = QGuiApplication.clipboard().text().strip()
         if clipboard:
             self.window.download_page.set_clipboard_hint(clipboard)
+        if self.settings.auto_check_updates and not restored_update:
+            QTimer.singleShot(10_000, lambda: self.updates.check(manual=False))
 
     def _wire(self) -> None:
         download = self.window.download_page
@@ -189,6 +222,7 @@ class AppController:
         self.theme.theme_changed.connect(self.window.apply_theme)
         settings.open_logs_requested.connect(lambda: self._open_directory(self.paths.logs))
         settings.copy_system_info_requested.connect(self.copy_system_info)
+        settings.update_check_requested.connect(lambda: self.updates.check(manual=True))
         self.queue.task_queued.connect(download.add_task)
         self.queue.task_started.connect(download.task_started)
         self.queue.cancelling.connect(self._cancelling)
@@ -199,12 +233,20 @@ class AppController:
         self.queue.cancelled.connect(self._cancelled)
         self.queue.busy_changed.connect(self.window.set_download_busy)
         self.window.cancel_all_requested.connect(self.queue.cancel_all)
+        self.window.cancel_update_requested.connect(self.updates.cancel)
         self.metadata_process.state_changed.connect(download.set_parse_state)
         self.metadata_process.result.connect(self._metadata_result)
         self.metadata_process.failed.connect(self._metadata_error)
         self.metadata_process.timed_out.connect(self._metadata_error)
         self.metadata_process.cancelled.connect(self._metadata_cancelled)
         self.app.aboutToQuit.connect(self._shutdown_background_operations)
+        self.window.show_update_requested.connect(self._show_update_dialog)
+        self.updates.state_changed.connect(self._update_state_changed)
+        self.updates.update_available.connect(self._update_available)
+        self.updates.up_to_date.connect(lambda: self.window.settings_page.set_update_state("已是最新版本"))
+        self.updates.progress.connect(self._update_progress)
+        self.updates.ready.connect(self._update_ready)
+        self.updates.failed.connect(self._update_failed)
 
     def fetch_metadata(self, url: str) -> None:
         self._cancel_thumbnail()
@@ -291,6 +333,114 @@ class AppController:
     def _shutdown_background_operations(self) -> None:
         self._cancel_thumbnail()
         self.metadata_process.shutdown()
+        self.updates.cancel()
+
+    def _installed_tree_size(self) -> int:
+        if not getattr(sys, 'frozen', False):
+            return 0
+        root = Path(sys.executable).parent
+        try:
+            return sum(path.stat().st_size for path in root.rglob('*') if path.is_file())
+        except OSError:
+            return 0
+
+    def _update_state_changed(self, state: UpdateState) -> None:
+        labels = {
+            UpdateState.IDLE: "尚未检查", UpdateState.CHECKING: "正在检查…",
+            UpdateState.UP_TO_DATE: "已是最新版本", UpdateState.AVAILABLE: "发现新版本",
+            UpdateState.DOWNLOADING: "正在下载更新…", UpdateState.CANCELLING: "正在取消更新…",
+            UpdateState.VERIFYING: "正在验证更新…", UpdateState.READY_TO_INSTALL: "更新已验证",
+            UpdateState.PREPARING_EXIT: "正在准备退出并更新…", UpdateState.FAILED: "更新操作失败",
+        }
+        self.window.settings_page.set_update_state(labels.get(state, state.value), busy=state is UpdateState.CHECKING)
+        self.window.set_update_busy(state in {UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING})
+        if self._update_dialog is not None:
+            self._update_dialog.set_state(state)
+
+    def _update_available(self, manifest) -> None:
+        self.window.show_update_available(str(manifest.version))
+        self.window.settings_page.set_update_state(f"发现 {manifest.version}")
+
+    def _show_update_dialog(self) -> None:
+        manifest = self.updates.manifest
+        if manifest is None:
+            self.updates.check(manual=True)
+            return
+        if self._update_dialog is not None:
+            self._update_dialog.raise_()
+            self._update_dialog.activateWindow()
+            return
+        dialog = UpdateDialog(manifest, self.update_capability, self.window)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.download_requested.connect(self.updates.download)
+        dialog.cancel_requested.connect(self.updates.cancel)
+        dialog.install_requested.connect(self._request_update_install)
+        dialog.release_page_requested.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
+        dialog.destroyed.connect(lambda: setattr(self, '_update_dialog', None))
+        self._update_dialog = dialog
+        dialog.show()
+
+    def _update_progress(self, progress) -> None:
+        if self._update_dialog is not None:
+            self._update_dialog.set_progress(progress)
+
+    def _update_ready(self, _package) -> None:
+        self.window.update_banner.hide()
+        if self._update_dialog is not None:
+            self._update_dialog.set_state(UpdateState.READY_TO_INSTALL)
+
+    def _update_failed(self, error: AppError, manual: bool) -> None:
+        logger.warning("Update operation failed: %s", error.technical_message)
+        self.window.settings_page.set_update_state("检查或下载失败")
+        if manual:
+            self.show_error(error, title_text="更新失败", retry_callback=self._retry_update)
+
+    def _retry_update(self) -> None:
+        if self.updates.manifest is not None:
+            self.updates.download()
+        else:
+            self.updates.check(manual=True)
+
+    def _request_update_install(self) -> None:
+        busy = self.queue.is_busy or self.metadata_process.is_running or bool(self._thumbnail_workers or self._settings_workers)
+        if busy:
+            box = QMessageBox(self.window)
+            box.setWindowTitle("任务仍在进行")
+            box.setText("默认会继续当前任务。也可以明确取消任务、完成清理后退出并更新。")
+            wait_button = box.addButton("继续当前任务", QMessageBox.ButtonRole.RejectRole)
+            update_button = box.addButton("取消任务并更新", QMessageBox.ButtonRole.DestructiveRole)
+            box.setDefaultButton(wait_button)
+            box.exec()
+            if box.clickedButton() is not update_button:
+                return
+            self._update_install_pending = True
+            self.queue.cancel_all()
+            self.metadata_process.cancel()
+            self._cancel_thumbnail()
+            QTimer.singleShot(100, self._finish_update_install_when_idle)
+            return
+        self._launch_updater_and_exit()
+
+    def _finish_update_install_when_idle(self) -> None:
+        if not self._update_install_pending:
+            return
+        if self.queue.is_busy or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
+            QTimer.singleShot(100, self._finish_update_install_when_idle)
+            return
+        self._update_install_pending = False
+        self._launch_updater_and_exit()
+
+    def _launch_updater_and_exit(self) -> None:
+        command = self.updates.prepare_install_command(Path(sys.executable).parent, self.paths.data, os.getpid())
+        if not command:
+            self.show_error(AppError('update_install_unavailable', '当前运行环境不支持自动安装，请从发布页面手动升级。', 'AUTO_INSTALL capability unavailable'))
+            return
+        try:
+            subprocess.Popen(command, cwd=Path(command[0]).parent, close_fds=True, creationflags=0x08000000 if sys.platform == 'win32' else 0)
+        except OSError as exc:
+            self.show_error(AppError('updater_launch_failed', '无法启动更新程序，当前版本没有改变。', repr(exc)))
+            return
+        self.app.quit()
 
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
@@ -578,7 +728,7 @@ class AppController:
         except Exception as exc:
             self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
-    def show_error(self, error: AppError) -> None:
+    def show_error(self, error: AppError, *, title_text: str = "下载失败", retry_callback=None) -> None:
         logger.error("%s: %s", error.code, error.technical_message)
         report = build_error_report(
             error,
@@ -586,7 +736,7 @@ class AppController:
             yt_dlp_version=yt_dlp.version.__version__,
             ffmpeg_version=str(self.ffmpeg.ffmpeg_path or "Unavailable"),
         )
-        dialog = ErrorDialog(error, report, self.window)
+        dialog = ErrorDialog(error, report, self.window, title_text=title_text, retry_callback=retry_callback)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
         self._dialogs.append(dialog)

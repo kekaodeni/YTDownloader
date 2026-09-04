@@ -25,6 +25,15 @@ class Response:
     def close(self): self.closed = True
 
 
+def test_cancel_closes_the_active_stream_response(tmp_path):
+    data = b'package'
+    response = Response([data])
+    downloader = UpdatePackageDownloader(lambda *_args: response, free_space=lambda _path: 10_000)
+    downloader._set_active_response(response)
+    downloader.cancel_current()
+    assert response.closed
+
+
 def test_download_uses_signed_length_without_content_length_and_verifies_hash(tmp_path):
     data = b'valid signed package'
     response = Response([data[:5], data[5:]])

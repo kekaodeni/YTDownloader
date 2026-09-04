@@ -12,15 +12,23 @@ from yt_downloader.ui.typography import FontRole, apply_typography, apply_typogr
 
 
 class ErrorDialog(QDialog):
-    def __init__(self, error: AppError, report: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        error: AppError,
+        report: str,
+        parent: QWidget | None = None,
+        *,
+        title_text: str = "下载失败",
+        retry_callback=None,
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("下载失败")
+        self.setWindowTitle(title_text)
         self.setModal(True)
         self.resize(620, 300)
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 20)
         root.setSpacing(12)
-        title = QLabel("下载失败")
+        title = QLabel(title_text)
         apply_typography(title, FontRole.SECTION_TITLE)
         root.addWidget(title)
         summary = QLabel(error.user_message)
@@ -45,6 +53,10 @@ class ErrorDialog(QDialog):
         localize_dialog_button_box(close_box)
         close_box.rejected.connect(self.reject)
         actions.addWidget(copy_button)
+        if retry_callback is not None:
+            retry_button = QPushButton("重试")
+            retry_button.clicked.connect(lambda: (self.accept(), retry_callback()))
+            actions.addWidget(retry_button)
         actions.addStretch()
         actions.addWidget(close_box)
         root.addLayout(actions)

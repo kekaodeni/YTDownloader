@@ -64,3 +64,9 @@ class VerifiedUpdatePackage:
     transaction_id: str
     path: Path
     manifest: UpdateManifest
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateProgress:
+    downloaded_bytes: int
+    total_bytes: int

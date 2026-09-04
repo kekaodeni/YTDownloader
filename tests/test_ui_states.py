@@ -333,7 +333,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(qtbot, tmp_pat
         page.directory_input.setText(str(changed))
 
     saved = signal.args[0]
-    assert saved.schema_version == 3
+    assert saved.schema_version == 4
     assert saved.download_directory == str(changed)
     assert page.unsaved_label.text() == "正在保存…"
 

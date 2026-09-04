@@ -16,6 +16,14 @@ class AppPaths:
     cache: Path
     thumbnails: Path
 
+    @property
+    def update_state(self) -> Path:
+        return self.data / 'update-state.json'
+
+    @property
+    def update_staging(self) -> Path:
+        return self.data / 'update-staging'
+
     @classmethod
     def discover(cls, root: str | Path | None = None) -> "AppPaths":
         if root is None:
