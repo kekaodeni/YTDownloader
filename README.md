@@ -1,4 +1,4 @@
-# YT Downloader 0.3.0
+# YT Downloader 0.4.0
 
 YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Widgets 与统一的 Fluent 2 语义 Token；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
@@ -19,11 +19,14 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 - 自动或 1/2/4/8 分片并发。实测基准见 `docs/performance-benchmark-v0.2.0.md`；自动值保持稳健的 1。
 - 系统/浅色/深色主题、语义中文字体、响应式导航、高 DPI、键盘焦点和辅助功能名称。
 - 140/240/320ms 语义动效、快照式任务交接和静态玻璃感层次；“减少动态效果”会关闭装饰动画。
+- 从 v0.4.0 起提供 Ed25519 验签的安全更新框架：支持后台检查、下载校验、独立 updater 与可恢复回滚；实际能力会按源码、验证构建或正式构建安全降级。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
 
 ## 支持范围与法律提示
 
-仅支持公开的 YouTube 单视频。不支持播放列表、频道、搜索、账号/Cookie 登录、自动更新或安装器。私享、年龄限制、地区限制等内容会显示明确错误。删除历史记录不会删除视频文件。
+仅支持公开的 YouTube 单视频。不支持播放列表、频道、搜索或账号/Cookie 登录。私享、年龄限制、地区限制等内容会显示明确错误。删除历史记录不会删除视频文件。
+
+自动更新从 v0.4.0 开始提供；v0.3.0 及更早版本仍需手动升级。生产公钥和公开更新仓库尚未启用时，源码与 validation-only 构建只保留检查/验证能力，不会覆盖安装目录。更新包的 Ed25519 签名用于应用内更新真实性校验，不等同于 Windows Authenticode 代码签名。
 
 本项目与 YouTube 无关联。下载内容前请确认您有权保存和使用该内容，并遵守所在地法律与服务条款。
 
@@ -50,8 +53,10 @@ py -3.12 -m venv .venv
 ```text
 settings.json
 history.db
+update-state.json
 logs\
 cache\thumbnails\
+update-staging\
 ```
 
 卸载或重新打包不会删除这些数据。测试/CI 可显式设置 `YT_DOWNLOADER_DATA_DIR` 与 `YT_DOWNLOADER_VIDEOS_DIR`，正式运行默认不设置。
@@ -93,22 +98,33 @@ cache\thumbnails\
 .\scripts\build.ps1
 ```
 
-只做隔离的 onedir 验收、不覆盖现有 `build`/`dist`/`release` 且不生成 ZIP：
+只做隔离的 onedir 验收、不覆盖现有 `build`/`dist`/`release`，并生成名称明确的 validation-only ZIP：
 
 ```powershell
 .\scripts\build.ps1 -ValidationOnly
 ```
 
-构建脚本会依次：生成 ICO、运行完整 pytest、校验资源、执行干净的 PyInstaller `onedir + windowed` 构建、启动打包后 GUI 烟雾测试、生成文件清单和 SHA256、创建分发 ZIP。
+对 ZIP 做独立解压与启动验收：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_release_archive.py --package <zip> --extract-dir <new-dir> --report <acceptance.json>
+```
+
+正式包只能在生产信任根已配置后构建；签名脚本要求仓库外加密 PKCS8 私钥，并强制校验与该 ZIP 哈希匹配的独立验收报告。私钥密码通过终端交互输入，不进入参数、环境或日志。
+
+构建脚本会依次：运行完整 pytest、校验资源、构建 windowed 主程序与无 Qt 的独立 updater、启动打包后烟雾测试、生成文件清单和 SHA256、创建分发 ZIP。正式模式在生产公钥尚未嵌入时会安全停止；validation-only 包不会启用安装目录替换。
 
 主要输出：
 
 ```text
 dist\YTDownloader\YTDownloader.exe
+dist\YTDownloader\YTDownloaderUpdater.exe
 dist\YTDownloader\third_party_licenses\
 dist\YTDownloader\SHA256SUMS.json
-release\YTDownloader-0.3.0-win64.zip
-release\YTDownloader-0.3.0-win64.zip.sha256.txt
+release\YTDownloader-0.4.0-win64.zip
+release\YTDownloader-0.4.0-win64.zip.sha256.txt
+release\update-manifest.json
+release\update-manifest.sig
 ```
 
 FFmpeg 使用启用了 GPL 组件的静态构建。分发目录包含 GPL/LGPL 文本、Python 运行时依赖版本与许可清单、构建来源、精确 FFmpeg 源码归档及其校验信息。详情见 `THIRD_PARTY_NOTICES.md`、`licenses/FFMPEG-SOURCE.txt` 和 `tools.lock.json`。
@@ -122,6 +138,8 @@ src/yt_downloader/
   workers/          Qt 后台 Worker 与单任务队列
   infrastructure/   路径、日志、运行时工具、Shell、系统信息
   ui/               Fluent 主题、页面、Dialog 与复用控件
+  updates/          更新发现、验签、下载、staging 与能力门禁
+src/yt_downloader_updater/  无 Qt 的外部安装、恢复与回滚程序
 tests/               单元、pytest-qt、SQLite、本地 FFmpeg 测试
 assets/              应用图标与 Fluent System Icons
 scripts/             工具准备、真实烟雾测试、构建

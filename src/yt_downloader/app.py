@@ -829,6 +829,8 @@ def main(argv: list[str] | None = None) -> int:
                 'status': 'ok', 'transaction_id': transaction_id, 'app_version': __version__,
             }), encoding='utf-8')
             temporary.replace(marker)
+            if os.environ.get('YT_DOWNLOADER_UPDATE_HEALTH_SMOKE_EXIT') == '1':
+                QTimer.singleShot(0, app.quit)
         QTimer.singleShot(0, confirm_healthy_startup)
     elif known.render_preview:
         target = known.render_preview

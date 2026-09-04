@@ -20,6 +20,14 @@ UPDATER_PROTOCOL = 1
 REPOSITORY = 'kekaodeni/YTDownloader-releases'
 
 
+def validate_upgrade_versions(current_value: str, target_value: str) -> tuple[Version, Version]:
+    current = Version.parse(current_value)
+    target = Version.parse(target_value)
+    if target <= current:
+        raise ValueError('The signed update version must be newer than the installed version')
+    return current, target
+
+
 def _arguments(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description='Install a verified YTDownloader update')
     parser.add_argument('--transaction-dir', required=True, type=Path)
@@ -35,8 +43,7 @@ def run(argv: list[str] | None = None) -> int:
     args = _arguments(argv)
     if not PRODUCTION_TRUSTED_KEYS:
         raise RuntimeError('Production update trust is not enabled in this build')
-    current = Version.parse(args.current_version)
-    target = Version.parse(args.target_version)
+    current, target = validate_upgrade_versions(args.current_version, args.target_version)
     transaction = args.transaction_dir.resolve(strict=True)
     raw_manifest = (transaction / 'update-manifest.json').read_bytes()
     signature = (transaction / 'update-manifest.sig').read_bytes()

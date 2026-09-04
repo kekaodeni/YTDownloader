@@ -7,6 +7,7 @@ from yt_downloader.updates.transaction import (
     InstallPreflight,
     TransactionalInstaller,
     UpdateTransactionStage,
+    wait_for_health,
 )
 
 
@@ -44,7 +45,7 @@ def test_transaction_switches_directories_only_after_process_exit_and_health(tmp
     installer = TransactionalInstaller(
         wait_for_exit=lambda pid, timeout: events.append(('wait', pid, timeout)) or True,
         launch_health_check=lambda exe, tx, marker: events.append(('launch', exe.name, tx)) or marker.write_text('ok') or object(),
-        wait_for_health=lambda marker, process, timeout: marker.read_text() == 'ok',
+        wait_for_health=lambda marker, process, timeout, expected, tx: marker.read_text() == 'ok' and expected == 'new' and tx == 'tx1',
         terminate_launched=lambda process: events.append(('terminate', process)),
     )
     journal = installer.install(
@@ -91,6 +92,16 @@ def test_transaction_stops_without_switching_when_original_process_is_busy(tmp_p
         )
     assert (install / 'YTDownloader.exe').read_bytes() == b'old'
     assert (candidate / 'YTDownloader.exe').read_bytes() == b'new'
+
+
+def test_health_confirmation_is_bound_to_expected_version(tmp_path):
+    marker = tmp_path / 'startup-health.json'
+    marker.write_text(json.dumps({
+        'status': 'ok', 'transaction_id': 'tx', 'app_version': '0.4.0',
+    }), encoding='utf-8')
+    process = type('Process', (), {'poll': lambda self: None})()
+    assert wait_for_health(marker, process, 1, '0.4.1', 'tx') is False
+    assert wait_for_health(marker, process, 1, '0.4.0', 'different-tx') is False
 
 
 def test_recovery_is_idempotent_after_candidate_was_installed(tmp_path):

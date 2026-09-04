@@ -115,6 +115,10 @@ class TransactionalInstaller:
         if candidate.parent != install.parent:
             raise ValueError('Candidate must be a sibling of the installation directory')
         SafePackageExtractor.validate_tree(candidate)
+        candidate_build_info = SafePackageExtractor._load_json(candidate / 'BUILD-INFO.json')
+        candidate_version = candidate_build_info.get('app_version')
+        if not isinstance(candidate_version, str) or not candidate_version:
+            raise ValueError('Candidate build version is invalid')
         required = self._tree_size(install) + self._tree_size(candidate) + 64 * 1024 * 1024
         self.preflight.validate(install, data_dir, required_bytes=required)
         backup = install.parent / f'.{install.name}.backup-{transaction_id}'
@@ -137,7 +141,7 @@ class TransactionalInstaller:
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.CANDIDATE_INSTALLED)
                 process = self.launch_health_check(install / 'YTDownloader.exe', transaction_id, health)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_HEALTH)
-                if not self.wait_for_health(health, process, 30):
+                if not self.wait_for_health(health, process, 30, candidate_version, transaction_id):
                     self.terminate_launched(process)
                     raise RuntimeError('New version did not provide startup health confirmation')
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.COMMITTED)
@@ -284,13 +288,23 @@ def launch_health_check(executable: Path, transaction_id: str, marker: Path):
     )
 
 
-def wait_for_health(marker: Path, process: object, timeout_seconds: int) -> bool:
+def wait_for_health(
+    marker: Path,
+    process: object,
+    timeout_seconds: int,
+    expected_version: str,
+    expected_transaction_id: str,
+) -> bool:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if marker.is_file():
             try:
                 payload = json.loads(marker.read_text(encoding='utf-8'))
-                return payload.get('status') == 'ok'
+                return (
+                    payload.get('status') == 'ok'
+                    and payload.get('app_version') == expected_version
+                    and payload.get('transaction_id') == expected_transaction_id
+                )
             except (OSError, json.JSONDecodeError):
                 return False
         poll = getattr(process, 'poll', None)
