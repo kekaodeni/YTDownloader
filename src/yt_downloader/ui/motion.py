@@ -136,11 +136,31 @@ class MotionManager(QObject):
         if not 0 <= index < stack.count():
             return
         changed = stack.currentIndex() != index
-        stack.setCurrentIndex(index)
         if self.reduce_motion or not changed:
+            stack.setCurrentIndex(index)
             return
+        from yt_downloader.ui.snapshot import SnapshotOverlay, capture_visible
+
+        key = id(stack)
+        previous = self._snapshots.get(key)
+        source = previous if previous is not None and isValid(previous) else stack.currentWidget()
+        before = capture_visible(source)
+        if previous is not None and isValid(previous):
+            previous.cleanup()
+        self._snapshots.pop(key, None)
+        stack.setCurrentIndex(index)
         target = stack.widget(index)
-        self._fade(target, MotionTokens.PAGE)
+        after = capture_visible(target)
+        if before is None or after is None:
+            if before is not None:
+                before.release()
+            if after is not None:
+                after.release()
+            return
+        proxy = SnapshotOverlay(stack, before, geometry=target.geometry(), next_frame=after)
+        self._snapshots[key] = proxy
+        proxy.finished.connect(self._discard_finished_snapshots)
+        proxy.play(PresentationState(opacity=0, x=-4, scale=1), duration=MotionTokens.PAGE)
 
     def reveal(self, widget: QWidget) -> None:
         widget.show()

@@ -93,23 +93,28 @@ class SnapshotOverlay(QWidget):
                    QEvent.Type.DevicePixelRatioChange, QEvent.Type.PaletteChange,
                    QEvent.Type.StyleChange}
 
-    def __init__(self, host: QWidget, frame: SnapshotFrame, *, geometry: QRect | None = None):
+    def __init__(self, host: QWidget, frame: SnapshotFrame, *, geometry: QRect | None = None,
+                 next_frame: SnapshotFrame | None = None):
         super().__init__(host)
         self._host = weakref.ref(host)
         self.frame = frame
+        self.next_frame = next_frame
         self.finished_once = False
         self.setObjectName('motionSnapshotOverlay')
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setGeometry(frame.rect if geometry is None else geometry)
-        self.controller = AnimationController(parent=self)
+        initial = PresentationState(scale=0) if next_frame is not None else PresentationState()
+        self.controller = AnimationController(initial, parent=self)
         self.controller.presentation_changed.connect(self._present)
         self.controller.finished.connect(self.cleanup)
         # The lease must also be released when Qt destroys the whole host tree.
         # A plain Python lease is not a QObject receiver. Keep it alive explicitly
         # until destroyed; never hand PySide a weak bound method on a slots dataclass.
         self.destroyed.connect(lambda _object=None, lease=frame: lease.release())
+        if next_frame is not None:
+            self.destroyed.connect(lambda _object=None, lease=next_frame: lease.release())
         QApplication.instance().installEventFilter(self)
 
     def play(self, target: PresentationState, *, duration: int, easing=None) -> None:
@@ -121,6 +126,14 @@ class SnapshotOverlay(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         state = self.controller.presentation
+        if self.next_frame is not None:
+            progress = max(0.0, min(1.0, state.scale))
+            painter.fillRect(self.rect(), self.palette().window())
+            painter.setOpacity(progress)
+            painter.drawPixmap(QPointF(0, 6 * (1 - progress)), self.next_frame.pixmap)
+            painter.setOpacity(1 - progress)
+            painter.drawPixmap(QPointF(-4 * progress, 0), self.frame.pixmap)
+            return
         painter.setOpacity(state.opacity)
         center = self.rect().center()
         painter.translate(center.x() + state.x, center.y() + state.y)
@@ -154,5 +167,7 @@ class SnapshotOverlay(QWidget):
         QApplication.instance().removeEventFilter(self)
         self.hide()
         self.frame.release()
+        if self.next_frame is not None:
+            self.next_frame.release()
         self.finished.emit()
         self.deleteLater()

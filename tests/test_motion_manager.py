@@ -35,7 +35,8 @@ def test_page_and_card_animations_remove_effects_after_finishing(qtbot) -> None:
     manager.switch_page(stack, 1)
 
     assert stack.currentIndex() == 1
-    assert second.graphicsEffect() is not None
+    assert manager.active_count == 1
+    assert second.graphicsEffect() is None
     qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
     assert second.graphicsEffect() is None
 
