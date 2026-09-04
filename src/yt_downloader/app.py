@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 from dataclasses import replace
+import json
 import logging
 from pathlib import Path
 import sys
@@ -621,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke-test", action="store_true", help="start the packaged GUI briefly and exit")
     parser.add_argument("--self-test", action="store_true", help="run offline packaged resource and FFmpeg checks")
     parser.add_argument("--metadata-process-self-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--update-health-check", nargs=2, metavar=("TRANSACTION_ID", "MARKER"), help=argparse.SUPPRESS)
     parser.add_argument("--render-preview", type=Path, help="save a window preview image and exit")
     parser.add_argument("--theme", choices=("system", "light", "dark"), help="temporary theme override for visual testing")
     parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
@@ -659,7 +661,26 @@ def main(argv: list[str] | None = None) -> int:
             request.task_id, TaskStatus.DOWNLOADING_VIDEO, 67, 920_000_000, 1_374_000_000, 8_700_000, 48,
         ))
     controller.window.show()
-    if known.render_preview:
+    if known.update_health_check:
+        transaction_id, marker_value = known.update_health_check
+        marker = Path(marker_value)
+        def confirm_healthy_startup() -> None:
+            if marker.name != 'startup-health.json' or not marker.parent.name.startswith('update-'):
+                logger.error('Rejected unsafe update health marker path')
+                app.quit()
+                return
+            if marker.exists():
+                logger.error('Rejected pre-existing update health marker')
+                app.quit()
+                return
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            temporary = marker.with_suffix('.tmp')
+            temporary.write_text(json.dumps({
+                'status': 'ok', 'transaction_id': transaction_id, 'app_version': __version__,
+            }), encoding='utf-8')
+            temporary.replace(marker)
+        QTimer.singleShot(0, confirm_healthy_startup)
+    elif known.render_preview:
         target = known.render_preview
         target.parent.mkdir(parents=True, exist_ok=True)
         QTimer.singleShot(600, lambda: (controller.window.grab().save(str(target)), app.quit()))
