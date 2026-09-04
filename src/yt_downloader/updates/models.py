@@ -34,3 +34,25 @@ class UpdateRelease:
     manifest_url: str
     signature_url: str
     release_url: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpdatePackage:
+    name: str
+    url: str
+    compressed_size: int
+    extracted_size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateManifest:
+    version: Version
+    published_at: str
+    minimum_auto_update_version: Version
+    updater_protocol: int
+    key_id: str
+    notes_zh_cn: str
+    notes_en: str
+    release_url: str
+    package: UpdatePackage
