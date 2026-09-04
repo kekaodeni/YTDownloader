@@ -17,15 +17,86 @@ from PySide6.QtCore import (
     QObject,
     QTimer,
     Qt,
+    QSignalBlocker,
+    Signal,
+    QVariantAnimation,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel, QStackedWidget, QWidget
 from shiboken6 import delete as delete_qobject, isValid
 
 
-class MotionDuration(IntEnum):
-    FAST = 140
-    NORMAL = 240
-    EMPHASIS = 320
+@dataclass(frozen=True, slots=True)
+class PresentationState:
+    opacity: float = 1.0
+    x: float = 0.0
+    y: float = 0.0
+    scale: float = 1.0
+
+    def interpolate(self, other: "PresentationState", fraction: float) -> "PresentationState":
+        return PresentationState(*(
+            getattr(self, name) + (getattr(other, name) - getattr(self, name)) * fraction
+            for name in ("opacity", "x", "y", "scale")
+        ))
+
+
+class AnimationController(QVariantAnimation):
+    """One reusable timeline; retargeting starts at the presentation, not rest."""
+
+    presentation_changed = Signal(object)
+
+    def __init__(self, initial: PresentationState = PresentationState(), parent=None):
+        super().__init__(parent)
+        self.presentation = initial
+        self._origin = initial
+        self.target = initial
+        self.valueChanged.connect(self._present)
+
+    def retarget(self, target: PresentationState, *, duration: int, easing=QEasingCurve.Type.OutQuart):
+        self.stop()
+        self._origin = self.presentation
+        self.target = target
+        with QSignalBlocker(self):
+            self.setStartValue(0.0)
+            self.setEndValue(1.0)
+            self.setDuration(max(1, int(duration)))
+            self.setEasingCurve(easing)
+            self.setCurrentTime(0)
+        self._present(0.0)
+        self.start()
+
+    def _present(self, fraction):
+        self.presentation = self._origin.interpolate(self.target, float(fraction))
+        self.presentation_changed.emit(self.presentation)
+
+    def cleanup(self):
+        self.stop()
+
+    def interrupt(self) -> PresentationState:
+        self.stop()
+        return self.presentation
+
+    def reverse(self, *, duration: int):
+        self.retarget(self._origin, duration=duration, easing=QEasingCurve.Type.InCubic)
+
+
+class MotionTokens(IntEnum):
+    PRESS = 90
+    HOVER = 130
+    FOCUS = 140
+    STATE = 160
+    PAGE = 210
+    CARD_ENTER = 240
+    CARD_REPOSITION = 240
+    CARD_EXIT = 190
+    THUMBNAIL = 200
+    DIALOG_ENTER = 210
+    DIALOG_EXIT = 150
+    POPUP_ENTER = 180
+    POPUP_EXIT = 130
+    MENU_ENTER = 170
+    MENU_EXIT = 130
+    SCROLL = 160
+    REDUCED = 90
 
 
 @dataclass(slots=True)
@@ -35,6 +106,8 @@ class _MotionState:
     effect: QGraphicsOpacityEffect | None = None
     dispose_widget: bool = False
     finishing: bool = False
+    disposed: bool = False
+    destroyed_handler: Callable | None = None
 
 
 class MotionManager(QObject):
@@ -61,13 +134,13 @@ class MotionManager(QObject):
         if self.reduce_motion or not changed:
             return
         target = stack.widget(index)
-        self._fade(target, MotionDuration.NORMAL)
+        self._fade(target, MotionTokens.PAGE)
 
     def reveal(self, widget: QWidget) -> None:
         widget.show()
         if self.reduce_motion:
             return
-        self._fade(widget, MotionDuration.EMPHASIS)
+        self._fade(widget, MotionTokens.CARD_ENTER)
 
     def retire(self, widget: QWidget, on_finished: Callable[[], None]) -> None:
         if self.reduce_motion or not widget.isVisible():
@@ -94,15 +167,15 @@ class MotionManager(QObject):
         effect.setOpacity(1.0)
         proxy.setGraphicsEffect(effect)
         opacity = QPropertyAnimation(effect, b"opacity", self)
-        opacity.setDuration(int(MotionDuration.NORMAL))
+        opacity.setDuration(int(MotionTokens.CARD_EXIT))
         opacity.setStartValue(1.0)
         opacity.setEndValue(0.0)
-        opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+        opacity.setEasingCurve(QEasingCurve.Type.InCubic)
         position = QPropertyAnimation(proxy, b"pos", self)
-        position.setDuration(int(MotionDuration.NORMAL))
+        position.setDuration(int(MotionTokens.CARD_EXIT))
         position.setStartValue(proxy.pos())
-        position.setEndValue(proxy.pos() + QPoint(0, -6))
-        position.setEasingCurve(QEasingCurve.Type.OutCubic)
+        position.setEndValue(proxy.pos() + QPoint(0, -5))
+        position.setEasingCurve(QEasingCurve.Type.InCubic)
         group = QParallelAnimationGroup(self)
         group.addAnimation(opacity)
         group.addAnimation(position)
@@ -121,28 +194,32 @@ class MotionManager(QObject):
         effect.setOpacity(1.0)
         widget.setGraphicsEffect(effect)
         animation = QPropertyAnimation(effect, b"opacity", self)
-        animation.setDuration(int(MotionDuration.FAST))
+        animation.setDuration(int(MotionTokens.PRESS))
         animation.setStartValue(1.0)
         animation.setKeyValueAt(0.35, 0.82)
         animation.setEndValue(1.0)
-        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         self._register(widget, animation, effect=effect)
 
     def _fade(
         self,
         widget: QWidget,
-        duration: MotionDuration,
+        duration: MotionTokens,
     ) -> None:
         key = id(widget)
+        state = self._active.get(key)
+        if state and not state.finishing and isinstance(state.animation, AnimationController):
+            state.animation.retarget(PresentationState(), duration=int(duration))
+            return
         self._finish(key, stopped=True)
         effect = QGraphicsOpacityEffect(widget)
         effect.setOpacity(0.0)
         widget.setGraphicsEffect(effect)
-        opacity = QPropertyAnimation(effect, b"opacity", self)
-        opacity.setDuration(int(duration))
-        opacity.setStartValue(0.0)
-        opacity.setEndValue(1.0)
-        opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+        opacity = AnimationController(PresentationState(opacity=0.0), self)
+        opacity.presentation_changed.connect(
+            lambda value: effect.setOpacity(value.opacity) if isValid(effect) else None
+        )
+        opacity.retarget(PresentationState(), duration=int(duration))
         self._register(widget, opacity, effect=effect)
 
     def _register(
@@ -161,8 +238,11 @@ class MotionManager(QObject):
             dispose_widget,
         )
         self._active[key] = state
+        state.destroyed_handler = lambda: self._schedule_finish(key, state)
+        widget.destroyed.connect(state.destroyed_handler)
         animation.finished.connect(lambda current=key, value=state: self._schedule_finish(current, value))
-        animation.start()
+        if animation.state() != QAbstractAnimation.State.Running:
+            animation.start()
 
     def _finish(self, key: int, *, stopped: bool = False) -> None:
         state = self._active.get(key)
@@ -180,29 +260,27 @@ class MotionManager(QObject):
         QTimer.singleShot(0, lambda: self._destroy_state(key, state))
 
     def _destroy_state(self, key: int, state: _MotionState) -> None:
+        if state.disposed:
+            return
+        state.disposed = True
         if isValid(state.animation):
             state.animation.stop()
         widget = state.widget()
-        if widget is not None:
-            try:
-                if state.effect is not None:
-                    state.effect.setOpacity(1.0)
-                if state.dispose_widget:
-                    widget.hide()
-            except RuntimeError:
-                pass
+        if widget is not None and isValid(widget):
+            widget.destroyed.disconnect(state.destroyed_handler)
+            if state.effect is not None and isValid(state.effect):
+                state.effect.setOpacity(1.0)
+            if state.dispose_widget:
+                widget.hide()
         if isValid(state.animation):
             self._detach_effect_target(state.animation, state.effect)
             delete_qobject(state.animation)
-        if widget is not None:
-            try:
-                if state.effect is not None and widget.graphicsEffect() is state.effect:
-                    widget.setGraphicsEffect(None)
-            except RuntimeError:
-                pass
+        if widget is not None and isValid(widget):
+            if state.effect is not None and widget.graphicsEffect() is state.effect:
+                widget.setGraphicsEffect(None)
         if self._active.get(key) is state:
             self._active.pop(key, None)
-        if state.dispose_widget and widget is not None:
+        if state.dispose_widget and widget is not None and isValid(widget):
             widget.deleteLater()
 
     def _detach_effect_target(

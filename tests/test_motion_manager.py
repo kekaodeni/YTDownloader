@@ -1,11 +1,16 @@
 from PySide6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
 
-from yt_downloader.ui.motion import MotionDuration, MotionManager
+from yt_downloader.ui.motion import MotionTokens, MotionManager
 from yt_downloader.ui.theme import DARK, LIGHT, _qss
 
 
 def test_motion_durations_are_short_and_semantic() -> None:
-    assert tuple(int(value) for value in MotionDuration) == (140, 240, 320)
+    assert (MotionTokens.PRESS, MotionTokens.HOVER, MotionTokens.FOCUS) == (90, 130, 140)
+    assert (MotionTokens.STATE, MotionTokens.PAGE, MotionTokens.CARD_ENTER) == (160, 210, 240)
+    assert (MotionTokens.CARD_EXIT, MotionTokens.THUMBNAIL) == (190, 200)
+    assert (MotionTokens.DIALOG_ENTER, MotionTokens.DIALOG_EXIT) == (210, 150)
+    assert (MotionTokens.POPUP_ENTER, MotionTokens.POPUP_EXIT) == (180, 130)
+    assert (MotionTokens.MENU_ENTER, MotionTokens.MENU_EXIT, MotionTokens.SCROLL) == (170, 130, 160)
 
 
 def test_glass_inspired_surfaces_are_static_tints_without_blur_or_animated_shadow(qapp) -> None:
