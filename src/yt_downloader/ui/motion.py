@@ -4,25 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 import weakref
 
 from PySide6.QtCore import (
     QAbstractAnimation,
     QAnimationGroup,
     QEasingCurve,
-    QParallelAnimationGroup,
-    QPoint,
     QPropertyAnimation,
     QObject,
     QTimer,
-    Qt,
     QSignalBlocker,
     Signal,
     QVariantAnimation,
 )
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel, QStackedWidget, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QStackedWidget, QWidget
 from shiboken6 import delete as delete_qobject, isValid
+
+if TYPE_CHECKING:
+    from yt_downloader.ui.snapshot import SnapshotOverlay
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,16 +115,22 @@ class MotionManager(QObject):
         super().__init__(parent)
         self.reduce_motion = reduce_motion
         self._active: dict[int, _MotionState] = {}
+        self._snapshots: dict[int, SnapshotOverlay] = {}
 
     @property
     def active_count(self) -> int:
-        return len(self._active)
+        self._discard_finished_snapshots()
+        return len(self._active) + len(self._snapshots)
 
     def set_reduce_motion(self, enabled: bool) -> None:
         self.reduce_motion = bool(enabled)
         if self.reduce_motion:
             for key in tuple(self._active):
                 self._finish(key, stopped=True)
+            for proxy in tuple(self._snapshots.values()):
+                if isValid(proxy):
+                    proxy.cleanup()
+            self._snapshots.clear()
 
     def switch_page(self, stack: QStackedWidget, index: int) -> None:
         if not 0 <= index < stack.count():
@@ -154,36 +160,47 @@ class MotionManager(QObject):
             widget.hide()
             on_finished()
             return
-        if parent.layout():
-            parent.layout().activate()
-        proxy = QLabel(parent)
-        proxy.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        proxy.setPixmap(widget.grab())
-        proxy.setScaledContents(True)
-        proxy.setGeometry(widget.geometry())
-        proxy.show()
-        proxy.raise_()
-        effect = QGraphicsOpacityEffect(proxy)
-        effect.setOpacity(1.0)
-        proxy.setGraphicsEffect(effect)
-        opacity = QPropertyAnimation(effect, b"opacity", self)
-        opacity.setDuration(int(MotionTokens.CARD_EXIT))
-        opacity.setStartValue(1.0)
-        opacity.setEndValue(0.0)
-        opacity.setEasingCurve(QEasingCurve.Type.InCubic)
-        position = QPropertyAnimation(proxy, b"pos", self)
-        position.setDuration(int(MotionTokens.CARD_EXIT))
-        position.setStartValue(proxy.pos())
-        position.setEndValue(proxy.pos() + QPoint(0, -5))
-        position.setEasingCurve(QEasingCurve.Type.InCubic)
-        group = QParallelAnimationGroup(self)
-        group.addAnimation(opacity)
-        group.addAnimation(position)
-        widget.hide()
-        on_finished()
-        if parent.layout():
-            parent.layout().activate()
-        self._register(proxy, group, effect=effect, dispose_widget=True)
+        def mutate() -> None:
+            widget.hide()
+            on_finished()
+
+        self.transition_layout(parent, mutate)
+
+    def transition_layout(self, host: QWidget, mutate: Callable[[], None]) -> None:
+        """Commit business/layout changes once; animate only the old presentation."""
+        from yt_downloader.ui.snapshot import SnapshotOverlay, capture_visible
+
+        before = None if self.reduce_motion else capture_visible(host)
+        old = self._snapshots.pop(id(host), None)
+        if old is not None and isValid(old):
+            old.cleanup()
+        try:
+            mutate()
+            ancestor = host
+            while ancestor is not None:
+                if ancestor.layout():
+                    ancestor.layout().activate()
+                ancestor = ancestor.parentWidget()
+        except Exception:
+            if before:
+                before.release()
+            raise
+        if before is None:
+            return
+        if not host.isVisible():
+            before.release()
+            return
+        proxy = SnapshotOverlay(host, before)
+        self._snapshots[id(host)] = proxy
+        proxy.finished.connect(self._discard_finished_snapshots)
+        proxy.play(PresentationState(opacity=0, y=-5), duration=MotionTokens.CARD_EXIT,
+                   easing=QEasingCurve.Type.InCubic)
+
+    def _discard_finished_snapshots(self) -> None:
+        self._snapshots = {
+            key: proxy for key, proxy in self._snapshots.items()
+            if isValid(proxy) and not proxy.finished_once
+        }
 
     def feedback(self, widget: QWidget) -> None:
         if self.reduce_motion or not widget.isVisible():
