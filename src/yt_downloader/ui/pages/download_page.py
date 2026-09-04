@@ -39,6 +39,7 @@ class DownloadPage(QWidget):
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
     remove_requested = Signal(str)
+    retry_requested = Signal(str)
 
     def __init__(
         self,
@@ -217,6 +218,8 @@ class DownloadPage(QWidget):
             self.thumbnail.clear()
             self.thumbnail.setText("暂无封面")
         busy = state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}
+        for card in self.cards.values():
+            card.retry_button.setEnabled(not busy)
         cancelling = state is ParseState.CANCELLING
         self.url_input.setEnabled(not busy)
         self.parse_button.setEnabled(not cancelling)
@@ -325,6 +328,8 @@ class DownloadPage(QWidget):
         card.open_file_requested.connect(self.open_file_requested)
         card.open_folder_requested.connect(self.open_folder_requested)
         card.remove_requested.connect(self.remove_requested)
+        card.retry_requested.connect(self.retry_requested)
+        card.retry_button.setEnabled(self.url_input.isEnabled())
         self.cards[request.task_id] = card
         self.task_layout.insertWidget(self.task_layout.count() - 1, card)
         self.tasks_heading.show()

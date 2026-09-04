@@ -150,7 +150,7 @@ class AppController:
         self._settings_workers: list[FunctionWorker] = []
         self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
         self._thumbnail_gate: LatestRequestGate[object] = LatestRequestGate()
-        self._pending_retry: HistoryRecord | None = None
+        self._pending_retry: HistoryRecord | DownloadRequest | None = None
         self._remove_intents: set[str] = set()
         self._dialogs: list[object] = []
         self._wire()
@@ -168,6 +168,7 @@ class AppController:
         download.open_file_requested.connect(self._open_file)
         download.open_folder_requested.connect(self._reveal_file)
         download.remove_requested.connect(self._remove_task_requested)
+        download.retry_requested.connect(self._retry_task)
         history = self.window.history_page
         history.open_file_requested.connect(self._open_file)
         history.open_folder_requested.connect(self._reveal_file)
@@ -219,13 +220,16 @@ class AppController:
 
     def _apply_metadata_result(self, video) -> None:
         retry = self._pending_retry
-        preferred = retry.quality_label if retry else self.settings.default_quality
+        preferred = (
+            retry.format.label if isinstance(retry, DownloadRequest)
+            else retry.quality_label if retry else self.settings.default_quality
+        )
         self.window.download_page.show_video(video, preferred_quality=preferred)
         if retry:
             self._pending_retry = None
             self.window.download_page.set_retry_defaults(
-                retry.file_path.stem or video.title,
-                str(retry.file_path.parent),
+                retry.filename_stem if isinstance(retry, DownloadRequest) else retry.file_path.stem or video.title,
+                str(retry.output_directory if isinstance(retry, DownloadRequest) else retry.file_path.parent),
             )
 
     def _metadata_error(self, token: RequestToken, error: AppError) -> None:
@@ -464,6 +468,21 @@ class AppController:
         self.window._select_page(0)
         self.window.download_page.url_input.setText(record.url)
         self.fetch_metadata(record.url)
+
+    def _retry_task(self, task_id: str) -> None:
+        page = self.window.download_page
+        if page.parse_state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}:
+            return
+        request = page.task_request(task_id)
+        if request is None or page.task_status(task_id) is not TaskStatus.FAILED:
+            return
+        # Retry is a new parse/selection, not an implicit download. Use the
+        # retained request so deleting a history entry cannot break this action.
+        self._pending_retry = request
+        self.window._select_page(0)
+        page.url_input.setText(request.video.url)
+        page.page_scroll.verticalScrollBar().setValue(0)
+        self.fetch_metadata(request.video.url)
 
     def _delete_history_record(self, record: HistoryRecord) -> None:
         if record.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:

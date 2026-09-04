@@ -18,6 +18,7 @@ class DownloadTaskCard(QWidget):
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
     remove_requested = Signal(str)
+    retry_requested = Signal(str)
 
     def __init__(self, request: DownloadRequest, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -57,6 +58,12 @@ class DownloadTaskCard(QWidget):
         self.cancel_button.setProperty("fluentAppearance", "danger")
         self.cancel_button.setAccessibleName(f"取消下载 {request.video.title}")
         self.cancel_button.clicked.connect(lambda: self.cancel_requested.emit(request.task_id))
+        self.retry_button = QPushButton("重试")
+        self.retry_button.setObjectName("retryDownloadTask")
+        self.retry_button.setAccessibleName(f"重试下载 {request.video.title}")
+        self.retry_button.setToolTip("重新解析链接，确认画质和目录后再下载")
+        self.retry_button.hide()
+        self.retry_button.clicked.connect(lambda: self.retry_requested.emit(request.task_id))
         self.open_button = QPushButton("打开文件")
         self.open_button.setVisible(False)
         self.open_button.clicked.connect(lambda: self.open_file_requested.emit(str(self.file_path or "")))
@@ -64,6 +71,7 @@ class DownloadTaskCard(QWidget):
         self.folder_button.setVisible(False)
         self.folder_button.clicked.connect(lambda: self.open_folder_requested.emit(str(self.file_path or "")))
         actions.addWidget(self.cancel_button)
+        actions.addWidget(self.retry_button)
         actions.addWidget(self.open_button)
         actions.addWidget(self.folder_button)
         actions.addStretch()
@@ -85,16 +93,19 @@ class DownloadTaskCard(QWidget):
 
     def update_progress(self, progress: DownloadProgress) -> None:
         self.status = progress.status
+        self.retry_button.setVisible(progress.status is TaskStatus.FAILED)
         self.progress.set_progress(progress)
 
     def set_cancelling(self) -> None:
         self.status = TaskStatus.CANCELLING
+        self.retry_button.hide()
         self.cancel_button.setEnabled(False)
         self.cancel_button.setText("正在取消…")
         self.progress.set_progress(DownloadProgress(self.request.task_id, TaskStatus.CANCELLING))
 
     def set_completed(self, result: DownloadResult) -> None:
         self.status = TaskStatus.COMPLETED
+        self.retry_button.hide()
         self.file_path = result.file_path
         self.progress.set_progress(DownloadProgress(result.task_id, TaskStatus.COMPLETED, 100, result.file_size, result.file_size))
         self.cancel_button.hide()
@@ -107,6 +118,7 @@ class DownloadTaskCard(QWidget):
         cleanup_report: CancellationCleanupReport | None = None,
     ) -> None:
         self.status = status
+        self.retry_button.setVisible(status is TaskStatus.FAILED)
         self.progress.set_progress(DownloadProgress(self.request.task_id, status))
         self.cancel_button.hide()
         if (
