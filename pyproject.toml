@@ -12,6 +12,8 @@ dependencies = [
     "yt-dlp[default]>=2026.8.19",
     "requests[socks]>=2.34,<3",
     "Pillow>=12,<13",
+    "semver==3.0.4",
+    "cryptography==50.0.1",
 ]
 
 [project.scripts]
