@@ -86,12 +86,14 @@ class TransactionalInstaller:
         wait_for_health: Callable[[Path, object, int], bool] | None = None,
         terminate_launched: Callable[[object], None] | None = None,
         preflight: InstallPreflight | None = None,
+        replace_path: Callable[[Path, Path], None] | None = None,
     ) -> None:
         self.wait_for_exit = wait_for_exit or wait_for_process_exit
         self.launch_health_check = launch_health_check or globals()['launch_health_check']
         self.wait_for_health = wait_for_health or globals()['wait_for_health']
         self.terminate_launched = terminate_launched or terminate_launched_process
         self.preflight = preflight or InstallPreflight()
+        self.replace_path = replace_path or os.replace
 
     def install(
         self,
@@ -128,10 +130,10 @@ class TransactionalInstaller:
             journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_EXIT)
             if not self.wait_for_exit(original_pid, 30):
                 raise TimeoutError('Original application did not exit within 30 seconds')
-            os.replace(install, backup)
+            self.replace_path(install, backup)
             journal = self._advance(journal_path, journal, UpdateTransactionStage.ORIGINAL_BACKED_UP)
             try:
-                os.replace(candidate, install)
+                self.replace_path(candidate, install)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.CANDIDATE_INSTALLED)
                 process = self.launch_health_check(install / 'YTDownloader.exe', transaction_id, health)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_HEALTH)
@@ -167,6 +169,8 @@ class TransactionalInstaller:
             )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError('Update transaction journal is invalid') from exc
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', journal.transaction_id):
+            raise ValueError('Update transaction journal is invalid')
         install = Path(journal.install_dir).resolve(strict=False)
         candidate = Path(journal.candidate_dir).resolve(strict=False)
         backup = Path(journal.backup_dir).resolve(strict=False)
@@ -187,9 +191,9 @@ class TransactionalInstaller:
             if install.exists() and backup.exists():
                 if candidate.exists():
                     raise FileExistsError('Failed candidate path is already occupied')
-                os.replace(install, candidate)
+                self.replace_path(install, candidate)
             if backup.exists() and not install.exists():
-                os.replace(backup, install)
+                self.replace_path(backup, install)
             if not install.is_dir():
                 raise FileNotFoundError('Known-good installation could not be restored')
             return self._advance(path, rolling, UpdateTransactionStage.ROLLED_BACK, error=rolling.error)
@@ -203,9 +207,9 @@ class TransactionalInstaller:
             if install.exists():
                 if candidate.exists():
                     raise FileExistsError('Cannot preserve failed candidate during rollback')
-                os.replace(install, candidate)
+                self.replace_path(install, candidate)
             if backup.exists():
-                os.replace(backup, install)
+                self.replace_path(backup, install)
             self._advance(path, rolling, UpdateTransactionStage.ROLLED_BACK, error=str(cause))
         except BaseException as rollback_error:
             self._advance(path, rolling, UpdateTransactionStage.ROLLBACK_FAILED, error=f'{cause}; rollback: {rollback_error}')

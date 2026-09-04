@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Callable
+import time
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -61,6 +62,8 @@ class SecureUpdateHttpClient:
                 parsed = urlsplit(current)
                 if parsed.scheme != 'https' or parsed.hostname not in allowed or parsed.username or parsed.password:
                     raise ValueError('Update redirect is not an approved HTTPS GitHub asset host')
+                if parsed.port not in {None, 443}:
+                    raise ValueError('Update HTTPS resources must use port 443')
                 response = session.get(current, timeout=timeout, stream=True, allow_redirects=False)
                 if response.status_code not in {301, 302, 303, 307, 308}:
                     response.raise_for_status()
@@ -81,11 +84,14 @@ class SecureUpdateHttpClient:
     def get_bytes(self, url: str, *, max_bytes: int = 1024 * 1024) -> bytes:
         if max_bytes <= 0:
             raise ValueError('Update metadata size limit must be positive')
-        stream = self.open_stream(url, (10, 30))
+        started = time.monotonic()
+        stream = self.open_stream(url, (10, 10))
         chunks: list[bytes] = []
         length = 0
         try:
             for chunk in stream.iter_content(64 * 1024):
+                if time.monotonic() - started > 20:
+                    raise TimeoutError('Update metadata exceeded its 20 second deadline')
                 if not chunk:
                     continue
                 length += len(chunk)
