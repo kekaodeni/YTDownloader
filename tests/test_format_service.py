@@ -1,7 +1,31 @@
+import json
+from pathlib import Path
+
 import pytest
+import yt_dlp
 
 from yt_downloader.core.formats import normalize_formats
 from yt_downloader.core.models import CodecPreference, FormatOption
+
+
+@pytest.mark.parametrize("preference", [CodecPreference.AUTO, CodecPreference.VP9])
+def test_vp9_webm_selection_and_size_match_native_ytdlp(preference) -> None:
+    # Public metadata captured without media/signed URLs or request headers.
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "vp9-native-selection.json").read_text(encoding="utf-8"))
+    formats = fixture["formats"]
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        native_formats = [dict(item) for item in formats]
+        ydl.sort_formats({"formats": native_formats})
+        native = ydl._select_formats(native_formats, ydl.build_format_selector("bv*+ba/b"))[0]
+
+    option = normalize_formats(formats, codec_preference=preference)[0]
+
+    assert option.format_selector == native["format_id"] == "315+251"
+    assert option.video_protocol == "https"
+    assert option.video_size == 1_002_746_821
+    assert option.audio_size == 8_970_523
+    assert option.estimated_size == 1_011_717_344
+    assert not option.size_is_estimate
 
 
 def test_normalizes_and_sorts_user_facing_quality_options() -> None:
@@ -22,14 +46,14 @@ def test_normalizes_and_sorts_user_facing_quality_options() -> None:
     assert all("137" not in option.label and "313" not in option.label for option in options)
 
     option_1080 = next(option for option in options if option.label == "1080p")
-    assert option_1080.format_selector == "137+140"
-    assert option_1080.container == "MP4"
+    assert option_1080.format_selector == "248+251"
+    assert option_1080.container == "WebM"
     assert option_1080.requires_merge
-    assert option_1080.estimated_size == 210
-    assert option_1080.size_is_estimate is True
-    assert option_1080.video_size == 200
-    assert option_1080.video_size_is_estimate is True
-    assert option_1080.audio_size == 10
+    assert option_1080.estimated_size == 192
+    assert option_1080.size_is_estimate is False
+    assert option_1080.video_size == 180
+    assert option_1080.video_size_is_estimate is False
+    assert option_1080.audio_size == 12
     assert option_1080.audio_size_is_estimate is False
 
     option_720 = next(option for option in options if option.label == "720p")

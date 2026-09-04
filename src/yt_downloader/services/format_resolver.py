@@ -58,9 +58,10 @@ class YtDlpFormatResolver:
         formats = [*(self._sortable_copy(item) for item in audio_candidates), *videos]
         with self.ydl_factory({"quiet": True, "no_warnings": True}) as ydl:
             ydl.sort_formats({"formats": formats})
-            selector = ydl.build_format_selector(
-                "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
-            )
+            # Container is an output detail, not an invisible quality filter.
+            # Use yt-dlp's documented default; MP4-only preference can hide
+            # exact-size VP9/WebM streams in favour of unknown-size HLS.
+            selector = ydl.build_format_selector("bv*+ba/b")
             selected = ydl._select_formats(formats, selector)
         if not selected:
             return None

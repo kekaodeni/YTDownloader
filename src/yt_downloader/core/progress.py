@@ -17,7 +17,7 @@ class AggregateProgressSnapshot:
 
 
 class AggregateProgressTracker:
-    """Accumulates split streams while locking the first complete denominator."""
+    """Lock exact totals, but keep yt-dlp estimates live and explicitly labeled."""
 
     def __init__(self, option: FormatOption) -> None:
         expected = [option.video_format_id]
@@ -54,11 +54,14 @@ class AggregateProgressTracker:
         self._try_lock_total()
 
     def _add_hint(self, format_id: str, size: int | None, is_estimate: bool) -> None:
-        if size is None or size <= 0 or is_estimate:
+        if size is None or size <= 0:
             return
         self._component_totals[format_id] = size
         self._component_estimates[format_id] = is_estimate
-        self._component_sources[format_id] = ProgressTotalSource.METADATA_FILESIZE
+        self._component_sources[format_id] = (
+            ProgressTotalSource.METADATA_FILESIZE_APPROX
+            if is_estimate else ProgressTotalSource.METADATA_FILESIZE
+        )
 
     def _format_id(self, data: Mapping[str, Any]) -> str:
         info = data.get("info_dict") or {}
@@ -71,6 +74,8 @@ class AggregateProgressTracker:
         if self._locked_total is not None:
             return
         if not self.expected_format_ids.issubset(self._component_totals):
+            return
+        if any(self._component_estimates[key] for key in self.expected_format_ids):
             return
         self._locked_total = sum(
             self._component_totals[format_id]
@@ -97,7 +102,7 @@ class AggregateProgressTracker:
         finished: bool = False,
     ) -> AggregateProgressSnapshot:
         format_id = self._format_id(data)
-        if format_id:
+        if format_id in self.expected_format_ids:
             downloaded = data.get("downloaded_bytes")
             if isinstance(downloaded, (int, float)) and downloaded >= 0:
                 self._component_downloaded[format_id] = max(
@@ -106,14 +111,20 @@ class AggregateProgressTracker:
                 )
             total = data.get("total_bytes")
             estimate = data.get("total_bytes_estimate")
-            fragmented = any(
-                data.get(key) is not None
-                for key in ("fragment_index", "fragment_count")
-            )
             if isinstance(total, (int, float)) and total > 0:
                 self._component_totals[format_id] = int(total)
                 self._component_estimates[format_id] = False
                 self._component_sources[format_id] = ProgressTotalSource.HOOK_TOTAL_BYTES
+            elif (
+                isinstance(estimate, (int, float)) and estimate > 0
+                and data.get("fragment_index") != 0
+                and self._component_estimates.get(format_id, True)
+            ):
+                # Native HLS/DASH estimates evolve as fragments arrive. Never
+                # freeze an initialization fragment's tiny size as the total.
+                self._component_totals[format_id] = int(estimate)
+                self._component_estimates[format_id] = True
+                self._component_sources[format_id] = ProgressTotalSource.HOOK_TOTAL_BYTES_ESTIMATE
             if finished:
                 final_downloaded = self._component_downloaded.get(format_id, 0)
                 if final_downloaded > 0 and (
@@ -140,6 +151,14 @@ class AggregateProgressTracker:
         return self.snapshot()
 
     def snapshot(self) -> AggregateProgressSnapshot:
+        if self._locked_total is None and self.expected_format_ids.issubset(self._component_totals):
+            sources = {self._component_sources[key] for key in self.expected_format_ids}
+            return AggregateProgressSnapshot(
+                self._last_downloaded,
+                sum(self._component_totals[key] for key in self.expected_format_ids),
+                True,
+                sources.pop() if len(sources) == 1 else ProgressTotalSource.MIXED,
+            )
         return AggregateProgressSnapshot(
             self._last_downloaded,
             self._locked_total,
