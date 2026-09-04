@@ -2,9 +2,9 @@
 
 YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Widgets 与统一的 Fluent 2 语义 Token；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
-![浅色主页](artifacts/gui-light.png)
+![浅色下载界面](docs/images/download-light.png)
 
-![深色下载任务](artifacts/gui-dark-125.png)
+![深色下载任务](docs/images/download-dark.png)
 
 ## 功能
 
