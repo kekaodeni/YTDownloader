@@ -10,6 +10,7 @@ import weakref
 from PySide6.QtCore import (
     QAbstractAnimation,
     QAnimationGroup,
+    QEvent,
     QEasingCurve,
     QPropertyAnimation,
     QObject,
@@ -18,7 +19,7 @@ from PySide6.QtCore import (
     Signal,
     QVariantAnimation,
 )
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QStackedWidget, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QMenu, QStackedWidget, QWidget
 from shiboken6 import delete as delete_qobject, isValid
 
 if TYPE_CHECKING:
@@ -110,6 +111,12 @@ class _MotionState:
     destroyed_handler: Callable | None = None
 
 
+@dataclass(slots=True)
+class _WindowMotionState:
+    target: weakref.ReferenceType[QWidget]
+    controller: AnimationController
+
+
 class MotionManager(QObject):
     reduced_motion_changed = Signal(bool)
 
@@ -118,11 +125,24 @@ class MotionManager(QObject):
         self.reduce_motion = reduce_motion
         self._active: dict[int, _MotionState] = {}
         self._snapshots: dict[int, SnapshotOverlay] = {}
+        self._window_motion: dict[int, _WindowMotionState] = {}
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
     @property
     def active_count(self) -> int:
         self._discard_finished_snapshots()
-        return len(self._active) + len(self._snapshots)
+        return len(self._active) + len(self._snapshots) + self.active_window_count
+
+    @property
+    def active_window_count(self) -> int:
+        for key, state in tuple(self._window_motion.items()):
+            target = state.target()
+            if target is None or not isValid(target):
+                state.controller.cleanup()
+                self._window_motion.pop(key, None)
+        return len(self._window_motion)
 
     def set_reduce_motion(self, enabled: bool) -> None:
         enabled = bool(enabled)
@@ -136,7 +156,70 @@ class MotionManager(QObject):
                 if isValid(proxy):
                     proxy.cleanup()
             self._snapshots.clear()
+            for key in tuple(self._window_motion):
+                self._finish_window(key)
         self.reduced_motion_changed.emit(enabled)
+
+    def eventFilter(self, watched, event) -> bool:
+        if isinstance(watched, (QDialog, QMenu)) and self._belongs_to_owner(watched):
+            if event.type() is QEvent.Type.Show and not self.reduce_motion:
+                duration = MotionTokens.DIALOG_ENTER if isinstance(watched, QDialog) else MotionTokens.MENU_ENTER
+                self._animate_window(watched, duration)
+            elif event.type() in {QEvent.Type.Hide, QEvent.Type.Close}:
+                self._finish_window(id(watched))
+        if isinstance(watched, QWidget) and event.type() in {
+            QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress, QEvent.Type.TouchBegin,
+            QEvent.Type.ContextMenu,
+        }:
+            self._finish_window(id(watched.window()))
+        return False
+
+    def _belongs_to_owner(self, widget: QWidget) -> bool:
+        owner = self.parent()
+        if not isinstance(owner, QWidget):
+            return False
+        current: QWidget | None = widget
+        while current is not None:
+            if current is owner:
+                return True
+            current = current.parentWidget()
+        return False
+
+    def _animate_window(self, widget: QWidget, duration: int) -> None:
+        key = id(widget)
+        self._finish_window(key)
+        widget.setWindowOpacity(0.0)
+        controller = AnimationController(PresentationState(opacity=0), self)
+        state = _WindowMotionState(weakref.ref(widget), controller)
+        self._window_motion[key] = state
+        controller.presentation_changed.connect(self._present_window)
+        controller.finished.connect(self._window_finished)
+        controller.retarget(PresentationState(), duration=duration, easing=QEasingCurve.Type.OutQuart)
+
+    def _present_window(self, value: PresentationState) -> None:
+        controller = self.sender()
+        for state in self._window_motion.values():
+            if state.controller is controller:
+                target = state.target()
+                if target is not None and isValid(target):
+                    target.setWindowOpacity(value.opacity)
+                break
+
+    def _window_finished(self) -> None:
+        controller = self.sender()
+        for key, state in tuple(self._window_motion.items()):
+            if state.controller is controller:
+                self._finish_window(key)
+                break
+
+    def _finish_window(self, key: int) -> None:
+        state = self._window_motion.pop(key, None)
+        if state is None:
+            return
+        state.controller.cleanup()
+        target = state.target()
+        if target is not None and isValid(target):
+            target.setWindowOpacity(1.0)
 
     def switch_page(self, stack: QStackedWidget, index: int) -> None:
         if not 0 <= index < stack.count():
