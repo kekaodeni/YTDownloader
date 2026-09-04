@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from semver import Version
 
@@ -56,3 +57,10 @@ class UpdateManifest:
     notes_en: str
     release_url: str
     package: UpdatePackage
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedUpdatePackage:
+    transaction_id: str
+    path: Path
+    manifest: UpdateManifest

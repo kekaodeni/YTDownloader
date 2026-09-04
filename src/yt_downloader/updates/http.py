@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Callable
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -49,3 +50,43 @@ class SecureUpdateHttpClient:
             if response is not None:
                 response.close()
             session.close()
+
+    def open_stream(self, url: str, timeout: tuple[int, int]):
+        allowed = {'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}
+        session = self._session()
+        response = None
+        try:
+            current = url
+            for _redirect in range(4):
+                parsed = urlsplit(current)
+                if parsed.scheme != 'https' or parsed.hostname not in allowed or parsed.username or parsed.password:
+                    raise ValueError('Update redirect is not an approved HTTPS GitHub asset host')
+                response = session.get(current, timeout=timeout, stream=True, allow_redirects=False)
+                if response.status_code not in {301, 302, 303, 307, 308}:
+                    response.raise_for_status()
+                    return _StreamingResponse(response, session)
+                location = response.headers.get('Location')
+                response.close()
+                response = None
+                if not location:
+                    raise ValueError('Update redirect has no location')
+                current = urljoin(current, location)
+            raise ValueError('Update redirect limit exceeded')
+        except BaseException:
+            if response is not None:
+                response.close()
+            session.close()
+            raise
+
+
+class _StreamingResponse:
+    def __init__(self, response, session) -> None:
+        self.response = response
+        self.session = session
+
+    def iter_content(self, size: int):
+        return self.response.iter_content(size)
+
+    def close(self) -> None:
+        self.response.close()
+        self.session.close()
