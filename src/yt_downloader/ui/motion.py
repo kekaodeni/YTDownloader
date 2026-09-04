@@ -12,19 +12,20 @@ from PySide6.QtCore import (
     QAnimationGroup,
     QEasingCurve,
     QParallelAnimationGroup,
+    QPoint,
     QPropertyAnimation,
-    QRect,
     QObject,
     QTimer,
+    Qt,
 )
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QStackedWidget, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel, QStackedWidget, QWidget
 from shiboken6 import delete as delete_qobject, isValid
 
 
 class MotionDuration(IntEnum):
     FAST = 140
-    NORMAL = 180
-    EMPHASIS = 220
+    NORMAL = 240
+    EMPHASIS = 320
 
 
 @dataclass(slots=True)
@@ -32,10 +33,7 @@ class _MotionState:
     widget: weakref.ReferenceType[QWidget]
     animation: QAbstractAnimation
     effect: QGraphicsOpacityEffect | None = None
-    final_geometry: QRect | None = None
-    final_maximum_height: int | None = None
-    hide_on_finish: bool = False
-    on_finished: Callable[[], None] | None = None
+    dispose_widget: bool = False
     finishing: bool = False
 
 
@@ -69,11 +67,7 @@ class MotionManager(QObject):
         widget.show()
         if self.reduce_motion:
             return
-        parent = widget.parentWidget()
-        if parent and parent.layout():
-            parent.layout().activate()
-        vertical_offset = 0 if self._is_layout_managed(widget) else 6
-        self._fade(widget, MotionDuration.EMPHASIS, vertical_offset=vertical_offset)
+        self._fade(widget, MotionDuration.EMPHASIS)
 
     def retire(self, widget: QWidget, on_finished: Callable[[], None]) -> None:
         if self.reduce_motion or not widget.isVisible():
@@ -83,35 +77,40 @@ class MotionManager(QObject):
         key = id(widget)
         self._finish(key, stopped=True)
         parent = widget.parentWidget()
-        if parent and parent.layout():
+        if parent is None:
+            widget.hide()
+            on_finished()
+            return
+        if parent.layout():
             parent.layout().activate()
-        original_maximum_height = widget.maximumHeight()
-        start_height = max(widget.height(), widget.sizeHint().height(), 1)
-        widget.setMaximumHeight(start_height)
-        effect = QGraphicsOpacityEffect(widget)
+        proxy = QLabel(parent)
+        proxy.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        proxy.setPixmap(widget.grab())
+        proxy.setScaledContents(True)
+        proxy.setGeometry(widget.geometry())
+        proxy.show()
+        proxy.raise_()
+        effect = QGraphicsOpacityEffect(proxy)
         effect.setOpacity(1.0)
-        widget.setGraphicsEffect(effect)
+        proxy.setGraphicsEffect(effect)
         opacity = QPropertyAnimation(effect, b"opacity", self)
         opacity.setDuration(int(MotionDuration.NORMAL))
         opacity.setStartValue(1.0)
         opacity.setEndValue(0.0)
         opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
-        height = QPropertyAnimation(widget, b"maximumHeight", self)
-        height.setDuration(int(MotionDuration.NORMAL))
-        height.setStartValue(start_height)
-        height.setEndValue(0)
-        height.setEasingCurve(QEasingCurve.Type.OutCubic)
+        position = QPropertyAnimation(proxy, b"pos", self)
+        position.setDuration(int(MotionDuration.NORMAL))
+        position.setStartValue(proxy.pos())
+        position.setEndValue(proxy.pos() + QPoint(0, -6))
+        position.setEasingCurve(QEasingCurve.Type.OutCubic)
         group = QParallelAnimationGroup(self)
         group.addAnimation(opacity)
-        group.addAnimation(height)
-        self._register(
-            widget,
-            group,
-            effect=effect,
-            final_maximum_height=original_maximum_height,
-            hide_on_finish=True,
-            on_finished=on_finished,
-        )
+        group.addAnimation(position)
+        widget.hide()
+        on_finished()
+        if parent.layout():
+            parent.layout().activate()
+        self._register(proxy, group, effect=effect, dispose_widget=True)
 
     def feedback(self, widget: QWidget) -> None:
         if self.reduce_motion or not widget.isVisible():
@@ -133,8 +132,6 @@ class MotionManager(QObject):
         self,
         widget: QWidget,
         duration: MotionDuration,
-        *,
-        vertical_offset: int = 0,
     ) -> None:
         key = id(widget)
         self._finish(key, stopped=True)
@@ -146,20 +143,6 @@ class MotionManager(QObject):
         opacity.setStartValue(0.0)
         opacity.setEndValue(1.0)
         opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
-        if vertical_offset:
-            final_geometry = widget.geometry()
-            start_geometry = final_geometry.translated(0, vertical_offset)
-            widget.setGeometry(start_geometry)
-            geometry = QPropertyAnimation(widget, b"geometry", self)
-            geometry.setDuration(int(duration))
-            geometry.setStartValue(start_geometry)
-            geometry.setEndValue(final_geometry)
-            geometry.setEasingCurve(QEasingCurve.Type.OutCubic)
-            group = QParallelAnimationGroup(self)
-            group.addAnimation(opacity)
-            group.addAnimation(geometry)
-            self._register(widget, group, effect=effect, final_geometry=final_geometry)
-            return
         self._register(widget, opacity, effect=effect)
 
     def _register(
@@ -168,20 +151,14 @@ class MotionManager(QObject):
         animation: QAbstractAnimation,
         *,
         effect: QGraphicsOpacityEffect | None = None,
-        final_geometry: QRect | None = None,
-        final_maximum_height: int | None = None,
-        hide_on_finish: bool = False,
-        on_finished: Callable[[], None] | None = None,
+        dispose_widget: bool = False,
     ) -> None:
         key = id(widget)
         state = _MotionState(
             weakref.ref(widget),
             animation,
             effect,
-            final_geometry,
-            final_maximum_height,
-            hide_on_finish,
-            on_finished,
+            dispose_widget,
         )
         self._active[key] = state
         animation.finished.connect(lambda current=key, value=state: self._schedule_finish(current, value))
@@ -208,13 +185,9 @@ class MotionManager(QObject):
         widget = state.widget()
         if widget is not None:
             try:
-                if state.final_geometry is not None:
-                    widget.setGeometry(state.final_geometry)
-                if state.final_maximum_height is not None:
-                    widget.setMaximumHeight(state.final_maximum_height)
                 if state.effect is not None:
                     state.effect.setOpacity(1.0)
-                if state.hide_on_finish:
+                if state.dispose_widget:
                     widget.hide()
             except RuntimeError:
                 pass
@@ -229,15 +202,8 @@ class MotionManager(QObject):
                 pass
         if self._active.get(key) is state:
             self._active.pop(key, None)
-        if state.on_finished is not None:
-            callback = state.on_finished
-            state.on_finished = None
-            callback()
-
-    @staticmethod
-    def _is_layout_managed(widget: QWidget) -> bool:
-        parent = widget.parentWidget()
-        return bool(parent and parent.layout() and parent.layout().indexOf(widget) >= 0)
+        if state.dispose_widget and widget is not None:
+            widget.deleteLater()
 
     def _detach_effect_target(
         self,

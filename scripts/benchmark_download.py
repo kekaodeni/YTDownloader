@@ -12,8 +12,10 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
 import logging
+import os
 from pathlib import Path
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -28,13 +30,17 @@ import yt_dlp.version
 from yt_downloader.core.models import DownloadRequest, FormatOption, VideoInfo
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.download_service import DownloadService
-from yt_downloader.services.download_tuning import choose_auto_fragment_count
+from yt_downloader.services.download_tuning import (
+    BenchmarkTrafficBudget,
+    choose_auto_fragment_count,
+    needs_third_sample,
+)
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
 
 
 DEFAULT_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
-DEFAULT_FORMAT = "bestvideo[height<=360]+bestaudio/best[height<=360]"
+DEFAULT_FORMAT = "bv*+ba/b"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +48,8 @@ class Scenario:
     name: str
     runner: str
     fragments: int | None
+    ignore_config: bool = True
+    use_exact_format: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +64,11 @@ class RunMetric:
     retries: int
     fragment_errors: int
     error: str | None = None
+    format_selector: str = ""
+    protocol: str = ""
+    concurrent_fragments: int | None = None
+    peak_speed_bytes_per_second: float = 0.0
+    effective_proxy: str = ""
 
 
 class _CaptureHandler(logging.Handler):
@@ -160,8 +173,10 @@ def _run_app(
     policy: NetworkPolicy,
     deno: Path,
     ffmpeg: Path,
+    protocol: str,
 ) -> RunMetric:
     first_progress: float | None = None
+    peak_speed = 0.0
     started = time.monotonic()
     capture = _CaptureHandler()
     download_logger = logging.getLogger("yt_downloader.services.download_service")
@@ -175,26 +190,40 @@ def _run_app(
         )
 
         def progress(value) -> None:
-            nonlocal first_progress
+            nonlocal first_progress, peak_speed
             if first_progress is None and (value.downloaded_bytes or 0) > 0:
                 first_progress = time.monotonic()
+            if value.speed:
+                peak_speed = max(peak_speed, float(value.speed))
 
         request = DownloadRequest(uuid.uuid4().hex, video, option, directory, f"app-{scenario.name}-{repetition}")
         result = service.download(request, progress, threading.Event())
         elapsed = time.monotonic() - started
         retries, fragment_errors = _count_diagnostics(capture.lines)
+        transferred = max(result.file_size, option.estimated_size or 0)
         return RunMetric(
-            scenario.name, repetition, True, elapsed, result.file_size,
-            result.file_size / elapsed, (first_progress - started) if first_progress else None,
+            scenario.name, repetition, True, elapsed, transferred,
+            transferred / elapsed, (first_progress - started) if first_progress else None,
             retries, fragment_errors,
+            format_selector=option.format_selector,
+            protocol=protocol,
+            concurrent_fragments=scenario.fragments,
+            peak_speed_bytes_per_second=peak_speed,
+            effective_proxy=policy.snapshot().safe_description,
         )
     except Exception as exc:
         elapsed = time.monotonic() - started
         retries, fragment_errors = _count_diagnostics(capture.lines)
+        transferred = _directory_bytes(directory)
         return RunMetric(
-            scenario.name, repetition, False, elapsed, 0, 0.0,
+            scenario.name, repetition, False, elapsed, transferred, 0.0,
             (first_progress - started) if first_progress else None,
             retries, fragment_errors, redact_sensitive(repr(exc)),
+            format_selector=option.format_selector,
+            protocol=protocol,
+            concurrent_fragments=scenario.fragments,
+            peak_speed_bytes_per_second=peak_speed,
+            effective_proxy=policy.snapshot().safe_description,
         )
     finally:
         download_logger.removeHandler(capture)
@@ -205,22 +234,34 @@ def _run_cli(
     repetition: int,
     directory: Path,
     url: str,
-    exact_selector: str,
+    exact_selector: str | None,
     policy: NetworkPolicy,
     deno: Path,
     ffmpeg: Path,
 ) -> RunMetric:
-    output = directory / f"cli-{repetition}.%(ext)s"
-    command = [
-        sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist", "--newline", "--progress",
-        "--no-warnings", "--progress-template", "download:__PROGRESS__:%(progress.downloaded_bytes)s",
-        "--print", "after_move:__RESULT__:%(filepath)s", "-f", exact_selector,
-        "-o", str(output), *_tool_args(deno, ffmpeg), *_network_args(policy), url,
-    ]
+    output = (directory / f"cli-{repetition}.%(ext)s").resolve()
+    command = [sys.executable, "-m", "yt_dlp"]
+    if scenario.ignore_config:
+        command.append("--ignore-config")
+    command.extend([
+        "--no-playlist", "--newline", "--progress", "--no-warnings",
+        "--progress-template", "download:__PROGRESS__:%(progress.downloaded_bytes)s:%(progress.speed)s",
+        "--print", "before_dl:__FORMAT__:%(format_id)s:%(protocol)s",
+        "--print", "after_move:__RESULT__:%(filepath)s",
+        "-o", str(output), *_tool_args(deno, ffmpeg), *_network_args(policy),
+    ])
+    if exact_selector:
+        command.extend(["-f", exact_selector])
+    if scenario.fragments:
+        command.extend(["-N", str(scenario.fragments)])
+    command.append(url)
     started = time.monotonic()
     first_progress: float | None = None
     lines: list[str] = []
     result_path: Path | None = None
+    selected_format = exact_selector or "yt-dlp default"
+    selected_protocol = "unknown"
+    peak_speed = 0.0
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -230,6 +271,7 @@ def _run_cli(
         errors="replace",
         shell=False,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        env={**os.environ, "PYTHONUTF8": "1"},
     )
     assert process.stdout is not None
     for line in process.stdout:
@@ -237,10 +279,19 @@ def _run_cli(
         lines.append(redact_sensitive(cleaned))
         if "__PROGRESS__:" in cleaned and first_progress is None:
             try:
-                if float(cleaned.rsplit(":", 1)[-1]) > 0:
+                if float(cleaned.split(":")[-2]) > 0:
                     first_progress = time.monotonic()
             except ValueError:
                 pass
+        if "__PROGRESS__:" in cleaned:
+            try:
+                speed_text = cleaned.rsplit(":", 1)[-1]
+                if speed_text not in {"NA", "None"}:
+                    peak_speed = max(peak_speed, float(speed_text))
+            except ValueError:
+                pass
+        if cleaned.startswith("__FORMAT__:"):
+            _, selected_format, selected_protocol = cleaned.split(":", 2)
         if cleaned.startswith("__RESULT__:"):
             result_path = Path(cleaned.removeprefix("__RESULT__:"))
     return_code = process.wait()
@@ -251,12 +302,31 @@ def _run_cli(
         return RunMetric(
             scenario.name, repetition, True, elapsed, size, size / elapsed,
             (first_progress - started) if first_progress else None, retries, fragment_errors,
+            format_selector=selected_format,
+            protocol=selected_protocol,
+            concurrent_fragments=scenario.fragments,
+            peak_speed_bytes_per_second=peak_speed,
+            effective_proxy=policy.snapshot().safe_description,
         )
     excerpt = " | ".join(lines[-5:])[-1200:]
+    transferred = _directory_bytes(directory)
     return RunMetric(
-        scenario.name, repetition, False, elapsed, 0, 0.0,
+        scenario.name, repetition, False, elapsed, transferred, 0.0,
         (first_progress - started) if first_progress else None,
         retries, fragment_errors, excerpt or f"yt-dlp exit code {return_code}",
+        format_selector=selected_format,
+        protocol=selected_protocol,
+        concurrent_fragments=scenario.fragments,
+        peak_speed_bytes_per_second=peak_speed,
+        effective_proxy=policy.snapshot().safe_description,
+    )
+
+
+def _directory_bytes(directory: Path) -> int:
+    return sum(
+        path.stat().st_size
+        for path in directory.rglob("*")
+        if path.is_file()
     )
 
 
@@ -286,10 +356,14 @@ def _summary(metrics: list[RunMetric]) -> dict[str, Any]:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--format", default=DEFAULT_FORMAT)
-    parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--runs", type=int, default=2)
+    parser.add_argument("--traffic-limit-bytes", type=int, default=1_500_000_000)
+    parser.add_argument("--initial-traffic-bytes", type=int, default=0)
     parser.add_argument("--network-mode", choices=("system", "direct", "custom"), default="system")
     parser.add_argument("--proxy", default="")
     parser.add_argument("--work-dir", type=Path, default=Path(".tool-stage") / "benchmark-download")
@@ -297,12 +371,19 @@ def main() -> int:
     parser.add_argument(
         "--scenario",
         action="append",
-        choices=("cli_default", "app_default", "app_n1", "app_n4", "app_n8"),
+        choices=(
+            "cli_original", "cli_ignore_config", "app_current_default",
+            "cli_parity", "app_parity", "app_n1", "app_n4", "app_n8",
+        ),
         help="run only selected scenarios; repeat this option to select more than one",
     )
     args = parser.parse_args()
-    if args.runs < 3:
-        parser.error("--runs must be at least 3 so medians are meaningful")
+    if args.runs not in {2, 3}:
+        parser.error("--runs must be 2 or 3")
+    if args.traffic_limit_bytes <= 0:
+        parser.error("--traffic-limit-bytes must be positive")
+    if not 0 <= args.initial_traffic_bytes < args.traffic_limit_bytes:
+        parser.error("--initial-traffic-bytes must be within the traffic limit")
     deno = find_tool("deno")
     ffmpeg = find_tool("ffmpeg")
     if not deno or not ffmpeg:
@@ -311,8 +392,11 @@ def main() -> int:
     video, option, protocol = _resolve_video(args.url, args.format, policy, deno)
     args.work_dir.mkdir(parents=True, exist_ok=True)
     scenarios = [
-        Scenario("cli_default", "cli", None),
-        Scenario("app_default", "app", 0),
+        Scenario("cli_original", "cli", None, ignore_config=False, use_exact_format=False),
+        Scenario("cli_ignore_config", "cli", None, use_exact_format=False),
+        Scenario("app_current_default", "app", 0),
+        Scenario("cli_parity", "cli", None),
+        Scenario("app_parity", "app", 0),
         Scenario("app_n1", "app", 1),
         Scenario("app_n4", "app", 4),
         Scenario("app_n8", "app", 8),
@@ -320,23 +404,63 @@ def main() -> int:
     if args.scenario:
         selected_names = set(args.scenario)
         scenarios = [item for item in scenarios if item.name in selected_names]
+    baseline_names = {"cli_original", "cli_ignore_config", "app_current_default"}
+    budget = BenchmarkTrafficBudget(
+        args.traffic_limit_bytes,
+        args.initial_traffic_bytes,
+    )
+    estimated_run_bytes = option.estimated_size
     metrics: list[RunMetric] = []
-    for repetition in range(1, args.runs + 1):
-        for scenario in _ordered(scenarios, repetition):
+
+    def run_scenario(scenario: Scenario, repetition: int) -> bool:
+            if not budget.can_start(estimated_run_bytes):
+                print(
+                    f"traffic budget prevents {scenario.name}; "
+                    f"consumed={budget.consumed_bytes} limit={budget.limit_bytes}",
+                    flush=True,
+                )
+                return False
             run_dir = args.work_dir / f"r{repetition}-{scenario.name}"
             run_dir.mkdir(parents=True, exist_ok=True)
             print(f"[{repetition}/{args.runs}] {scenario.name}", flush=True)
             if scenario.runner == "cli":
                 metric = _run_cli(
-                    scenario, repetition, run_dir, video.url, option.format_selector,
+                    scenario, repetition, run_dir, video.url,
+                    option.format_selector if scenario.use_exact_format else None,
                     policy, deno, ffmpeg,
                 )
             else:
                 metric = _run_app(
-                    scenario, repetition, run_dir, video, option, policy, deno, ffmpeg,
+                    scenario, repetition, run_dir, video, option, policy, deno, ffmpeg, protocol,
                 )
             metrics.append(metric)
+            budget.record(metric.bytes_downloaded)
             print(json.dumps(asdict(metric), ensure_ascii=False), flush=True)
+            shutil.rmtree(run_dir, ignore_errors=True)
+            return True
+
+    for scenario in scenarios:
+        if scenario.name in baseline_names and not run_scenario(scenario, 1):
+            break
+
+    repeated = [item for item in scenarios if item.name not in baseline_names]
+    for repetition in range(1, min(args.runs, 2) + 1):
+        for scenario in _ordered(repeated, repetition):
+            if not run_scenario(scenario, repetition):
+                repeated = []
+                break
+        if not repeated:
+            break
+
+    if args.runs == 3:
+        for scenario in repeated:
+            samples = [
+                item.throughput_bytes_per_second
+                for item in metrics
+                if item.scenario == scenario.name and item.succeeded
+            ]
+            if needs_third_sample(samples) and not run_scenario(scenario, 3):
+                break
     summary = _summary(metrics)
     samples = {
         count: [
@@ -360,10 +484,14 @@ def main() -> int:
         "protocol": protocol,
         "network": policy.snapshot().safe_description,
         "runs_per_scenario": args.runs,
+        "traffic_limit_bytes": budget.limit_bytes,
+        "traffic_initial_bytes": args.initial_traffic_bytes,
+        "traffic_consumed_bytes": budget.consumed_bytes,
         "metrics": [asdict(item) for item in metrics],
         "summary": summary,
         "recommended_auto_fragment_count": recommendation,
         "decision_rule": "lowest error-free concurrency within 5% of fastest median throughput",
+        "parity_rule": "CLI and GUI medians within 10% indicate no material wrapper bottleneck",
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

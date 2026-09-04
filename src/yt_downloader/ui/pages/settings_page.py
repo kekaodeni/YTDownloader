@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from yt_downloader.core.models import AppSettings
+from yt_downloader.core.models import AppSettings, CodecPreference
 from yt_downloader.ui.typography import (
     FontRole,
     apply_form_typography,
@@ -75,6 +75,20 @@ class SettingsPage(QWidget):
         self.fragments_combo.setAccessibleName("分片并发数")
         self.fragments_combo.setToolTip("自动模式使用实测确认的稳健并发数；分片并发只对支持分片的格式有效。")
         form.addRow("分片并发", self.fragments_combo)
+        self.codec_combo = QComboBox()
+        for label, value in (
+            ("自动（使用 yt-dlp 推荐）", CodecPreference.AUTO),
+            ("AV1", CodecPreference.AV1),
+            ("VP9", CodecPreference.VP9),
+            ("H.264", CodecPreference.H264),
+        ):
+            self.codec_combo.addItem(label, value.value)
+        self.codec_combo.setCurrentIndex(
+            max(0, self.codec_combo.findData(settings.codec_preference.value)),
+        )
+        self.codec_combo.setAccessibleName("视频编码偏好")
+        self.codec_combo.setToolTip("高级选项。自动模式完全使用 yt-dlp 的格式排序。")
+        form.addRow("视频编码（高级）", self.codec_combo)
 
         self.proxy_combo = QComboBox()
         for label, value in (("系统代理", "system"), ("直连", "direct"), ("自定义代理", "custom")):
@@ -169,6 +183,7 @@ class SettingsPage(QWidget):
         self.directory_input.textChanged.connect(self._mark_dirty)
         self.quality_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
         self.fragments_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
+        self.codec_combo.currentIndexChanged.connect(self._mark_dirty_immediately)
         self.proxy_combo.currentIndexChanged.connect(self._proxy_changed)
         self.proxy_input.textChanged.connect(self._mark_dirty)
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
@@ -238,7 +253,7 @@ class SettingsPage(QWidget):
 
     def current_settings(self) -> AppSettings:
         return AppSettings(
-            schema_version=2,
+            schema_version=3,
             download_directory=self.directory_input.text().strip(),
             default_quality=str(self.quality_combo.currentData()),
             theme=str(self.theme_combo.currentData()),
@@ -247,6 +262,7 @@ class SettingsPage(QWidget):
             proxy_mode=str(self.proxy_combo.currentData()),
             custom_proxy_url=self.proxy_input.text().strip(),
             concurrent_fragments=int(self.fragments_combo.currentData()),
+            codec_preference=CodecPreference(str(self.codec_combo.currentData())),
         )
 
     def _save(self) -> None:

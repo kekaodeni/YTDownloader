@@ -206,7 +206,7 @@ class FakeYDLWithChangingEstimate(FakeYDL):
         return 0
 
 
-def test_first_reliable_estimate_stays_locked_and_missing_speed_is_not_stale(
+def test_hook_estimate_never_becomes_an_authoritative_progress_denominator(
     tmp_path: Path,
 ) -> None:
     request = _request(tmp_path)
@@ -235,11 +235,11 @@ def test_first_reliable_estimate_stays_locked_and_missing_speed_is_not_stale(
     service.download(request, events.append, threading.Event())
 
     transfer = events[:-1]
-    assert [event.total_bytes for event in transfer] == [1000, 1000]
+    assert [event.total_bytes for event in transfer] == [None, None]
     assert [event.downloaded_bytes for event in transfer] == [100, 200]
-    assert [event.percent for event in transfer] == [10.0, 20.0]
+    assert [event.percent for event in transfer] == [None, None]
     assert [event.speed for event in transfer] == [100.0, None]
-    assert [event.eta for event in transfer] == [9, 8]
+    assert [event.eta for event in transfer] == [None, None]
 
 
 def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> None:
@@ -270,14 +270,16 @@ def test_download_uses_safe_options_and_reports_real_stages(tmp_path: Path) -> N
         TaskStatus.COMPLETED,
     ]
     transfer_events = events[:-1]
-    assert [event.total_bytes for event in transfer_events] == [300, 300, 300, 300]
-    assert [event.downloaded_bytes for event in transfer_events] == [50, 100, 300, 300]
-    assert [round(event.percent or 0, 2) for event in transfer_events] == [16.67, 33.33, 100.0, 100.0]
-    assert all(event.total_is_estimate for event in transfer_events)
+    assert [event.total_bytes for event in transfer_events] == [None, None, 150, 150]
+    assert [event.downloaded_bytes for event in transfer_events] == [50, 100, 150, 150]
+    assert [event.percent for event in transfer_events[:2]] == [None, None]
+    assert [event.percent for event in transfer_events[2:]] == [100.0, 100.0]
+    assert not any(event.total_is_estimate for event in transfer_events)
     assert events[-1].total_bytes == result.file_size
     assert events[-1].total_is_estimate is False
     assert events[0].speed == 2_000_000
-    assert events[0].total_source is ProgressTotalSource.METADATA
+    assert events[0].total_source is ProgressTotalSource.UNKNOWN
+    assert events[2].total_source is ProgressTotalSource.HOOK_TOTAL_BYTES
     assert events[-1].total_source is ProgressTotalSource.FINAL
     options = FakeYDL.last_options or {}
     assert options["ignoreconfig"] is True

@@ -21,17 +21,23 @@ def test_font_resolution_has_script_specific_windows_fallbacks() -> None:
         "Microsoft YaHei UI",
         "Segoe UI Variable",
         "Yu Gothic UI",
+        "Malgun Gothic",
+        "Segoe UI Emoji",
     }, system_default="Fallback")
 
     assert families.chinese[:2] == ("Microsoft YaHei UI", "Microsoft YaHei")
     assert families.japanese[:2] == ("Yu Gothic UI", "Meiryo")
     assert families.latin[:2] == ("Segoe UI Variable", "Segoe UI")
+    assert families.korean[0] == "Malgun Gothic"
+    assert families.emoji[0] == "Segoe UI Emoji"
     assert families.numeric[0] == "Segoe UI Variable"
     assert all(stack[-1] == "Fallback" for stack in (
         families.chinese,
         families.japanese,
         families.latin,
         families.numeric,
+        families.korean,
+        families.emoji,
     ))
 
 
@@ -83,12 +89,16 @@ def test_typography_manager_selects_one_stack_for_the_complete_text() -> None:
         "Segoe UI",
         "Segoe UI Variable",
         "Yu Gothic UI",
+        "Malgun Gothic",
+        "Segoe UI Emoji",
     }, system_default="Fallback")
     manager = TypographyManager(families)
 
     assert manager.family_stack(FontRole.CARD_TITLE, "下载视频 🚀")[0] == "Microsoft YaHei UI"
     assert manager.family_stack(FontRole.CARD_TITLE, "桜のテスト動画 🚀")[0] == "Yu Gothic UI"
     assert manager.family_stack(FontRole.CARD_TITLE, "Download 1080p 🚀")[0] == "Segoe UI Variable"
+    assert manager.family_stack(FontRole.CARD_TITLE, "다운로드 영상")[0] == "Malgun Gothic"
+    assert manager.family_stack(FontRole.CARD_TITLE, "🚀🎬")[0] == "Segoe UI Emoji"
     assert manager.family_stack(FontRole.NUMERIC, "剩余 10 秒")[0] == "Segoe UI Variable"
 
 

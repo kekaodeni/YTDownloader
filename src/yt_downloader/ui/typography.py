@@ -39,8 +39,10 @@ class FontRole(StrEnum):
 class FontFamilies:
     chinese: tuple[str, ...]
     japanese: tuple[str, ...]
+    korean: tuple[str, ...]
     latin: tuple[str, ...]
     numeric: tuple[str, ...]
+    emoji: tuple[str, ...]
 
     @property
     def ui(self) -> tuple[str, ...]:
@@ -69,7 +71,9 @@ FONT_SPECS = {
 
 _CHINESE_CANDIDATES = ("Microsoft YaHei UI", "Microsoft YaHei")
 _JAPANESE_CANDIDATES = ("Yu Gothic UI", "Meiryo")
+_KOREAN_CANDIDATES = ("Malgun Gothic",)
 _LATIN_CANDIDATES = ("Segoe UI Variable", "Segoe UI")
+_EMOJI_CANDIDATES = ("Segoe UI Emoji",)
 _NUMERIC_CANDIDATES = (
     "Segoe UI Variable",
     "Segoe UI",
@@ -78,6 +82,8 @@ _NUMERIC_CANDIDATES = (
 )
 _KANA = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]")
 _HAN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_HANGUL = re.compile(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]")
+_EMOJI = re.compile(r"[\u2600-\u27bf\U0001f000-\U0001faff]")
 
 
 def _available_stack(candidates: tuple[str, ...], available: set[str], fallback: str) -> tuple[str, ...]:
@@ -97,10 +103,12 @@ def resolve_font_families(
     installed = set(available if available is not None else QFontDatabase.families())
     fallback = system_default or QFont().defaultFamily()
     return FontFamilies(
-        chinese=_available_stack(_CHINESE_CANDIDATES, installed, fallback),
-        japanese=_available_stack(_JAPANESE_CANDIDATES, installed, fallback),
-        latin=_available_stack(_LATIN_CANDIDATES, installed, fallback),
-        numeric=_available_stack(_NUMERIC_CANDIDATES, installed, fallback),
+        chinese=_available_stack(_CHINESE_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        japanese=_available_stack(_JAPANESE_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        korean=_available_stack(_KOREAN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        latin=_available_stack(_LATIN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        numeric=_available_stack(_NUMERIC_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        emoji=_available_stack(_EMOJI_CANDIDATES + _LATIN_CANDIDATES, installed, fallback),
     )
 
 
@@ -128,8 +136,12 @@ class TypographyManager:
             return self.families.numeric
         if _KANA.search(text):
             return self.families.japanese
+        if _HANGUL.search(text):
+            return self.families.korean
         if _HAN.search(text):
             return self.families.chinese
+        if text and _EMOJI.search(text) and not re.search(r"[A-Za-z0-9]", text):
+            return self.families.emoji
         return self.families.latin
 
     def font_for(self, role: FontRole, text: str = "") -> QFont:

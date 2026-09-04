@@ -88,6 +88,13 @@ class DownloadQueueController(QObject):
     def pending_count(self) -> int:
         return len(self._pending)
 
+    def task_position(self, task_id: str) -> str | None:
+        if self._active_request and self._active_request.task_id == task_id:
+            return "active"
+        if any(request.task_id == task_id for request in self._pending):
+            return "pending"
+        return None
+
     @Slot(object)
     def enqueue(self, request: DownloadRequest) -> None:
         was_busy = self.is_busy

@@ -52,3 +52,34 @@ def test_delete_removes_only_history_row_and_never_the_video_file(tmp_path: Path
 
     assert repository.get("delete-me") is None
     assert video.read_bytes() == b"keep-video"
+
+
+def test_delete_many_is_transactional_and_preserves_active_rows_and_files(tmp_path: Path) -> None:
+    video = tmp_path / "中文标题.mp4"
+    video.write_bytes(b"keep-video")
+    repository = HistoryRepository(tmp_path / "history.db")
+    repository.upsert(_record(tmp_path, "done", TaskStatus.COMPLETED))
+    repository.upsert(_record(tmp_path, "failed", TaskStatus.FAILED))
+    repository.upsert(_record(tmp_path, "active", TaskStatus.DOWNLOADING_VIDEO))
+
+    result = repository.delete_many(("done", "failed", "active"))
+
+    assert result.deleted_count == 2
+    assert result.retained_count == 1
+    assert repository.get("done") is None
+    assert repository.get("failed") is None
+    assert repository.get("active") is not None
+    assert video.read_bytes() == b"keep-video"
+
+
+def test_clear_terminal_preserves_non_terminal_rows(tmp_path: Path) -> None:
+    repository = HistoryRepository(tmp_path / "history.db")
+    repository.upsert(_record(tmp_path, "done", TaskStatus.COMPLETED))
+    repository.upsert(_record(tmp_path, "cancelled", TaskStatus.CANCELLED))
+    repository.upsert(_record(tmp_path, "queued", TaskStatus.PENDING))
+
+    result = repository.clear_terminal()
+
+    assert result.deleted_count == 2
+    assert result.retained_count == 1
+    assert [record.task_id for record in repository.list_records()] == ["queued"]

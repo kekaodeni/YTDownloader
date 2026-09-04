@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+from dataclasses import replace
 import logging
 from pathlib import Path
 import sys
@@ -12,13 +13,13 @@ import uuid
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 import yt_dlp.version
 
 from yt_downloader import __version__
 from yt_downloader.core.errors import AppError, ErrorContext
 from yt_downloader.core.filename import sanitize_filename
-from yt_downloader.core.models import DownloadProgress, DownloadRequest, FormatOption, HistoryRecord, TaskStatus, VideoInfo
+from yt_downloader.core.models import DownloadProgress, DownloadRequest, FormatOption, HistoryRecord, ParseState, TaskStatus, VideoInfo
 from yt_downloader.infrastructure.logging_config import configure_logging, install_exception_hook
 from yt_downloader.infrastructure.paths import AppPaths, default_videos_directory
 from yt_downloader.infrastructure.runtime import find_tool
@@ -28,7 +29,7 @@ from yt_downloader.infrastructure.self_test import run_packaged_self_test
 from yt_downloader.services.download_service import DownloadService
 from yt_downloader.services.error_report_service import build_error_report
 from yt_downloader.services.ffmpeg_service import FfmpegService
-from yt_downloader.services.history_service import HistoryRepository
+from yt_downloader.services.history_service import HistoryDeleteResult, HistoryRepository
 from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
@@ -37,9 +38,15 @@ from yt_downloader.ui.localization import install_qt_zh_cn_translator
 from yt_downloader.ui.theme import ThemeManager
 from yt_downloader.ui.typography import application_font, install_typography_manager, resolve_font_families
 from yt_downloader.ui.widgets.error_dialog import ErrorDialog
+from yt_downloader.ui.widgets.confirm_dialog import IncompleteCleanupDialog, RemoveActiveTaskDialog
 from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
+from yt_downloader.workers.metadata_process import (
+    MetadataProcessConfig,
+    MetadataProcessController,
+    run_metadata_process_self_test,
+)
 from yt_downloader.workers.request_gate import LatestRequestGate, RequestToken
 
 
@@ -74,6 +81,25 @@ class _MemoryHistory:
     def delete(self, task_id: str) -> bool:
         return self.records.pop(task_id, None) is not None
 
+    def delete_many(self, task_ids) -> HistoryDeleteResult:
+        unique_ids = tuple(dict.fromkeys(task_ids))
+        deleted = 0
+        for task_id in unique_ids:
+            record = self.records.get(task_id)
+            if record and record.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+                self.records.pop(task_id, None)
+                deleted += 1
+        return HistoryDeleteResult(deleted, len(unique_ids) - deleted)
+
+    def clear_terminal(self) -> HistoryDeleteResult:
+        deletable = tuple(
+            task_id for task_id, record in self.records.items()
+            if record.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        )
+        for task_id in deletable:
+            self.records.pop(task_id, None)
+        return HistoryDeleteResult(len(deletable), len(self.records))
+
     def mark_interrupted(self) -> int:
         return 0
 
@@ -100,7 +126,11 @@ class AppController:
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
         self.deno_path = find_tool("deno")
         self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
-        self.youtube = YoutubeService(deno_path=self.deno_path, network_policy=self.network)
+        self.youtube = YoutubeService(
+            deno_path=self.deno_path,
+            network_policy=self.network,
+            codec_preference=self.settings.codec_preference,
+        )
         self.download_service = DownloadService(
             deno_path=self.deno_path,
             ffmpeg_path=self.ffmpeg.ffmpeg_path,
@@ -114,11 +144,14 @@ class AppController:
             ffmpeg_description=ffmpeg_description,
         )
         self.queue = DownloadQueueController(self.download_service, self.window)
-        self._metadata_cancel: threading.Event | None = None
-        self._metadata_workers: list[FunctionWorker] = []
+        self.metadata_process = MetadataProcessController(self.window)
+        self._thumbnail_cancel: threading.Event | None = None
+        self._thumbnail_workers: list[FunctionWorker] = []
         self._settings_workers: list[FunctionWorker] = []
         self._metadata_gate: LatestRequestGate[object] = LatestRequestGate()
+        self._thumbnail_gate: LatestRequestGate[object] = LatestRequestGate()
         self._pending_retry: HistoryRecord | None = None
+        self._remove_intents: set[str] = set()
         self._dialogs: list[object] = []
         self._wire()
         self.refresh_history()
@@ -129,10 +162,12 @@ class AppController:
     def _wire(self) -> None:
         download = self.window.download_page
         download.parse_requested.connect(self.fetch_metadata)
+        download.parse_cancel_requested.connect(self.metadata_process.cancel)
         download.download_requested.connect(self.enqueue_download)
         download.cancel_requested.connect(self.queue.cancel)
         download.open_file_requested.connect(self._open_file)
         download.open_folder_requested.connect(self._reveal_file)
+        download.remove_requested.connect(self._remove_task_requested)
         history = self.window.history_page
         history.open_file_requested.connect(self._open_file)
         history.open_folder_requested.connect(self._reveal_file)
@@ -140,6 +175,8 @@ class AppController:
         history.thumbnail_requested.connect(self._change_thumbnail)
         history.retry_requested.connect(self._retry_record)
         history.delete_requested.connect(self._delete_history_record)
+        history.delete_many_requested.connect(self._delete_history_records)
+        history.clear_terminal_requested.connect(self._clear_terminal_history)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
         settings.network_test_requested.connect(self.test_network_connection)
@@ -156,30 +193,29 @@ class AppController:
         self.queue.cancelled.connect(self._cancelled)
         self.queue.busy_changed.connect(self.window.set_download_busy)
         self.window.cancel_all_requested.connect(self.queue.cancel_all)
+        self.metadata_process.state_changed.connect(download.set_parse_state)
+        self.metadata_process.result.connect(self._metadata_result)
+        self.metadata_process.failed.connect(self._metadata_error)
+        self.metadata_process.timed_out.connect(self._metadata_error)
+        self.metadata_process.cancelled.connect(self._metadata_cancelled)
+        self.app.aboutToQuit.connect(self._shutdown_background_operations)
 
     def fetch_metadata(self, url: str) -> None:
-        if self._metadata_cancel:
-            self._metadata_cancel.set()
+        self._cancel_thumbnail()
         token = self._metadata_gate.begin(url.strip())
-        cancel = threading.Event()
-        self._metadata_cancel = cancel
-        self.window.download_page.set_loading(True)
-        worker = FunctionWorker(self.youtube.fetch_metadata, url, cancel)
-        self._metadata_workers.append(worker)
-        worker.signals.result.connect(lambda video, current=token: self._metadata_result(current, video))
-        worker.signals.error.connect(lambda error, current=token: self._metadata_error(current, error))
-        worker.signals.finished.connect(lambda w=worker, current=token: self._metadata_finished(w, cancel, current))
-        QThreadPool.globalInstance().start(worker)
-
-    def _metadata_finished(self, worker: FunctionWorker, cancel: threading.Event, token: RequestToken) -> None:
-        if worker in self._metadata_workers:
-            self._metadata_workers.remove(worker)
-        if self._metadata_cancel is cancel and self._metadata_gate.finish(token):
-            self._metadata_cancel = None
-            self.window.download_page.set_loading(False)
+        self.metadata_process.start(token, url, MetadataProcessConfig(
+            deno_path=str(self.deno_path or ""),
+            proxy_mode=self.settings.proxy_mode,
+            custom_proxy_url=self.settings.custom_proxy_url,
+            codec_preference=self.settings.codec_preference,
+            require_deno=True,
+        ))
 
     def _metadata_result(self, token: RequestToken, video) -> None:
-        self._metadata_gate.deliver(token, self._apply_metadata_result, video)
+        if not self._metadata_gate.deliver(token, self._apply_metadata_result, video):
+            return
+        self._metadata_gate.finish(token)
+        self._start_thumbnail(video)
 
     def _apply_metadata_result(self, video) -> None:
         retry = self._pending_retry
@@ -187,12 +223,65 @@ class AppController:
         self.window.download_page.show_video(video, preferred_quality=preferred)
         if retry:
             self._pending_retry = None
-            option = next((item for item in video.formats if item.label == retry.quality_label), None)
-            option = option or next((item for item in video.formats if item.is_recommended), video.formats[0])
-            self.enqueue_download(video, option, retry.file_path.stem or video.title, str(retry.file_path.parent))
+            self.window.download_page.set_retry_defaults(
+                retry.file_path.stem or video.title,
+                str(retry.file_path.parent),
+            )
 
     def _metadata_error(self, token: RequestToken, error: AppError) -> None:
-        self._metadata_gate.deliver(token, self._apply_metadata_error, error)
+        if self._metadata_gate.deliver(token, self._apply_metadata_error, error):
+            self._metadata_gate.finish(token)
+
+    def _metadata_cancelled(self, token: RequestToken) -> None:
+        if self._metadata_gate.finish(token):
+            self._pending_retry = None
+
+    def _start_thumbnail(self, video: VideoInfo) -> None:
+        if not video.thumbnail_url:
+            return
+        token = self._thumbnail_gate.begin(video.url)
+        cancel = threading.Event()
+        self._thumbnail_cancel = cancel
+        worker = FunctionWorker(self.youtube.fetch_thumbnail, video.thumbnail_url, cancel)
+        self._thumbnail_workers.append(worker)
+        worker.signals.result.connect(
+            lambda data, current=token, video_id=video.video_id: self._thumbnail_result(
+                current, video_id, data
+            )
+        )
+        worker.signals.error.connect(
+            lambda error, current=token: self._thumbnail_error(current, error)
+        )
+        worker.signals.finished.connect(
+            lambda current_worker=worker, current=token: self._thumbnail_finished(
+                current_worker, current
+            )
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _thumbnail_result(self, token: RequestToken, video_id: str, data: bytes) -> None:
+        if self._thumbnail_gate.is_current(token):
+            self.window.download_page.set_thumbnail(video_id, data)
+
+    def _thumbnail_error(self, token: RequestToken, error: AppError) -> None:
+        if self._thumbnail_gate.is_current(token):
+            logger.warning("Thumbnail request failed without failing metadata: %s", error.technical_message)
+
+    def _thumbnail_finished(self, worker: FunctionWorker, token: RequestToken) -> None:
+        if worker in self._thumbnail_workers:
+            self._thumbnail_workers.remove(worker)
+        if self._thumbnail_gate.finish(token):
+            self._thumbnail_cancel = None
+
+    def _cancel_thumbnail(self) -> None:
+        if self._thumbnail_cancel is not None:
+            self._thumbnail_cancel.set()
+        self._thumbnail_cancel = None
+        self._thumbnail_gate.current = None
+
+    def _shutdown_background_operations(self) -> None:
+        self._cancel_thumbnail()
+        self.metadata_process.shutdown()
 
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
@@ -249,6 +338,9 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist completed task")
         self.refresh_history()
+        if result.task_id in self._remove_intents:
+            self._remove_intents.discard(result.task_id)
+            self.window.download_page.remove_task(result.task_id)
 
     def _failed(self, task_id: str, error: AppError) -> None:
         self.window.download_page.fail_task(task_id, TaskStatus.FAILED)
@@ -257,6 +349,9 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist failed task")
         self.refresh_history()
+        if task_id in self._remove_intents:
+            self._remove_intents.discard(task_id)
+            self.window.download_page.remove_task(task_id)
         self.show_error(error)
 
     def _cancelled(self, task_id: str, cleanup_report) -> None:
@@ -271,6 +366,10 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist cancelled task")
         self.refresh_history()
+        if task_id in self._remove_intents:
+            self._remove_intents.discard(task_id)
+            if cleanup_report.succeeded or self._confirm_remove_after_incomplete_cleanup(cleanup_report):
+                self.window.download_page.remove_task(task_id)
 
     def refresh_history(self) -> None:
         try:
@@ -295,6 +394,7 @@ class AppController:
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
+            self.youtube.codec_preference = settings.codec_preference
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))
@@ -378,6 +478,58 @@ class AppController:
                 repr(exc),
             ))
 
+    def _delete_history_records(self, task_ids: tuple[str, ...]) -> None:
+        try:
+            result = self.history.delete_many(task_ids)
+            self.refresh_history()
+            self.window.history_page.show_management_result(
+                result.deleted_count, result.retained_count
+            )
+        except Exception as exc:
+            self.show_error(AppError(
+                "history_batch_delete_failed",
+                "无法删除所选历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
+
+    def _clear_terminal_history(self) -> None:
+        try:
+            result = self.history.clear_terminal()
+            self.refresh_history()
+            self.window.history_page.show_management_result(
+                result.deleted_count, result.retained_count
+            )
+        except Exception as exc:
+            self.show_error(AppError(
+                "history_clear_failed",
+                "无法清空历史记录；视频文件没有改变。",
+                repr(exc),
+            ))
+
+    def _remove_task_requested(self, task_id: str) -> None:
+        position = self.queue.task_position(task_id)
+        if position is None:
+            self.window.download_page.remove_task(task_id)
+            return
+        request = self.window.download_page.task_request(task_id)
+        if position == "active" and not self._confirm_cancel_and_remove(
+            request.video.title if request else "当前任务"
+        ):
+            return
+        self._remove_intents.add(task_id)
+        if not self.queue.cancel(task_id):
+            self._remove_intents.discard(task_id)
+
+    def _confirm_cancel_and_remove(self, title: str) -> bool:
+        return RemoveActiveTaskDialog(title, self.window).exec() == QDialog.DialogCode.Accepted
+
+    def _confirm_remove_after_incomplete_cleanup(self, cleanup_report) -> bool:
+        dialog = IncompleteCleanupDialog(self.window)
+        dialog.open_folder_requested.connect(
+            lambda: self._reveal_file(cleanup_report.output_directory)
+        )
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
     def _thumbnail_saved(self, task_id: str, _result) -> None:
         try:
             record = self.history.get(task_id)
@@ -437,11 +589,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--smoke-test", action="store_true", help="start the packaged GUI briefly and exit")
     parser.add_argument("--self-test", action="store_true", help="run offline packaged resource and FFmpeg checks")
+    parser.add_argument("--metadata-process-self-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--render-preview", type=Path, help="save a window preview image and exit")
     parser.add_argument("--theme", choices=("system", "light", "dark"), help="temporary theme override for visual testing")
     parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
     known, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
     app, controller = create_application([sys.argv[0], *qt_args])
+    if known.metadata_process_self_test:
+        return run_metadata_process_self_test(app)
     if known.self_test:
         try:
             run_packaged_self_test(

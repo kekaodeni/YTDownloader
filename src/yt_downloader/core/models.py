@@ -22,12 +22,45 @@ class TaskStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
-class ProgressTotalSource(StrEnum):
+class ParseState(StrEnum):
+    IDLE = "IDLE"
+    RUNNING = "RUNNING"
+    SLOW = "SLOW"
+    CANCELLING = "CANCELLING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class TotalSource(StrEnum):
     UNKNOWN = "UNKNOWN"
-    METADATA = "METADATA"
-    HOOK = "HOOK"
+    METADATA_FILESIZE = "METADATA_FILESIZE"
+    HOOK_TOTAL_BYTES = "HOOK_TOTAL_BYTES"
+    METADATA_FILESIZE_APPROX = "METADATA_FILESIZE_APPROX"
+    HOOK_TOTAL_BYTES_ESTIMATE = "HOOK_TOTAL_BYTES_ESTIMATE"
+    FINAL_FILE = "FINAL_FILE"
     MIXED = "MIXED"
-    FINAL = "FINAL"
+    # Compatibility aliases for callers that only need the broad source.
+    METADATA = "METADATA_FILESIZE"
+    HOOK = "HOOK_TOTAL_BYTES"
+    FINAL = "FINAL_FILE"
+
+
+ProgressTotalSource = TotalSource
+
+
+class CodecPreference(StrEnum):
+    AUTO = "auto"
+    AV1 = "av1"
+    VP9 = "vp9"
+    H264 = "h264"
+
+
+class SizeKind(StrEnum):
+    EXACT = "EXACT"
+    ESTIMATED = "ESTIMATED"
+    UNKNOWN = "UNKNOWN"
 
 
 STATUS_TEXT: Mapping[TaskStatus, str] = {
@@ -66,6 +99,9 @@ class FormatOption:
     video_size_is_estimate: bool = False
     audio_size: int | None = None
     audio_size_is_estimate: bool = False
+    video_protocol: str = ""
+    audio_protocol: str = ""
+    size_kind: SizeKind = SizeKind.UNKNOWN
 
     @property
     def display_height(self) -> int | None:
@@ -115,7 +151,7 @@ class DownloadProgress:
     speed: float | None = None
     eta: int | None = None
     total_is_estimate: bool = False
-    total_source: ProgressTotalSource = ProgressTotalSource.UNKNOWN
+    total_source: TotalSource = TotalSource.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +180,7 @@ class HistoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 2
+    schema_version: int = 3
     download_directory: str = ""
     default_quality: str = "recommended"
     theme: str = "system"
@@ -153,3 +189,4 @@ class AppSettings:
     proxy_mode: str = "system"
     custom_proxy_url: str = ""
     concurrent_fragments: int = 0
+    codec_preference: CodecPreference = CodecPreference.AUTO

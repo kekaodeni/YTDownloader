@@ -15,7 +15,7 @@ from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.core.formats import normalize_formats
-from yt_downloader.core.models import VideoInfo
+from yt_downloader.core.models import CodecPreference, VideoInfo
 from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
@@ -79,14 +79,22 @@ class YoutubeService:
         deno_path: str | Path | None = None,
         require_deno: bool = True,
         network_policy: NetworkPolicy | None = None,
+        codec_preference: CodecPreference = CodecPreference.AUTO,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
         self.deno_path = Path(deno_path) if deno_path else find_tool("deno")
         self.require_deno = require_deno
         self.network_policy = network_policy
+        self.codec_preference = codec_preference
 
-    def fetch_metadata(self, url: str, cancel_event: threading.Event | None = None) -> VideoInfo:
+    def fetch_metadata(
+        self,
+        url: str,
+        cancel_event: threading.Event | None = None,
+        *,
+        include_thumbnail: bool = True,
+    ) -> VideoInfo:
         try:
             normalized = normalize_youtube_url(url)
         except InvalidYoutubeUrl as exc:
@@ -111,9 +119,10 @@ class YoutubeService:
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
-            "socket_timeout": 20,
-            "retries": 2,
-            "fragment_retries": 2,
+            "socket_timeout": 10,
+            "retries": 1,
+            "fragment_retries": 1,
+            "extractor_retries": 1,
             "logger": ydl_logger,
             "js_runtimes": js_config,
             "remote_components": [],
@@ -133,6 +142,7 @@ class YoutubeService:
             formats = tuple(normalize_formats(
                 raw_formats if isinstance(raw_formats, list) else [],
                 duration=duration,
+                codec_preference=self.codec_preference,
             ))
             if not formats:
                 raise AppError(
@@ -144,7 +154,7 @@ class YoutubeService:
 
             thumbnail_url = str(info.get("thumbnail") or "") or None
             thumbnail_bytes: bytes | None = None
-            if thumbnail_url:
+            if thumbnail_url and include_thumbnail:
                 if cancel_event and cancel_event.is_set():
                     raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching thumbnail"))
                 try:
@@ -170,7 +180,11 @@ class YoutubeService:
                 thumbnail_url=thumbnail_url,
                 thumbnail_bytes=thumbnail_bytes,
                 formats=formats,
-                raw=dict(info),
+                raw={
+                    "id": str(info.get("id") or ""),
+                    "webpage_url": normalized,
+                    "extractor": str(info.get("extractor") or "youtube"),
+                },
             )
         except OperationCancelled:
             raise
@@ -189,4 +203,32 @@ class YoutubeService:
                     traceback_text=redact_sensitive(traceback.format_exc()),
                     log_excerpt="\n".join(ydl_logger.lines),
                 ),
+            ) from exc
+
+    def fetch_thumbnail(
+        self,
+        thumbnail_url: str,
+        cancel_event: threading.Event | None = None,
+    ) -> bytes:
+        if cancel_event and cancel_event.is_set():
+            raise OperationCancelled(ErrorContext(stage="Fetching thumbnail"))
+        try:
+            request_get = self.network_policy.get if self.network_policy else self.http_get
+            response = request_get(
+                thumbnail_url,
+                timeout=10,
+                headers={"User-Agent": "YTDownloader/0.3"},
+            )
+            if cancel_event and cancel_event.is_set():
+                raise OperationCancelled(ErrorContext(stage="Fetching thumbnail"))
+            response.raise_for_status()
+            return bytes(response.content)
+        except OperationCancelled:
+            raise
+        except Exception as exc:
+            raise AppError(
+                "thumbnail_failed",
+                "视频信息已获取，但封面暂时无法加载。",
+                redact_sensitive(repr(exc)),
+                ErrorContext(stage="Fetching thumbnail"),
             ) from exc

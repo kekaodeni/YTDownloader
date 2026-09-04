@@ -29,10 +29,14 @@ class AggregateProgressTracker:
         self._component_estimates: dict[str, bool] = {}
         self._component_sources: dict[str, ProgressTotalSource] = {}
         self._last_downloaded: int | None = None
-        self._locked_total = option.estimated_size
-        self._locked_is_estimate = option.size_is_estimate
+        self._locked_total = (
+            option.estimated_size
+            if option.estimated_size is not None and not option.size_is_estimate
+            else None
+        )
+        self._locked_is_estimate = False
         self._locked_source = (
-            ProgressTotalSource.METADATA
+            ProgressTotalSource.METADATA_FILESIZE
             if self._locked_total is not None
             else ProgressTotalSource.UNKNOWN
         )
@@ -50,11 +54,11 @@ class AggregateProgressTracker:
         self._try_lock_total()
 
     def _add_hint(self, format_id: str, size: int | None, is_estimate: bool) -> None:
-        if size is None or size <= 0:
+        if size is None or size <= 0 or is_estimate:
             return
         self._component_totals[format_id] = size
         self._component_estimates[format_id] = is_estimate
-        self._component_sources[format_id] = ProgressTotalSource.METADATA
+        self._component_sources[format_id] = ProgressTotalSource.METADATA_FILESIZE
 
     def _format_id(self, data: Mapping[str, Any]) -> str:
         info = data.get("info_dict") or {}
@@ -109,16 +113,7 @@ class AggregateProgressTracker:
             if isinstance(total, (int, float)) and total > 0:
                 self._component_totals[format_id] = int(total)
                 self._component_estimates[format_id] = False
-                self._component_sources[format_id] = ProgressTotalSource.HOOK
-            elif (
-                isinstance(estimate, (int, float))
-                and estimate > 0
-                and not fragmented
-                and self._component_estimates.get(format_id, True)
-            ):
-                self._component_totals[format_id] = int(estimate)
-                self._component_estimates[format_id] = True
-                self._component_sources[format_id] = ProgressTotalSource.HOOK
+                self._component_sources[format_id] = ProgressTotalSource.HOOK_TOTAL_BYTES
             if finished:
                 final_downloaded = self._component_downloaded.get(format_id, 0)
                 if final_downloaded > 0 and (
@@ -127,7 +122,7 @@ class AggregateProgressTracker:
                 ):
                     self._component_totals[format_id] = final_downloaded
                     self._component_estimates[format_id] = False
-                    self._component_sources[format_id] = ProgressTotalSource.HOOK
+                    self._component_sources[format_id] = ProgressTotalSource.HOOK_TOTAL_BYTES
                 if format_id in self._component_totals:
                     self._component_downloaded[format_id] = max(
                         final_downloaded,

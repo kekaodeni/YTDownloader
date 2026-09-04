@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from yt_downloader.ui.typography import FontFamilies, resolve_font_families, typography_qss
+from yt_downloader.ui.icons import FluentIconService
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,8 @@ DARK = FluentTokens(
 
 def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
     fonts = fonts or resolve_font_families()
+    theme_name = "dark" if t is DARK else "light"
+    combo_chevron = FluentIconService.stylesheet_url("chevron_down", theme=theme_name)
     return f"""
     * {{ color: {t.text_primary}; }}
     QMainWindow, QDialog {{ background: {t.canvas}; }}
@@ -87,6 +90,19 @@ def _qss(t: FluentTokens, fonts: FontFamilies | None = None) -> str:
     }}
     QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {t.text_secondary}; }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-bottom-color: {t.stroke_focus}; }}
+    QComboBox {{ padding-right: 40px; }}
+    QComboBox:disabled {{ color: {t.text_disabled}; background: {t.elevated}; }}
+    QComboBox::drop-down {{
+        subcontrol-origin: padding; subcontrol-position: top right;
+        width: 36px; background: transparent; border: none;
+        border-top-right-radius: 6px; border-bottom-right-radius: 6px;
+    }}
+    QComboBox::drop-down:hover {{ background: {t.elevated}; border: none; }}
+    QComboBox::drop-down:pressed, QComboBox::drop-down:on {{ background: {t.selection}; border: none; }}
+    QComboBox::drop-down:disabled {{ background: transparent; border: none; }}
+    QComboBox::down-arrow {{ image: {combo_chevron}; width: 12px; height: 12px; }}
+    QComboBox::down-arrow:on {{ top: 1px; }}
+    QComboBox::down-arrow:disabled {{ opacity: 0.45; }}
     QComboBox QAbstractItemView {{
         background: {t.card}; color: {t.text_primary}; border: 1px solid {t.stroke};
         border-radius: 8px; outline: none; padding: 4px;

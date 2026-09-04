@@ -63,6 +63,33 @@ def test_fetches_metadata_through_python_api_and_downloads_thumbnail() -> None:
     assert FakeYdl.last_options["noplaylist"] is True
     assert FakeYdl.last_options["remote_components"] == []
     assert FakeYdl.last_options["js_runtimes"]["deno"]["path"].endswith("deno.exe")
+    assert FakeYdl.last_options["socket_timeout"] == 10
+    assert FakeYdl.last_options["retries"] == 1
+    assert FakeYdl.last_options["extractor_retries"] == 1
+
+
+def test_helper_metadata_payload_is_compact_and_thumbnail_is_deferred() -> None:
+    requested: list[str] = []
+    service = YoutubeService(
+        ydl_factory=FakeYdl,
+        http_get=lambda url, **_kwargs: requested.append(url),
+        deno_path="C:/tools/deno.exe",
+        require_deno=False,
+    )
+
+    video = service.fetch_metadata(
+        "https://youtu.be/dQw4w9WgXcQ",
+        include_thumbnail=False,
+    )
+
+    assert video.thumbnail_url == "https://i.ytimg.com/thumb.jpg"
+    assert video.thumbnail_bytes is None
+    assert requested == []
+    assert video.raw == {
+        "id": "dQw4w9WgXcQ",
+        "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "extractor": "youtube",
+    }
 
 
 def test_cancellation_after_thumbnail_response_discards_metadata() -> None:

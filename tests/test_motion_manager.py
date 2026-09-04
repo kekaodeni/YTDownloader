@@ -5,7 +5,7 @@ from yt_downloader.ui.theme import DARK, LIGHT, _qss
 
 
 def test_motion_durations_are_short_and_semantic() -> None:
-    assert tuple(int(value) for value in MotionDuration) == (140, 180, 220)
+    assert tuple(int(value) for value in MotionDuration) == (140, 240, 320)
 
 
 def test_glass_inspired_surfaces_are_static_tints_without_blur_or_animated_shadow(qapp) -> None:
@@ -41,7 +41,7 @@ def test_page_and_card_animations_remove_effects_after_finishing(qtbot) -> None:
     assert card.graphicsEffect() is None
 
 
-def test_retire_collapses_layout_item_then_releases_effect_and_constraint(qapp, qtbot) -> None:
+def test_retire_uses_overlay_without_animating_real_layout_geometry(qapp, qtbot) -> None:
     host = QWidget()
     layout = QVBoxLayout(host)
     first = QLabel("first")
@@ -61,15 +61,16 @@ def test_retire_collapses_layout_item_then_releases_effect_and_constraint(qapp, 
 
     manager.retire(first, lambda: completed.append(True))
 
-    assert first.isVisible()
-    assert first.graphicsEffect() is not None
-    qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
     qapp.processEvents()
     assert completed == [True]
-    assert not first.isVisible()
+    assert first.maximumHeight() == original_maximum_height
+    assert first.graphicsEffect() is None
+    assert manager.active_count == 1
+    assert second.geometry().top() < second_start
+    qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
+    qapp.processEvents()
     assert first.graphicsEffect() is None
     assert first.maximumHeight() == original_maximum_height
-    assert second.geometry().top() < second_start
 
 
 def test_reduce_motion_stops_active_effects_and_future_switches_are_immediate(qtbot) -> None:
@@ -102,8 +103,33 @@ def test_repeated_page_switches_do_not_accumulate_animation_objects(qtbot) -> No
     stack.show()
     manager = MotionManager(reduce_motion=False)
 
-    for index in range(60):
+    for index in range(100):
         manager.switch_page(stack, index % 3)
 
     qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1500)
     assert all(page.graphicsEffect() is None for page in pages)
+
+
+def test_repeated_task_retirement_releases_every_snapshot_proxy(qapp, qtbot) -> None:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    qtbot.addWidget(host)
+    host.resize(320, 240)
+    host.show()
+    manager = MotionManager(reduce_motion=False)
+
+    for index in range(100):
+        card = QLabel(f"card {index}")
+        card.setMinimumHeight(24)
+        layout.addWidget(card)
+        qapp.processEvents()
+
+        def remove(current=card) -> None:
+            layout.removeWidget(current)
+            current.deleteLater()
+
+        manager.retire(card, remove)
+
+    qtbot.waitUntil(lambda: manager.active_count == 0, timeout=2000)
+    qapp.processEvents()
+    assert manager.active_count == 0

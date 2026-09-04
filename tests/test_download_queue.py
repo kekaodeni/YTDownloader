@@ -46,6 +46,21 @@ def test_queue_runs_only_one_download_at_a_time(qtbot, tmp_path: Path) -> None:
     assert queue.is_busy is False
 
 
+def test_queue_reports_active_and_pending_task_positions(qtbot, tmp_path: Path) -> None:
+    service = ControlledService()
+    queue = DownloadQueueController(service)
+    first = replace(_request(tmp_path), task_id="active-position")
+    second = replace(_request(tmp_path), task_id="pending-position")
+
+    queue.enqueue(first)
+    queue.enqueue(second)
+
+    assert queue.task_position(first.task_id) == "active"
+    assert queue.task_position(second.task_id) == "pending"
+    qtbot.waitUntil(lambda: not queue.is_busy, timeout=3000)
+    assert queue.task_position(first.task_id) is None
+
+
 class LockingCancellableService:
     def __init__(self, locked_path: Path) -> None:
         self.locked_path = locked_path

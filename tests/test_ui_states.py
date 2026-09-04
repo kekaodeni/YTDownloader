@@ -7,7 +7,7 @@ from PySide6.QtGui import QFont, QGuiApplication, QPalette, QPixmap
 from PySide6.QtWidgets import QPushButton, QSizePolicy, QToolButton
 
 from yt_downloader.core.errors import AppError, CancellationCleanupReport
-from yt_downloader.core.models import AppSettings
+from yt_downloader.core.models import AppSettings, CodecPreference
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.settings_page import SettingsPage
 from yt_downloader.ui.icons import FluentIconService
@@ -26,8 +26,13 @@ def test_metadata_busy_state_disables_input_without_blocking(qtbot, tmp_path) ->
     page.set_loading(True)
     assert page.metadata_busy.isVisible()
     assert not page.url_input.isEnabled()
-    assert not page.parse_button.isEnabled()
+    assert page.parse_button.isEnabled()
+    assert page.parse_button.text() == "取消解析"
     assert page.metadata_busy.maximum() == 0
+    with qtbot.waitSignal(page.parse_cancel_requested, timeout=500):
+        page.parse_button.click()
+    assert not page.parse_button.isEnabled()
+    assert page.parse_button.text() == "正在取消…"
     page.set_loading(False)
     assert page.url_input.isEnabled()
     assert page.parse_button.isEnabled()
@@ -54,7 +59,7 @@ def test_metadata_busy_label_is_never_clipped_by_feedback_motion(
         if delay:
             qtbot.wait(delay)
         qapp.processEvents()
-        assert page.parse_button.text().startswith("解析中")
+        assert page.parse_button.text() == "取消解析"
         assert page.parse_button.width() >= page.parse_button.sizeHint().width()
         assert page.parse_button.width() >= 80
 
@@ -116,6 +121,19 @@ def test_generated_qss_covers_combo_selected_hover_focus_and_disabled_states() -
     assert "QComboBox QAbstractItemView::item:selected:hover" in stylesheet
     assert "QComboBox QAbstractItemView:focus" in stylesheet
     assert "QComboBox QAbstractItemView::item:disabled" in stylesheet
+
+
+def test_generated_qss_fully_owns_combo_box_arrow_subcontrols(qapp) -> None:
+    stylesheet = _qss(LIGHT)
+
+    assert "QComboBox::drop-down" in stylesheet
+    assert "QComboBox::drop-down:hover" in stylesheet
+    assert "QComboBox::drop-down:pressed" in stylesheet
+    assert "QComboBox::down-arrow" in stylesheet
+    assert "QComboBox::down-arrow:on" in stylesheet
+    assert "border: none" in stylesheet
+    assert "chevron_down_light.svg" in stylesheet
+    assert "QComboBox:focus" in stylesheet
     assert f"selection-color: {LIGHT.text}" in stylesheet
 
 
@@ -160,6 +178,23 @@ def test_task_card_enters_cancelling_immediately(qtbot, tmp_path) -> None:
     assert card.progress.progress_bar.maximum() == 100
     assert card.progress.speed_label.text() == "—"
     assert card.progress.eta_label.text() == "剩余 —"
+
+
+def test_task_card_has_accessible_remove_action_and_uses_page_lifecycle(qtbot, tmp_path) -> None:
+    page = DownloadPage(str(tmp_path))
+    qtbot.addWidget(page)
+    request = replace(_request(tmp_path), task_id="remove-card")
+    page.add_task(request)
+    card = page.cards[request.task_id]
+
+    assert card.remove_button.toolTip() == "删除任务"
+    assert card.remove_button.accessibleName() == f"删除任务 {request.video.title}"
+    with qtbot.waitSignal(page.remove_requested, timeout=500) as signal:
+        card.remove_button.click()
+    assert signal.args == [request.task_id]
+
+    page.remove_task(request.task_id)
+    assert request.task_id not in page.cards
 
 
 def test_cancel_cleanup_warning_offers_the_output_folder(qtbot, tmp_path) -> None:
@@ -273,7 +308,7 @@ def test_task_replacement_motion_collapses_old_card_without_position_rebound(
     page.task_started(second.task_id)
     qapp.processEvents()
 
-    assert first.task_id in page.cards
+    assert first.task_id not in page.cards
     positions = []
     for _ in range(8):
         positions.append(page.cards[second.task_id].geometry().top())
@@ -298,7 +333,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(qtbot, tmp_pat
         page.directory_input.setText(str(changed))
 
     saved = signal.args[0]
-    assert saved.schema_version == 2
+    assert saved.schema_version == 3
     assert saved.download_directory == str(changed)
     assert page.unsaved_label.text() == "正在保存…"
 
@@ -353,6 +388,26 @@ def test_network_settings_round_trip_through_auto_save(qtbot, tmp_path) -> None:
     assert changed.proxy_mode == "direct"
     assert changed.concurrent_fragments == 4
     assert not page.proxy_input.isEnabled()
+
+
+def test_codec_preference_is_an_advanced_auto_saved_setting(qtbot, tmp_path) -> None:
+    page = SettingsPage(
+        AppSettings(
+            download_directory=str(tmp_path),
+            codec_preference=CodecPreference.VP9,
+        ),
+        ytdlp_version="test",
+        ffmpeg_description="test",
+    )
+    qtbot.addWidget(page)
+
+    assert page.codec_combo.currentData() == CodecPreference.VP9.value
+    with qtbot.waitSignal(page.save_requested, timeout=1000) as signal:
+        page.codec_combo.setCurrentIndex(
+            page.codec_combo.findData(CodecPreference.AV1.value),
+        )
+
+    assert signal.args[0].codec_preference is CodecPreference.AV1
 
 
 def test_network_test_is_separate_from_save_and_has_inline_result(qtbot, tmp_path) -> None:
