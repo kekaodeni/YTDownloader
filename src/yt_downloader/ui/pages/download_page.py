@@ -27,6 +27,7 @@ from yt_downloader.ui.typography import (
 )
 from yt_downloader.ui.widgets.task_card import DownloadTaskCard
 from yt_downloader.ui.widgets.thumbnail_crossfade import ThumbnailCrossFadeWidget
+from yt_downloader.ui.task_transitions import TaskCardTransitionController
 
 if TYPE_CHECKING:
     from yt_downloader.ui.motion import MotionManager
@@ -181,6 +182,8 @@ class DownloadPage(QWidget):
         self.task_layout.setContentsMargins(0, 0, 4, 0)
         self.task_layout.setSpacing(10)
         self.task_layout.addStretch()
+        self.task_transitions = TaskCardTransitionController(self)
+        self.task_transitions.flush_requested.connect(self._flush_pending_cards)
         self.task_host.hide()
         root.addWidget(self.task_host)
         root.addStretch()
@@ -327,11 +330,24 @@ class DownloadPage(QWidget):
         card.retry_requested.connect(self.retry_requested)
         card.retry_button.setEnabled(self.url_input.isEnabled())
         self.cards[request.task_id] = card
-        self.task_layout.insertWidget(self.task_layout.count() - 1, card)
         self.tasks_heading.show()
         self.task_host.show()
         if self.motion:
-            self.motion.reveal(card)
+            self.task_transitions.stage(request.task_id, card)
+        else:
+            self.task_layout.insertWidget(self.task_layout.count() - 1, card)
+            card.show()
+
+    def _insert_task_cards(self, pending: tuple[tuple[str, QWidget], ...], *, reveal: bool) -> None:
+        for task_id, card in pending:
+            if task_id not in self.cards or self.task_layout.indexOf(card) >= 0:
+                continue
+            self.task_layout.insertWidget(self.task_layout.count() - 1, card)
+            if reveal and self.motion:
+                self.motion.reveal(card)
+
+    def _flush_pending_cards(self) -> None:
+        self._insert_task_cards(self.task_transitions.take_pending(), reveal=True)
 
     def update_task(self, progress: DownloadProgress) -> None:
         card = self.cards.get(progress.task_id)
@@ -344,6 +360,7 @@ class DownloadPage(QWidget):
             card.set_cancelling()
 
     def complete_task(self, result: DownloadResult) -> None:
+        self._flush_pending_cards()
         card = self.cards.get(result.task_id)
         if card:
             card.set_completed(result)
@@ -355,6 +372,7 @@ class DownloadPage(QWidget):
         status: TaskStatus,
         cleanup_report: CancellationCleanupReport | None = None,
     ) -> None:
+        self._flush_pending_cards()
         card = self.cards.get(task_id)
         if card:
             card.set_terminal_status(status, cleanup_report)
@@ -367,9 +385,18 @@ class DownloadPage(QWidget):
         self._terminal_task_ids.add(task_id)
 
     def task_started(self, task_id: str) -> None:
-        for terminal_id in tuple(self._terminal_task_ids):
-            if terminal_id != task_id:
-                self._retire_task(terminal_id)
+        terminal = tuple(value for value in self._terminal_task_ids if value != task_id)
+        pending = self.task_transitions.take_pending()
+        if terminal and pending and self.motion and not self.motion.reduce_motion:
+            def mutate() -> None:
+                for terminal_id in terminal:
+                    self._remove_task(terminal_id)
+                self._insert_task_cards(pending, reveal=False)
+            self.motion.transition_layout(self.task_host, mutate)
+            return
+        self._insert_task_cards(pending, reveal=True)
+        for terminal_id in terminal:
+            self._retire_task(terminal_id)
 
     def _retire_task(self, task_id: str) -> None:
         self._terminal_task_ids.discard(task_id)
@@ -381,6 +408,7 @@ class DownloadPage(QWidget):
 
     def _remove_task(self, task_id: str) -> None:
         card = self.cards.pop(task_id, None)
+        self.task_transitions.discard(task_id)
         self._terminal_task_ids.discard(task_id)
         if card:
             self.task_layout.removeWidget(card)
