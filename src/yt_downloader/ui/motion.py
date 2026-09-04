@@ -19,7 +19,10 @@ from PySide6.QtCore import (
     Signal,
     QVariantAnimation,
 )
-from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QMenu, QStackedWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QAbstractItemView, QDialog, QGraphicsOpacityEffect, QMenu,
+    QStackedWidget, QWidget,
+)
 from shiboken6 import delete as delete_qobject, isValid
 
 if TYPE_CHECKING:
@@ -127,7 +130,7 @@ class MotionManager(QObject):
         self._snapshots: dict[int, SnapshotOverlay] = {}
         self._window_motion: dict[int, _WindowMotionState] = {}
         app = QApplication.instance()
-        if app is not None:
+        if app is not None and isinstance(parent, QWidget):
             app.installEventFilter(self)
 
     @property
@@ -232,13 +235,19 @@ class MotionManager(QObject):
 
         key = id(stack)
         previous = self._snapshots.get(key)
+        target = stack.widget(index)
+        if self._contains_very_large_view(stack.currentWidget()) or self._contains_very_large_view(target):
+            if previous is not None and isValid(previous):
+                previous.cleanup()
+            self._snapshots.pop(key, None)
+            stack.setCurrentIndex(index)
+            return
         source = previous if previous is not None and isValid(previous) else stack.currentWidget()
         before = capture_visible(source)
         if previous is not None and isValid(previous):
             previous.cleanup()
         self._snapshots.pop(key, None)
         stack.setCurrentIndex(index)
-        target = stack.widget(index)
         after = capture_visible(target)
         if before is None or after is None:
             if before is not None:
@@ -250,6 +259,11 @@ class MotionManager(QObject):
         self._snapshots[key] = proxy
         proxy.finished.connect(self._discard_finished_snapshots)
         proxy.play(PresentationState(opacity=0, x=-4, scale=1), duration=MotionTokens.PAGE)
+
+    @staticmethod
+    def _contains_very_large_view(page: QWidget) -> bool:
+        views = ([page] if isinstance(page, QAbstractItemView) else []) + page.findChildren(QAbstractItemView)
+        return any(view.model() is not None and view.model().rowCount() > 2_000 for view in views)
 
     def reveal(self, widget: QWidget) -> None:
         widget.show()

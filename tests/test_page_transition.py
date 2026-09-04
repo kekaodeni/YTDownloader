@@ -25,3 +25,22 @@ def test_rapid_page_switch_retargets_current_composite_without_queue(qapp, qtbot
     assert all(page.graphicsEffect() is None for page in pages)
     qtbot.waitUntil(lambda: manager.active_count == 0, timeout=1000)
     assert window_budget(stack).used == 0
+
+
+def test_very_large_item_view_skips_decorative_snapshot_capture(qapp, qtbot):
+    from PySide6.QtCore import QStringListModel
+    from PySide6.QtWidgets import QListView
+
+    stack = QStackedWidget()
+    plain = QWidget()
+    large = QWidget()
+    view = QListView(large)
+    view.setModel(QStringListModel([str(value) for value in range(10_000)]))
+    stack.addWidget(plain)
+    stack.addWidget(large)
+    qtbot.addWidget(stack)
+    stack.show()
+    manager = MotionManager()
+    manager.switch_page(stack, 1)
+    assert stack.currentIndex() == 1
+    assert manager.active_count == 0

@@ -10,6 +10,7 @@ from yt_downloader.core.models import AppSettings
 from yt_downloader.ui.icons import FluentIconService
 from yt_downloader.ui.motion import MotionManager
 from yt_downloader.ui.smooth_scroll import SmoothScrollController
+from yt_downloader.ui.diagnostics import ReducedMotionPolicy, UIAnimationDiagnostics
 from yt_downloader.ui.pages.about_page import AboutPage
 from yt_downloader.ui.pages.download_page import DownloadPage
 from yt_downloader.ui.pages.history_page import HistoryPage
@@ -38,6 +39,8 @@ class MainWindow(QMainWindow):
         self._closing_after_cancel = False
         self.icons = icons or FluentIconService()
         self.motion = MotionManager(settings.reduce_motion, self)
+        self.reduced_motion_policy = ReducedMotionPolicy(settings.reduce_motion, self)
+        self.reduced_motion_policy.changed.connect(self.motion.set_reduce_motion)
         shell = QWidget()
         self.setCentralWidget(shell)
         layout = QHBoxLayout(shell)
@@ -122,7 +125,13 @@ class MainWindow(QMainWindow):
             self.close()
 
     def set_reduce_motion(self, enabled: bool) -> None:
-        self.motion.set_reduce_motion(enabled)
+        self.reduced_motion_policy.set_enabled(enabled)
+
+    def create_animation_diagnostics(self) -> UIAnimationDiagnostics:
+        diagnostics = UIAnimationDiagnostics(self)
+        diagnostics.register_active_provider(lambda: self.motion.active_count)
+        diagnostics.register_active_provider(lambda: self.smooth_scroll.active_count)
+        return diagnostics
 
     def resizeEvent(self, event) -> None:
         compact = self.width() < 900
