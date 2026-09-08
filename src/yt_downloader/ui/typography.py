@@ -1,4 +1,4 @@
-"""Semantic Windows typography with whole-string script-aware font selection."""
+"""Semantic Windows typography with a stable Chinese UI face and balanced Windows UI weights."""
 
 from __future__ import annotations
 
@@ -57,14 +57,14 @@ class FontSpec:
 
 
 FONT_SPECS = {
-    FontRole.PAGE_TITLE: FontSpec(16.5, 600),
-    FontRole.SECTION_TITLE: FontSpec(13.5, 600),
-    FontRole.CARD_TITLE: FontSpec(12.0, 600),
+    FontRole.PAGE_TITLE: FontSpec(16.5, 400),
+    FontRole.SECTION_TITLE: FontSpec(12.0, 700),
+    FontRole.CARD_TITLE: FontSpec(11.25, 400),
     FontRole.BODY: FontSpec(10.5, 400),
     FontRole.FORM_LABEL: FontSpec(10.5, 400),
     FontRole.SECONDARY: FontSpec(9.75, 400),
     FontRole.TERTIARY: FontSpec(9.0, 400),
-    FontRole.BUTTON: FontSpec(10.5, 500),
+    FontRole.BUTTON: FontSpec(10.5, 400),
     FontRole.NUMERIC: FontSpec(10.5, 400),
     FontRole.CAPTION: FontSpec(9.0, 400),
 }
@@ -72,11 +72,11 @@ FONT_SPECS = {
 _CHINESE_CANDIDATES = ("Microsoft YaHei UI", "Microsoft YaHei")
 _JAPANESE_CANDIDATES = ("Yu Gothic UI", "Meiryo")
 _KOREAN_CANDIDATES = ("Malgun Gothic",)
-_LATIN_CANDIDATES = ("Segoe UI Variable", "Segoe UI")
+_LATIN_CANDIDATES = ("Segoe UI", "Segoe UI Variable")
 _EMOJI_CANDIDATES = ("Segoe UI Emoji",)
 _NUMERIC_CANDIDATES = (
-    "Segoe UI Variable",
     "Segoe UI",
+    "Segoe UI Variable",
     "Microsoft YaHei UI",
     "Microsoft YaHei",
 )
@@ -103,10 +103,10 @@ def resolve_font_families(
     installed = set(available if available is not None else QFontDatabase.families())
     fallback = system_default or QFont().defaultFamily()
     return FontFamilies(
-        chinese=_available_stack(_CHINESE_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        chinese=_available_stack(_CHINESE_CANDIDATES + _LATIN_CANDIDATES + _JAPANESE_CANDIDATES + _KOREAN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
         japanese=_available_stack(_JAPANESE_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
         korean=_available_stack(_KOREAN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
-        latin=_available_stack(_LATIN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
+        latin=_available_stack(_LATIN_CANDIDATES + _CHINESE_CANDIDATES + _JAPANESE_CANDIDATES + _KOREAN_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
         numeric=_available_stack(_NUMERIC_CANDIDATES + _EMOJI_CANDIDATES, installed, fallback),
         emoji=_available_stack(_EMOJI_CANDIDATES + _LATIN_CANDIDATES, installed, fallback),
     )
@@ -134,15 +134,37 @@ class TypographyManager:
     def family_stack(self, role: FontRole, text: str = "") -> tuple[str, ...]:
         if role is FontRole.NUMERIC:
             return self.families.numeric
+        # Chinese remains the anchor in mixed titles, avoiding whole-line font switches.
+        if _HAN.search(text):
+            return self.families.chinese
         if _KANA.search(text):
             return self.families.japanese
         if _HANGUL.search(text):
             return self.families.korean
-        if _HAN.search(text):
-            return self.families.chinese
         if text and _EMOJI.search(text) and not re.search(r"[A-Za-z0-9]", text):
             return self.families.emoji
         return self.families.latin
+
+    def preferred_family(self, role: FontRole, text: str = "") -> str:
+        """Return the semantic anchor family even when the host lacks it.
+
+        QML applies a dynamically supplied family through its font database and
+        collapses unavailable names to the platform default. Keeping the
+        anchor separate from the installed fallback stack lets the QML layer
+        preserve the application's deterministic typography contract; native
+        widgets continue to use ``family_stack`` for actual fallback shaping.
+        """
+        if role is FontRole.NUMERIC:
+            return _NUMERIC_CANDIDATES[0]
+        if _HAN.search(text):
+            return _CHINESE_CANDIDATES[0]
+        if _KANA.search(text):
+            return _JAPANESE_CANDIDATES[0]
+        if _HANGUL.search(text):
+            return _KOREAN_CANDIDATES[0]
+        if text and _EMOJI.search(text) and not re.search(r"[A-Za-z0-9]", text):
+            return _EMOJI_CANDIDATES[0]
+        return _LATIN_CANDIDATES[0]
 
     def font_for(self, role: FontRole, text: str = "") -> QFont:
         spec = FONT_SPECS[role]
@@ -150,6 +172,8 @@ class TypographyManager:
         font.setFamilies(list(self.family_stack(role, text)))
         font.setPointSizeF(spec.point_size)
         font.setWeight(QFont.Weight(spec.weight))
+        font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         return font
 
     def apply(self, widget: QWidget, role: FontRole, text: str | None = None) -> None:
@@ -274,4 +298,6 @@ def application_font(families: FontFamilies) -> QFont:
     font.setFamilies(list(families.chinese))
     font.setPointSizeF(spec.point_size)
     font.setWeight(QFont.Weight.Normal)
+    font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     return font

@@ -17,7 +17,7 @@ import uuid
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QApplication
 import yt_dlp.version
 
 from yt_downloader import __version__
@@ -37,14 +37,13 @@ from yt_downloader.services.history_service import HistoryDeleteResult, HistoryR
 from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
 from yt_downloader.services.youtube_service import YoutubeService
-from yt_downloader.ui.main_window import MainWindow
+from yt_downloader.ui.quick_window import MainWindow
 from yt_downloader.ui.progress_dispatch import ProgressEventCoalescer
 from yt_downloader.ui.localization import install_qt_zh_cn_translator
-from yt_downloader.ui.theme import ThemeManager
+from yt_downloader.ui.quick_theme import QuickTheme as ThemeManager
 from yt_downloader.ui.typography import application_font, install_typography_manager, resolve_font_families
-from yt_downloader.ui.widgets.error_dialog import ErrorDialog
-from yt_downloader.ui.widgets.confirm_dialog import IncompleteCleanupDialog, RemoveActiveTaskDialog
-from yt_downloader.ui.widgets.thumbnail_dialog import ThumbnailDialog
+from yt_downloader.ui.quick_dialogs import ErrorSession as ErrorDialog
+from yt_downloader.ui.quick_cover import CoverSession as ThumbnailDialog
 from yt_downloader.workers.download_queue import DownloadQueueController
 from yt_downloader.workers.function_worker import FunctionWorker
 from yt_downloader.workers.metadata_process import (
@@ -61,7 +60,7 @@ from yt_downloader.updates.service import UpdateService
 from yt_downloader.updates.signature import TrustedKeyring
 from yt_downloader.updates.state import UpdateStateStore, detect_update_capability
 from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS
-from yt_downloader.ui.widgets.update_dialog import UpdateDialog
+from yt_downloader.ui.quick_dialogs import UpdateSession as UpdateDialog
 
 
 logger = logging.getLogger(__name__)
@@ -156,7 +155,9 @@ class AppController:
             self.settings,
             ytdlp_version=yt_dlp.version.__version__,
             ffmpeg_description=ffmpeg_description,
+            theme=self.theme,
         )
+        self.window.history_page.configure_thumbnails(self.ffmpeg, self.paths.cache / "history-previews")
         self.queue = DownloadQueueController(self.download_service, self.window)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
@@ -371,12 +372,11 @@ class AppController:
             self._update_dialog.activateWindow()
             return
         dialog = UpdateDialog(manifest, self.update_capability, self.window)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.download_requested.connect(self.updates.download)
         dialog.cancel_requested.connect(self.updates.cancel)
         dialog.install_requested.connect(self._request_update_install)
         dialog.release_page_requested.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
-        dialog.destroyed.connect(lambda: setattr(self, '_update_dialog', None))
+        dialog.closed.connect(lambda: setattr(self, '_update_dialog', None))
         self._update_dialog = dialog
         dialog.show()
 
@@ -385,7 +385,7 @@ class AppController:
             self._update_dialog.set_progress(progress)
 
     def _update_ready(self, _package) -> None:
-        self.window.update_banner.hide()
+        self.window.hideUpdate()
         if self._update_dialog is not None:
             self._update_dialog.set_state(UpdateState.READY_TO_INSTALL)
 
@@ -404,22 +404,21 @@ class AppController:
     def _request_update_install(self) -> None:
         busy = self.queue.is_busy or self.metadata_process.is_running or bool(self._thumbnail_workers or self._settings_workers)
         if busy:
-            box = QMessageBox(self.window)
-            box.setWindowTitle("任务仍在进行")
-            box.setText("默认会继续当前任务。也可以明确取消任务、完成清理后退出并更新。")
-            wait_button = box.addButton("继续当前任务", QMessageBox.ButtonRole.RejectRole)
-            update_button = box.addButton("取消任务并更新", QMessageBox.ButtonRole.DestructiveRole)
-            box.setDefaultButton(wait_button)
-            box.exec()
-            if box.clickedButton() is not update_button:
-                return
-            self._update_install_pending = True
-            self.queue.cancel_all()
-            self.metadata_process.cancel()
-            self._cancel_thumbnail()
-            QTimer.singleShot(100, self._finish_update_install_when_idle)
+            self.window.dialogs.confirm(
+                "任务仍在进行", "默认会继续当前任务。也可以明确取消任务、完成清理后退出并更新。",
+                "取消任务并更新", self._update_install_answer, cancel="继续当前任务",
+            )
             return
         self._launch_updater_and_exit()
+
+    def _update_install_answer(self, accepted: bool) -> None:
+        if not accepted:
+            return
+        self._update_install_pending = True
+        self.queue.cancel_all()
+        self.metadata_process.cancel()
+        self._cancel_thumbnail()
+        QTimer.singleShot(100, self._finish_update_install_when_idle)
 
     def _finish_update_install_when_idle(self) -> None:
         if not self._update_install_pending:
@@ -535,8 +534,12 @@ class AppController:
         self.refresh_history()
         if task_id in self._remove_intents:
             self._remove_intents.discard(task_id)
-            if cleanup_report.succeeded or self._confirm_remove_after_incomplete_cleanup(cleanup_report):
+            if cleanup_report.succeeded:
                 self.window.download_page.remove_task(task_id)
+            else:
+                self._confirm_remove_after_incomplete_cleanup(
+                    cleanup_report, lambda accepted: self.window.download_page.remove_task(task_id) if accepted else None,
+                )
 
     def refresh_history(self) -> None:
         try:
@@ -619,17 +622,16 @@ class AppController:
 
     def _change_thumbnail(self, record: HistoryRecord) -> None:
         dialog = ThumbnailDialog(record.file_path, record.video_id, self.paths.thumbnails, self.ffmpeg, self.window)
-        dialog.error.connect(self.show_error)
+        dialog.error.connect(lambda error: self.show_error(error, title_text="封面处理失败"))
         dialog.thumbnail_set.connect(lambda result, task=record.task_id: self._thumbnail_saved(task, result))
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
         self._dialogs.append(dialog)
-        dialog.destroyed.connect(lambda: self._dialogs.remove(dialog) if dialog in self._dialogs else None)
+        dialog.closed.connect(lambda: self._dialogs.remove(dialog) if dialog in self._dialogs else None)
 
     def _retry_record(self, record: HistoryRecord) -> None:
         self._pending_retry = record
         self.window._select_page(0)
-        self.window.download_page.url_input.setText(record.url)
+        self.window.download_page.set_url(record.url)
         self.fetch_metadata(record.url)
 
     def _retry_task(self, task_id: str) -> None:
@@ -643,8 +645,8 @@ class AppController:
         # retained request so deleting a history entry cannot break this action.
         self._pending_retry = request
         self.window._select_page(0)
-        page.url_input.setText(request.video.url)
-        page.page_scroll.verticalScrollBar().setValue(0)
+        page.set_url(request.video.url)
+        self.window.scroll_download_to_top()
         self.fetch_metadata(request.video.url)
 
     def _delete_history_record(self, record: HistoryRecord) -> None:
@@ -694,29 +696,40 @@ class AppController:
             self.window.download_page.remove_task(task_id)
             return
         request = self.window.download_page.task_request(task_id)
-        if position == "active" and not self._confirm_cancel_and_remove(
-            request.video.title if request else "当前任务"
-        ):
+        if position == "active":
+            self._confirm_cancel_and_remove(
+                request.video.title if request else "当前任务",
+                lambda accepted: self._cancel_and_remove_answer(task_id, accepted),
+            )
+            return
+        self._cancel_and_remove_answer(task_id, True)
+
+    def _cancel_and_remove_answer(self, task_id: str, accepted: bool) -> None:
+        if not accepted:
             return
         self._remove_intents.add(task_id)
         if not self.queue.cancel(task_id):
             self._remove_intents.discard(task_id)
 
-    def _confirm_cancel_and_remove(self, title: str) -> bool:
-        return RemoveActiveTaskDialog(title, self.window).exec() == QDialog.DialogCode.Accepted
-
-    def _confirm_remove_after_incomplete_cleanup(self, cleanup_report) -> bool:
-        dialog = IncompleteCleanupDialog(self.window)
-        dialog.open_folder_requested.connect(
-            lambda: self._reveal_file(cleanup_report.output_directory)
+    def _confirm_cancel_and_remove(self, title: str, callback) -> None:
+        self.window.dialogs.confirm(
+            "取消并删除任务", f"取消下载并删除这张任务卡吗？\n{title}\n应用会先停止该任务、清理任务临时文件并保存取消状态；不会删除历史记录。",
+            "取消并删除任务卡", callback,
         )
-        return dialog.exec() == QDialog.DialogCode.Accepted
 
-    def _thumbnail_saved(self, task_id: str, _result) -> None:
+    def _confirm_remove_after_incomplete_cleanup(self, cleanup_report, callback) -> None:
+        self.window.dialogs.confirm(
+            "临时文件未完全清理", "文件可能仍被系统占用。你可以先打开文件夹处理，或确认后仍然移除任务卡。",
+            "仍然移除", callback, folder_callback=lambda: self._reveal_file(cleanup_report.output_directory),
+        )
+
+    def _thumbnail_saved(self, task_id: str, result) -> None:
         try:
             record = self.history.get(task_id)
             previous = record.thumbnail_path if record else None
-            self.history.update_thumbnail(task_id, None)
+            if record:
+                self.history.upsert(replace(record, file_path=result.file_path,
+                                            file_size=result.file_path.stat().st_size, thumbnail_path=None))
             if previous and previous.is_file():
                 try:
                     previous.resolve().relative_to(self.paths.thumbnails.resolve())
@@ -725,6 +738,7 @@ class AppController:
                 else:
                     previous.unlink(missing_ok=True)
             self.refresh_history()
+            self.window.history_page.invalidate_thumbnail(task_id)
         except Exception as exc:
             self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
@@ -737,10 +751,9 @@ class AppController:
             ffmpeg_version=str(self.ffmpeg.ffmpeg_path or "Unavailable"),
         )
         dialog = ErrorDialog(error, report, self.window, title_text=title_text, retry_callback=retry_callback)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
         self._dialogs.append(dialog)
-        dialog.destroyed.connect(lambda: self._dialogs.remove(dialog) if dialog in self._dialogs else None)
+        dialog.closed.connect(lambda: self._dialogs.remove(dialog) if dialog in self._dialogs else None)
 
 
 def create_application(argv: list[str] | None = None) -> tuple[QApplication, AppController]:
@@ -778,67 +791,70 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
     known, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
     app, controller = create_application([sys.argv[0], *qt_args])
-    if known.metadata_process_self_test:
-        return run_metadata_process_self_test(app)
-    if known.self_test:
-        try:
-            run_packaged_self_test(
-                cache_directory=controller.paths.cache,
-                ffmpeg=controller.ffmpeg,
-                deno_path=controller.deno_path,
+    try:
+        if known.metadata_process_self_test:
+            return run_metadata_process_self_test(app)
+        if known.self_test:
+            try:
+                run_packaged_self_test(
+                    cache_directory=controller.paths.cache,
+                    ffmpeg=controller.ffmpeg,
+                    deno_path=controller.deno_path,
+                )
+                return 0
+            except Exception:
+                logger.exception("Packaged self-test failed")
+                return 2
+        if known.theme:
+            controller.theme.set_mode(known.theme)
+        page_indexes = {"download": 0, "download-demo": 0, "history": 1, "settings": 2, "about": 3}
+        controller.window._select_page(page_indexes[known.preview_page])
+        if known.preview_page == "download-demo":
+            option = FormatOption(
+                "1080p", 1080, 30, "avc1.640028", "mp4a.40.2", "MP4", "mp4",
+                "137+140", 1_374_000_000, True, "137", "140", True,
             )
-            return 0
-        except Exception:
-            logger.exception("Packaged self-test failed")
-            return 2
-    if known.theme:
-        controller.theme.set_mode(known.theme)
-    page_indexes = {"download": 0, "download-demo": 0, "history": 1, "settings": 2, "about": 3}
-    controller.window._select_page(page_indexes[known.preview_page])
-    if known.preview_page == "download-demo":
-        option = FormatOption(
-            "1080p", 1080, 30, "avc1.640028", "mp4a.40.2", "MP4", "mp4",
-            "137+140", 1_374_000_000, True, "137", "140", True,
-        )
-        video = VideoInfo(
-            "preview00001", "https://www.youtube.com/watch?v=preview00001", "Windows 11 Fluent Design：从构想到成品",
-            "示例频道", 766, None, None, (option,),
-        )
-        controller.window.download_page.show_video(video)
-        request = DownloadRequest("preview-task", video, option, Path(controller.settings.download_directory), video.title)
-        controller.window.download_page.add_task(request)
-        controller.window.download_page.update_task(DownloadProgress(
-            request.task_id, TaskStatus.DOWNLOADING_VIDEO, 67, 920_000_000, 1_374_000_000, 8_700_000, 48,
-        ))
-    controller.window.show()
-    if known.update_health_check:
-        transaction_id, marker_value = known.update_health_check
-        marker = Path(marker_value)
-        def confirm_healthy_startup() -> None:
-            if marker.name != 'startup-health.json' or not marker.parent.name.startswith('update-'):
-                logger.error('Rejected unsafe update health marker path')
-                app.quit()
-                return
-            if marker.exists():
-                logger.error('Rejected pre-existing update health marker')
-                app.quit()
-                return
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            temporary = marker.with_suffix('.tmp')
-            temporary.write_text(json.dumps({
-                'status': 'ok', 'transaction_id': transaction_id, 'app_version': __version__,
-            }), encoding='utf-8')
-            temporary.replace(marker)
-            if os.environ.get('YT_DOWNLOADER_UPDATE_HEALTH_SMOKE_EXIT') == '1':
-                QTimer.singleShot(0, app.quit)
-        QTimer.singleShot(0, confirm_healthy_startup)
-    elif known.render_preview:
-        target = known.render_preview
-        target.parent.mkdir(parents=True, exist_ok=True)
-        QTimer.singleShot(600, lambda: (controller.window.grab().save(str(target)), app.quit()))
-    elif known.smoke_test:
-        QTimer.singleShot(800, app.quit)
-    return app.exec()
+            video = VideoInfo(
+                "preview00001", "https://www.youtube.com/watch?v=preview00001", "Windows 11 Fluent Design：从构想到成品",
+                "示例频道", 766, None, None, (option,),
+            )
+            controller.window.download_page.show_video(video)
+            request = DownloadRequest("preview-task", video, option, Path(controller.settings.download_directory), video.title)
+            controller.window.download_page.add_task(request)
+            controller.window.download_page.update_task(DownloadProgress(
+                request.task_id, TaskStatus.DOWNLOADING_VIDEO, 67, 920_000_000, 1_374_000_000, 8_700_000, 48,
+            ))
+        controller.window.show()
+        if known.update_health_check:
+            transaction_id, marker_value = known.update_health_check
+            marker = Path(marker_value)
+            def confirm_healthy_startup() -> None:
+                if marker.name != 'startup-health.json' or not marker.parent.name.startswith('update-'):
+                    logger.error('Rejected unsafe update health marker path')
+                    app.quit()
+                    return
+                if marker.exists():
+                    logger.error('Rejected pre-existing update health marker')
+                    app.quit()
+                    return
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                temporary = marker.with_suffix('.tmp')
+                temporary.write_text(json.dumps({
+                    'status': 'ok', 'transaction_id': transaction_id, 'app_version': __version__,
+                }), encoding='utf-8')
+                temporary.replace(marker)
+                if os.environ.get('YT_DOWNLOADER_UPDATE_HEALTH_SMOKE_EXIT') == '1':
+                    QTimer.singleShot(0, app.quit)
+            QTimer.singleShot(0, confirm_healthy_startup)
+        elif known.render_preview:
+            target = known.render_preview
+            target.parent.mkdir(parents=True, exist_ok=True)
+            QTimer.singleShot(600, lambda: (controller.window.grab().save(str(target)), app.quit()))
+        elif known.smoke_test:
+            QTimer.singleShot(800, app.quit)
+        return app.exec()
+    finally:
+        controller.window.dispose()
 
 
 if __name__ == "__main__":

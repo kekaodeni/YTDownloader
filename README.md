@@ -1,6 +1,6 @@
 # YT Downloader 0.4.0
 
-YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Widgets 与统一的 Fluent 2 语义 Token；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
+YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Quick/QML 与统一的 Windows 11 语义样式；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
 ![浅色下载界面](docs/images/download-light.png)
 
@@ -18,9 +18,12 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 - 系统代理、直连和 HTTP/HTTPS/SOCKS 自定义代理；系统代理在每个新任务开始时重新解析。
 - 自动或 1/2/4/8 分片并发。实测基准见 `docs/performance-benchmark-v0.2.0.md`；自动值保持稳健的 1。
 - 系统/浅色/深色主题、语义中文字体、响应式导航、高 DPI、键盘焦点和辅助功能名称。
-- 140/240/320ms 语义动效、快照式任务交接和静态玻璃感层次；“减少动态效果”会关闭装饰动画。
+- 连续可中断的导航、页面、菜单、任务和滚动动效；保留输入与选择状态，“减少动态效果”关闭装饰动画。
+- 中文采用 Microsoft YaHei UI，英文与数字采用 Segoe UI，并明确配置多语言回退；右键菜单与整套界面共用主题、字体和控件状态。
 - 从 v0.4.0 起提供 Ed25519 验签的安全更新框架：支持后台检查、下载校验、独立 updater 与可恢复回滚；实际能力会按源码、验证构建或正式构建安全降级。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
+
+本地 Qt Quick 重构的行为契约、验证方法与交付记录见 [UI 重构报告](docs/UI_QUICK_REBUILD.md)。
 
 ## 支持范围与法律提示
 
@@ -56,6 +59,7 @@ history.db
 update-state.json
 logs\
 cache\thumbnails\
+cache\history-previews\
 update-staging\
 ```
 
@@ -87,7 +91,7 @@ update-staging\
 .\.venv\Scripts\python.exe -m yt_downloader --theme dark --preview-page download-demo --render-preview artifacts\dark.png
 ```
 
-在启动进程前设置 `QT_SCALE_FACTOR=1`、`1.25`、`1.5`、`2` 可检查 100%–200% 缩放。窗口默认 1100×720，最小 820×560；宽度小于 900 时导航折叠为图标栏。
+在启动进程前设置 `QT_SCALE_FACTOR=1`、`1.25`、`1.5`、`2` 可检查 100%–200% 缩放。窗口默认 1200×800，最小 500×560；宽度小于 900 时导航折叠为图标栏。
 
 ## 打包
 
@@ -137,7 +141,7 @@ src/yt_downloader/
   services/         yt-dlp、下载、FFmpeg、设置、历史、错误报告
   workers/          Qt 后台 Worker 与单任务队列
   infrastructure/   路径、日志、运行时工具、Shell、系统信息
-  ui/               Fluent 主题、页面、Dialog 与复用控件
+  ui/               Qt Quick 展示适配层、QML 页面与复用控件
   updates/          更新发现、验签、下载、staging 与能力门禁
 src/yt_downloader_updater/  无 Qt 的外部安装、恢复与回滚程序
 tests/               单元、pytest-qt、SQLite、本地 FFmpeg 测试
@@ -152,5 +156,9 @@ licenses/            第三方许可与对应源码信息
 - 不支持需要登录的内容。
 - 4K 视频通常需要较大临时空间并在下载后合并。
 - 没有代码签名与安装器；Windows SmartScreen 可能提示未知发布者。
-- MP4/M4V/MOV 可无损写入内嵌封面；其他容器不会被自动转码或改容器。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
-- 稳定源码以 `main` 分支和版本标签为准，后续日常开发继续在 `develop` 分支进行；当前发布仍未提供代码签名或安装器。
+- MP4/M4V/MKV 可无损写入内嵌封面；WebM/MOV 可另存 MKV 并写入封面，保留原文件，历史记录指向新文件。写入后验证封面字节、音视频流、章节和元数据。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
+- 本轮后续开发以当前 `develop` 工作区的 v0.4.0 源码为准；完整 Git 历史保留；当前发布仍未提供代码签名或安装器。
+
+本轮封面、UI 修复及磁盘清理验收见 [COVER_AND_CLEANUP.md](docs/COVER_AND_CLEANUP.md)。
+
+最新独立 Matroska 对照、MPG/3GP 修复和 267 项回归见 [MATROSKA_CONTROL_VALIDATION.md](docs/MATROSKA_CONTROL_VALIDATION.md)。

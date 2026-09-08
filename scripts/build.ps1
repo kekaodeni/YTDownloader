@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [switch]$SkipZip,
-    [switch]$ValidationOnly
+    [switch]$ValidationOnly,
+    [ValidatePattern("^[a-zA-Z0-9_-]+$")]
+    [string]$ValidationName = "package-validation"
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,11 +30,12 @@ if (-not $ValidationOnly -and [int]$TrustedKeyCount -eq 0) {
     throw "Production update trust is not configured. Use -ValidationOnly until an approved production public key is embedded."
 }
 if ($ValidationOnly) {
-    $ValidationRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot ".tool-stage\package-validation"))
+    $ValidationRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot (".tool-stage\" + $ValidationName)))
     if (-not $ValidationRoot.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Unsafe validation target: $ValidationRoot"
     }
     if (Test-Path -LiteralPath $ValidationRoot) {
+        if ($ValidationName -ne "package-validation") { throw "Independent validation output already exists: $ValidationRoot" }
         Remove-Item -LiteralPath $ValidationRoot -Recurse -Force
     }
     New-Item -ItemType Directory -Force -Path $ValidationRoot | Out-Null

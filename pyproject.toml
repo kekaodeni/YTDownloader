@@ -33,3 +33,6 @@ addopts = "-ra"
 markers = [
     "integration: exercises locally installed media tools without network access",
 ]
+
+[tool.setuptools.package-data]
+"yt_downloader.ui" = ["qml/*.qml"]

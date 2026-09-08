@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QPushButton
 from semver import Version
 
 from yt_downloader.updates.models import UpdateCapability, UpdateManifest, UpdatePackage, UpdateProgress, UpdateState
-from yt_downloader.ui.widgets.update_dialog import UpdateDialog
+from yt_downloader.ui.quick_dialogs import UpdateSession as UpdateDialog
 
 
 def _manifest():
@@ -14,35 +14,29 @@ def _manifest():
     )
 
 
-def _button(dialog, text):
-    return next(button for button in dialog.findChildren(QPushButton) if button.text() == text)
+def test_check_only_dialog_never_offers_download_or_install(quick_window):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.CHECK_ONLY, quick_window)
+    assert dialog.state['canRelease']
+    assert not dialog.state['canDownload']
+    assert not dialog.state['canInstall']
 
 
-def test_check_only_dialog_never_offers_download_or_install(qtbot):
-    dialog = UpdateDialog(_manifest(), UpdateCapability.CHECK_ONLY)
-    qtbot.addWidget(dialog)
-    assert _button(dialog, '打开发布页面').isVisibleTo(dialog)
-    assert not any(b.text() == '下载并验证' for b in dialog.findChildren(QPushButton) if b.isVisibleTo(dialog))
-    assert not any(b.text() == '退出并更新' for b in dialog.findChildren(QPushButton) if b.isVisibleTo(dialog))
-
-
-def test_update_dialog_download_progress_cancel_and_ready_install(qtbot):
-    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL)
-    qtbot.addWidget(dialog); dialog.show()
+def test_update_dialog_download_progress_cancel_and_ready_install(quick_window, qtbot):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL, quick_window)
+    dialog.show()
     with qtbot.waitSignal(dialog.download_requested, timeout=500):
-        _button(dialog, '下载并验证').click()
+        dialog.action('download')
     dialog.set_state(UpdateState.DOWNLOADING)
     dialog.set_progress(UpdateProgress(25, 100))
-    assert dialog.progress_bar.value() == 25
+    assert dialog.state['progress'] == .25
     with qtbot.waitSignal(dialog.cancel_requested, timeout=500):
-        _button(dialog, '取消下载').click()
+        dialog.action('cancel')
     dialog.set_state(UpdateState.READY_TO_INSTALL)
-    assert _button(dialog, '退出并更新').isVisible()
+    assert dialog.state['canInstall']
 
 
-def test_validation_build_stops_at_verified_package(qtbot):
-    dialog = UpdateDialog(_manifest(), UpdateCapability.DOWNLOAD_AND_VERIFY)
-    qtbot.addWidget(dialog); dialog.show()
+def test_validation_build_stops_at_verified_package(quick_window):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.DOWNLOAD_AND_VERIFY, quick_window)
     dialog.set_state(UpdateState.READY_TO_INSTALL)
-    assert '不支持自动安装' in dialog.status_label.text()
-    assert not any(b.text() == '退出并更新' and b.isVisible() for b in dialog.findChildren(QPushButton))
+    assert '不支持自动安装' in dialog.state['message']
+    assert not dialog.state['canInstall']

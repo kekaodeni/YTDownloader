@@ -19,6 +19,7 @@ if missing:
 
 datas = yt_datas + ejs_datas + [
     (str(root / "assets"), "assets"),
+    (str(root / "src" / "yt_downloader" / "ui" / "qml"), "yt_downloader/ui/qml"),
     (str(root / "licenses"), "third_party_licenses"),
     (str(root / "README.md"), "."),
     (str(root / "tools.lock.json"), "."),
@@ -31,6 +32,9 @@ binaries = yt_bins + ejs_bins + [
 ]
 hiddenimports = yt_hidden + ejs_hidden + [
     "socks",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuickControls2",
     "yt_downloader.workers.metadata_process",
 ]
 
