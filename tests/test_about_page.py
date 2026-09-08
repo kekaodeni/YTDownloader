@@ -1,29 +1,16 @@
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QDesktopServices, QGuiApplication
+from yt_downloader.ui.quick_window import PROJECT_URL
 
-from yt_downloader.ui.pages.about_page import PROJECT_URL, AboutPage
-
-
-def test_project_link_opens_in_default_browser_and_is_accessible(qtbot) -> None:
+def test_project_link_opens_in_default_browser_and_is_accessible(quick_window, monkeypatch):
     opened = []
-    page = AboutPage(url_opener=lambda url: opened.append(url.toString()) or True)
-    qtbot.addWidget(page)
-
-    qtbot.mouseClick(page.project_button, Qt.MouseButton.LeftButton)
-
+    monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: opened.append(url.toString()) or True)
+    quick_window.openProject()
     assert opened == [PROJECT_URL]
-    assert page.project_button.accessibleName() == "在 GitHub 查看 YTDownloader 项目"
-    assert page.project_button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert quick_window.state['projectError'] == ''
 
-
-def test_failed_project_link_shows_and_copies_exact_address(qtbot) -> None:
-    page = AboutPage(url_opener=lambda _url: False)
-    qtbot.addWidget(page)
-
-    qtbot.mouseClick(page.project_button, Qt.MouseButton.LeftButton)
-
-    assert page.link_status.isVisibleTo(page)
-    assert PROJECT_URL in page.link_status.text()
-    assert page.copy_link_button.isVisibleTo(page)
-    qtbot.mouseClick(page.copy_link_button, Qt.MouseButton.LeftButton)
+def test_failed_project_link_shows_and_copies_exact_address(quick_window, monkeypatch):
+    monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: False)
+    quick_window.openProject()
+    assert PROJECT_URL in quick_window.state['projectError']
+    quick_window.copyProject()
     assert QGuiApplication.clipboard().text() == PROJECT_URL

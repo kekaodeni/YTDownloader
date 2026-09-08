@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yt-downloader"
-version = "0.3.0"
+version = "0.4.0"
 description = "Windows 11 Fluent desktop downloader powered by yt-dlp"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,8 @@ dependencies = [
     "yt-dlp[default]>=2026.8.19",
     "requests[socks]>=2.34,<3",
     "Pillow>=12,<13",
+    "semver==3.0.4",
+    "cryptography==50.0.1",
 ]
 
 [project.scripts]
@@ -31,3 +33,6 @@ addopts = "-ra"
 markers = [
     "integration: exercises locally installed media tools without network access",
 ]
+
+[tool.setuptools.package-data]
+"yt_downloader.ui" = ["qml/*.qml"]

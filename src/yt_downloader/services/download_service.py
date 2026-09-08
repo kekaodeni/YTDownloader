@@ -320,7 +320,10 @@ class DownloadService:
             total = snapshot.total_bytes
             percent = None
             if total and downloaded is not None:
-                percent = max(0.0, min(100.0, float(downloaded) * 100.0 / float(total)))
+                # A native fragment estimate may temporarily equal bytes read.
+                # Reserve 100% for the provider's finished/processing stage.
+                ceiling = 99.0 if status in {TaskStatus.DOWNLOADING_VIDEO, TaskStatus.DOWNLOADING_AUDIO} else 100.0
+                percent = max(0.0, min(ceiling, float(downloaded) * 100.0 / float(total)))
             raw_speed = float(data["speed"]) if isinstance(data.get("speed"), (int, float)) and data["speed"] > 0 else None
             if raw_speed is not None:
                 smoothed_speed = raw_speed if smoothed_speed is None else (0.25 * raw_speed) + (0.75 * smoothed_speed)
@@ -330,6 +333,7 @@ class DownloadService:
             if (
                 eta is None
                 and total is not None
+                and not snapshot.total_is_estimate
                 and downloaded is not None
                 and smoothed_speed
                 and last_speed_at is not None

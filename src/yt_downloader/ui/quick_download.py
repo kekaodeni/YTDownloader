@@ -1,0 +1,246 @@
+"""Download presentation. Domain objects and command parameters stay in Python."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+
+from PySide6.QtCore import QObject, Property, Signal, Slot
+
+from yt_downloader.core.errors import CancellationCleanupReport
+from yt_downloader.core.filename import sanitize_filename
+from yt_downloader.core.formatting import format_bytes, format_duration, format_eta, format_speed
+from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
+from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
+from yt_downloader.ui.quick_state import RowModel, ViewState
+
+
+@dataclass
+class TaskPresentation:
+    request: DownloadRequest
+    status: TaskStatus = TaskStatus.PENDING
+    file_path: Path | None = None
+    last_percent: int | None = None
+    values: dict = field(default_factory=dict)
+
+    def progress(self, progress: DownloadProgress):
+        self.status = progress.status
+        stopping = progress.status in {TaskStatus.CANCELLING, TaskStatus.CANCELLED, TaskStatus.FAILED}
+        values = dict(self.values)
+        values.update(status=progress.status.value, statusText=STATUS_TEXT[progress.status],
+                      indeterminate=not stopping and progress.percent is None,
+                      speed='—' if stopping else format_speed(progress.speed),
+                      eta='剩余 —' if stopping else f'剩余 {format_eta(progress.eta)}',
+                      retry=progress.status is TaskStatus.FAILED,
+                      stopping=stopping)
+        if not stopping and progress.percent is not None:
+            self.last_percent = round(progress.percent)
+        values['percent'] = self.last_percent or 0
+        values['percentText'] = f'{self.last_percent}%' if self.last_percent is not None and (stopping or progress.percent is not None) else '—%'
+        if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
+            total = format_bytes(progress.total_bytes)
+            if progress.total_is_estimate and progress.total_bytes is not None:
+                total = f'估算 {total}'
+            values['size'] = f'{format_bytes(progress.downloaded_bytes)} / {total}'
+        self.values = values
+
+
+class DownloadPresenter(ViewState):
+    parse_requested = Signal(str)
+    parse_cancel_requested = Signal()
+    download_requested = Signal(object, object, str, str)
+    cancel_requested = Signal(str)
+    open_file_requested = Signal(str)
+    open_folder_requested = Signal(str)
+    remove_requested = Signal(str)
+    retry_requested = Signal(str)
+    browse_requested = Signal()
+
+    def __init__(self, directory: str, images, parent=None):
+        super().__init__(parent, url='', filename='', directory=directory, ready=False,
+                         busy=False, cancelling=False, parseText='解析', parseHint='',
+                         clipboardHint='', title='', meta='', thumbnail='', formats=[],
+                         formatIndex=0, technical='')
+        self.images = images
+        self.video: VideoInfo | None = None
+        self.parse_state = ParseState.IDLE
+        self.cards: dict[str, TaskPresentation] = {}
+        self._terminal_task_ids: set[str] = set()
+        self._default_directory = directory
+        self._directory_overridden = False
+        self._tasks = RowModel(self)
+
+    @Property(QObject, constant=True)
+    def tasks(self):
+        return self._tasks
+
+    def set_clipboard_hint(self, text):
+        try:
+            normalized = normalize_youtube_url(text)
+        except InvalidYoutubeUrl:
+            self.update(clipboardHint='')
+            return
+        self.update(clipboardHint=f'剪贴板中有可用链接：{normalized}')
+
+    @Slot(str, str)
+    def setField(self, name, value):
+        if name not in {'url', 'filename', 'directory'} or self._state[name] == value:
+            return
+        if name == 'directory':
+            self._directory_overridden = True
+        self.update(**{name: value})
+
+    def set_url(self, value):
+        self.update(url=value)
+
+    @Slot()
+    def requestParse(self):
+        if self.parse_state in {ParseState.RUNNING, ParseState.SLOW}:
+            self.set_parse_state(ParseState.CANCELLING)
+            self.parse_cancel_requested.emit()
+            return
+        if self.parse_state is not ParseState.CANCELLING and self._state['url'].strip():
+            self.parse_requested.emit(self._state['url'].strip())
+
+    def set_loading(self, loading):
+        self.set_parse_state(ParseState.RUNNING if loading else ParseState.IDLE)
+
+    def set_parse_state(self, state):
+        self.parse_state = state
+        if state is ParseState.RUNNING:
+            self.video = None
+            self.update(ready=False, thumbnail='')
+        busy = state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}
+        cancelling = state is ParseState.CANCELLING
+        self.update(busy=busy, cancelling=cancelling,
+                    parseText='正在取消…' if cancelling else '取消解析' if busy else '解析',
+                    parseHint='连接较慢，仍在尝试。你可以取消解析。' if state is ParseState.SLOW else '')
+
+    def show_video(self, video, *, preferred_quality='recommended'):
+        self.video = video
+        self._directory_overridden = False
+        selected = 0
+        labels = []
+        for index, option in enumerate(video.formats):
+            labels.append(f'{option.label}（推荐）' if option.is_recommended else option.label)
+            if (preferred_quality == 'recommended' and option.is_recommended) or option.label == preferred_quality:
+                selected = index
+        self.update(ready=True, title=video.title, meta=f'{video.channel}  ·  {format_duration(video.duration)}',
+                    thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',
+                    formats=labels, formatIndex=selected, filename=sanitize_filename(video.title),
+                    directory=self._default_directory)
+        self.selectFormat(selected)
+
+    def set_thumbnail(self, video_id, thumbnail_bytes):
+        if self.video is None or self.video.video_id != video_id:
+            return False
+        source = self.images.add(thumbnail_bytes)
+        if not source:
+            return False
+        self.video = replace(self.video, thumbnail_bytes=thumbnail_bytes)
+        self.update(thumbnail=source)
+        return True
+
+    @Slot(int)
+    def selectFormat(self, index):
+        if self.video is None or not 0 <= index < len(self.video.formats):
+            return
+        option = self.video.formats[index]
+        size = format_bytes(option.estimated_size)
+        size_text = '大小未知' if option.estimated_size is None else f'估算 {size}' if option.size_is_estimate else f'大小 {size}'
+        self.update(formatIndex=index, technical=f'{option.technical_summary}  ·  {size_text}')
+
+    def set_default_directory(self, directory):
+        self._default_directory = directory
+        if self.video is None or not self._directory_overridden:
+            self.update(directory=directory)
+
+    def set_retry_defaults(self, filename, directory):
+        self._directory_overridden = True
+        self.update(filename=filename, directory=directory)
+
+    @Slot()
+    def requestDownload(self):
+        index = self._state['formatIndex']
+        if self.video and 0 <= index < len(self.video.formats) and not self._state['busy']:
+            self.download_requested.emit(self.video, self.video.formats[index], self._state['filename'], self._state['directory'])
+
+    def add_task(self, request):
+        card = TaskPresentation(request)
+        card.values = dict(id=request.task_id, title=request.video.title,
+                           quality=f'{request.format.label} · {request.format.container}',
+                           thumbnail=self.images.add(request.video.thumbnail_bytes) if request.video.thumbnail_bytes else '',
+                           cancel=True, cancelEnabled=True, cancelText='取消', open=False, folder=False)
+        card.progress(DownloadProgress(request.task_id, TaskStatus.PENDING))
+        self.cards[request.task_id] = card
+        self._tasks.put(dict(card.values))
+
+    def update_task(self, progress):
+        card = self.cards.get(progress.task_id)
+        if card:
+            card.progress(progress)
+            self._tasks.put(dict(card.values))
+
+    def cancel_task(self, task_id):
+        card = self.cards.get(task_id)
+        if card:
+            card.progress(DownloadProgress(task_id, TaskStatus.CANCELLING))
+            card.values.update(cancelEnabled=False, cancelText='正在取消…')
+            self._tasks.put(dict(card.values))
+
+    def complete_task(self, result):
+        card = self.cards.get(result.task_id)
+        if card:
+            card.file_path = result.file_path
+            card.progress(DownloadProgress(result.task_id, TaskStatus.COMPLETED, 100, result.file_size, result.file_size))
+            card.values.update(cancel=False, open=True, folder=True)
+            self._tasks.put(dict(card.values))
+            self._mark_terminal(result.task_id)
+
+    def fail_task(self, task_id, status, cleanup_report: CancellationCleanupReport | None = None):
+        card = self.cards.get(task_id)
+        if card:
+            card.progress(DownloadProgress(task_id, status))
+            card.values['cancel'] = False
+            if status is TaskStatus.CANCELLED and cleanup_report is not None and not cleanup_report.succeeded:
+                card.values.update(statusText='已取消，但部分临时文件未能清理', folder=True)
+                card.file_path = Path(cleanup_report.output_directory)
+            self._tasks.put(dict(card.values))
+            self._mark_terminal(task_id)
+
+    def _mark_terminal(self, task_id):
+        for previous in tuple(self._terminal_task_ids):
+            if previous != task_id:
+                self.remove_task(previous)
+        self._terminal_task_ids.add(task_id)
+
+    def task_started(self, task_id):
+        for previous in tuple(self._terminal_task_ids):
+            if previous != task_id:
+                self.remove_task(previous)
+
+    def remove_task(self, task_id):
+        self._terminal_task_ids.discard(task_id)
+        self.cards.pop(task_id, None)
+        self._tasks.remove(task_id)
+
+    def task_status(self, task_id):
+        return self.cards[task_id].status if task_id in self.cards else None
+
+    def task_request(self, task_id):
+        return self.cards[task_id].request if task_id in self.cards else None
+
+    @Slot(str, str)
+    def taskAction(self, task_id, action):
+        card = self.cards.get(task_id)
+        if card is None:
+            return
+        if action == 'remove':
+            self.remove_requested.emit(task_id)
+        elif action == 'cancel' and card.values['cancel'] and card.values['cancelEnabled']:
+            self.cancel_requested.emit(task_id)
+        elif action == 'retry' and card.values['retry'] and not self._state['busy']:
+            self.retry_requested.emit(task_id)
+        elif action == 'open' and card.values['open']:
+            self.open_file_requested.emit(str(card.file_path or ''))
+        elif action == 'folder' and card.values['folder']:
+            self.open_folder_requested.emit(str(card.file_path or ''))

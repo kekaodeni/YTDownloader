@@ -206,7 +206,7 @@ class FakeYDLWithChangingEstimate(FakeYDL):
         return 0
 
 
-def test_hook_estimate_never_becomes_an_authoritative_progress_denominator(
+def test_native_hook_estimates_drive_progress_without_becoming_exact_or_freezing(
     tmp_path: Path,
 ) -> None:
     request = _request(tmp_path)
@@ -235,9 +235,11 @@ def test_hook_estimate_never_becomes_an_authoritative_progress_denominator(
     service.download(request, events.append, threading.Event())
 
     transfer = events[:-1]
-    assert [event.total_bytes for event in transfer] == [None, None]
+    assert [event.total_bytes for event in transfer] == [1000, 1200]
     assert [event.downloaded_bytes for event in transfer] == [100, 200]
-    assert [event.percent for event in transfer] == [None, None]
+    assert [event.percent for event in transfer] == pytest.approx([10, 100 / 6])
+    assert all(event.total_is_estimate for event in transfer)
+    assert all(event.total_source is ProgressTotalSource.HOOK_TOTAL_BYTES_ESTIMATE for event in transfer)
     assert [event.speed for event in transfer] == [100.0, None]
     assert [event.eta for event in transfer] == [None, None]
 

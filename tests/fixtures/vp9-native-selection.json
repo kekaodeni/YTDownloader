@@ -1,0 +1,10 @@
+{
+  "video_id": "bL0HpDGlNiU",
+  "native_selector": "315+251",
+  "formats": [
+    {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "filesize": 8326732, "protocol": "https", "abr": 129.488, "asr": 44100, "audio_channels": 2},
+    {"format_id": "251", "ext": "webm", "vcodec": "none", "acodec": "opus", "filesize": 8970523, "protocol": "https", "abr": 139.504, "asr": 48000, "audio_channels": 2},
+    {"format_id": "628", "ext": "mp4", "width": 2160, "height": 3840, "fps": 60, "vcodec": "vp09.00.51.08", "acodec": "none", "protocol": "m3u8_native", "tbr": 17714.227, "quality": 11, "source_preference": -1},
+    {"format_id": "315", "ext": "webm", "width": 2160, "height": 3840, "fps": 60, "vcodec": "vp9", "acodec": "none", "filesize": 1002746821, "protocol": "https", "tbr": 15592.908, "quality": 11, "source_preference": -1}
+  ]
+}
