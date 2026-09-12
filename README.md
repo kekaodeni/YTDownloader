@@ -23,7 +23,7 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 - 中文采用 Microsoft YaHei UI，英文与数字采用 Segoe UI，并明确配置多语言回退；右键菜单与整套界面共用主题、字体和控件状态。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
 
-本地 Qt Quick 重构的行为契约、验证方法与交付记录见 [UI 重构报告](docs/UI_QUICK_REBUILD.md)。
+本版本的用户可见功能、限制和发布说明见 [v0.4.0 GitHub Release](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.0)。
 
 ## 支持范围与法律提示
 
@@ -159,6 +159,4 @@ licenses/            第三方许可与对应源码信息
 - MP4/M4V/MKV 可无损写入内嵌封面；WebM/MOV 可另存 MKV 并写入封面，保留原文件，历史记录指向新文件。写入后验证封面字节、音视频流、章节和元数据。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
 - 本轮后续开发以当前 `develop` 工作区的 v0.4.0 源码为准；完整 Git 历史保留；当前发布仍未提供代码签名或安装器。
 
-本轮封面、UI 修复及磁盘清理验收见 [COVER_AND_CLEANUP.md](docs/COVER_AND_CLEANUP.md)。
-
-最新独立 Matroska 对照、MPG/3GP 修复和 267 项回归见 [MATROSKA_CONTROL_VALIDATION.md](docs/MATROSKA_CONTROL_VALIDATION.md)。
+开发阶段的验证记录保留在本地审计工作区，不作为公开用户文档发布。

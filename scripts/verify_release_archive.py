@@ -69,7 +69,10 @@ def verify(package: Path, extract_dir: Path, report_path: Path) -> dict[str, obj
     checks: dict[str, bool] = {}
     checks['ownership_manifest'] = True
     checks['independent_self_test'] = _run(app, '--self-test', env=env) == 0
-    checks['metadata_helper'] = _run(app, '--metadata-process-self-test', env=env, timeout=20) == 0
+    # Frozen PyInstaller startup can be slower on a cold Windows host than the
+    # interactive build self-test. Keep the check bounded, but allow enough
+    # time for extraction/import initialization before declaring a failure.
+    checks['metadata_helper'] = _run(app, '--metadata-process-self-test', env=env, timeout=60) == 0
     checks['gui_smoke'] = _run(app, '--smoke-test', env=env, timeout=20) == 0
     checks['updater_windowed'] = _run(updater, env=env, timeout=20) == 2
     transaction_id = f'acceptance-{os.getpid()}'

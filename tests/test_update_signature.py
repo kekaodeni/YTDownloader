@@ -1,12 +1,14 @@
 import base64
+import hashlib
 import json
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from yt_downloader.updates.models import UpdateRelease
 from yt_downloader.updates.signature import TrustedKeyring
+from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS
 from semver import Version
 
 
@@ -38,6 +40,16 @@ def release():
 
 def key_bytes(private):
     return private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
+def test_production_trusted_key_is_the_approved_ed25519_public_key():
+    assert set(PRODUCTION_TRUSTED_KEYS) == {'yt-downloader-prod-2026'}
+    public = PRODUCTION_TRUSTED_KEYS['yt-downloader-prod-2026']
+    assert len(public) == 32
+    Ed25519PublicKey.from_public_bytes(public)
+    assert hashlib.sha256(public).hexdigest() == (
+        'd7ed7bd453f35861dee0453d9f805e595e9797cbc1626a8bb59b7488fa037152'
+    )
 
 
 def test_verifies_raw_manifest_and_supports_preloaded_rotation_key():

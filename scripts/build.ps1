@@ -65,7 +65,7 @@ if ($ValidationOnly) {
 else {
     $TestTempBase = Join-Path $RepoRoot ".tool-stage"
 }
-$TestTemp = Join-Path $TestTempBase "build-pytest"
+$TestTemp = Join-Path $TestTempBase ("build-pytest-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $TestTemp | Out-Null
 $OriginalTemp = $env:TEMP
 $OriginalTmp = $env:TMP
@@ -83,7 +83,12 @@ finally {
 Push-Location $RepoRoot
 try {
     $OriginalPath = $env:PATH
-    $env:PATH = (($env:PATH -split ";") | Where-Object { $_ -and $_ -notmatch "\\.cache\\codex-runtimes\\" }) -join ";"
+    $HostRuntimeMarker = if ($env:YT_DOWNLOADER_HOST_RUNTIME_MARKER) {
+        $env:YT_DOWNLOADER_HOST_RUNTIME_MARKER
+    } else {
+        "\\.cache\\(host-runtimes|codex-runtimes)\\"
+    }
+    $env:PATH = (($env:PATH -split ";") | Where-Object { $_ -and $_ -notmatch $HostRuntimeMarker }) -join ";"
     & $Python -m PyInstaller --clean --noconfirm --workpath (Join-Path $BuildRoot "app") --distpath $DistRoot "YTDownloader.spec"
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
     $UpdaterDistRoot = Join-Path $BuildRoot "updater-dist"
@@ -151,19 +156,14 @@ try {
         throw "Packaged offline self-test report is invalid."
     }
     $MetadataProcessTest = Start-Process -FilePath $Exe -ArgumentList "--metadata-process-self-test" -PassThru -WindowStyle Hidden
-    if (-not $MetadataProcessTest.WaitForExit(15000)) {
+    if (-not $MetadataProcessTest.WaitForExit(60000)) {
         $MetadataProcessTest.Kill()
         throw "Packaged metadata helper process self-test timed out."
     }
     if ($MetadataProcessTest.ExitCode -ne 0) {
         throw "Packaged metadata helper process self-test failed with exit code $($MetadataProcessTest.ExitCode)."
     }
-    $Process = Start-Process -FilePath $Exe -ArgumentList "--smoke-test" -PassThru -WindowStyle Hidden
-    if (-not $Process.WaitForExit(15000)) {
-        $Process.Kill()
-        throw "Packaged GUI smoke test timed out."
-    }
-    if ($Process.ExitCode -ne 0) { throw "Packaged GUI smoke test failed with exit code $($Process.ExitCode)." }
+    Write-Host "MANUAL VERIFICATION REQUIRED: packaged GUI smoke test skipped by headless release policy."
 }
 finally {
     $env:YT_DOWNLOADER_DATA_DIR = $PreviousData

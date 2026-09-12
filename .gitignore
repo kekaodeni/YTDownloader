@@ -27,6 +27,12 @@ vendor/tools/
 .visual-data/
 tmp/
 temp/
+*.tmp
+
+# Local validation and audit records
+docs/validation-*/
+docs/workspace-audit-*/
+docs/internal/
 
 # Logs and local application data
 logs/

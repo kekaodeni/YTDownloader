@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from pathlib import Path
 from PySide6.QtCore import QLibraryInfo
 from PyInstaller.utils.hooks import collect_all
@@ -49,11 +50,15 @@ a = Analysis(
     excludes=[],
     noarchive=False,
 )
-# The desktop host may prepend document/PDF runtimes to PATH. Never let their
-# unrelated native DLLs leak into this standalone application.
+# The desktop host may prepend unrelated document/PDF runtimes to PATH. Never
+# let their native DLLs leak into this standalone application. A host can
+# provide a private regex through YT_DOWNLOADER_HOST_RUNTIME_MARKER.
+_host_runtime_marker = os.environ.get(
+    "YT_DOWNLOADER_HOST_RUNTIME_MARKER", "\\.cache\\(host-runtimes|codex-runtimes)\\"
+).lower()
 a.binaries = type(a.binaries)(
     entry for entry in a.binaries
-    if "\\.cache\\codex-runtimes\\" not in str(entry[1]).lower()
+    if _host_runtime_marker not in str(entry[1]).lower()
 )
 pyz = PYZ(a.pure)
 exe = EXE(

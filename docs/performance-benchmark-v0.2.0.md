@@ -42,4 +42,4 @@
 .\.venv\Scripts\python.exe scripts\benchmark_download.py --runs 3 --network-mode system
 ```
 
-原始 JSON 和下载样本写入被 Git 忽略的 `.tool-stage`，不会进入发布源码或泄露本机代理凭据。
+原始 JSON 和下载样本只保存在本地临时目录，不进入发布源码或公开文档。

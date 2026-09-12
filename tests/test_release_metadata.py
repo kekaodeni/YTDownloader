@@ -21,3 +21,30 @@ def test_package_and_runtime_versions_match() -> None:
     assert "Production update trust is not configured" in build_script
     assert 'SafePackageExtractor.validate_tree' in build_script
     assert '$RelativePath.Replace("\\", "/")' in build_script
+
+
+def test_packaged_self_test_runs_before_qml_initialization(monkeypatch, tmp_path: Path) -> None:
+    import yt_downloader.app as app_module
+
+    class _Paths:
+        cache = tmp_path / "cache"
+        logs = tmp_path / "logs"
+
+        def ensure(self) -> None:
+            self.cache.mkdir()
+            self.logs.mkdir()
+
+    monkeypatch.setattr(app_module.AppPaths, "discover", staticmethod(lambda: _Paths()))
+    monkeypatch.setattr(app_module, "configure_logging", lambda _path: None)
+    monkeypatch.setattr(app_module, "FfmpegService", lambda: object())
+    monkeypatch.setattr(app_module, "find_tool", lambda _name: None)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(app_module, "run_packaged_self_test", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(
+        app_module,
+        "create_application",
+        lambda _argv: (_ for _ in ()).throw(AssertionError("QML must not initialize for --self-test")),
+    )
+
+    assert app_module.main(["--self-test"]) == 0
+    assert calls and calls[0]["cache_directory"] == tmp_path / "cache"

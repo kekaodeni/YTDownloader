@@ -790,21 +790,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--theme", choices=("system", "light", "dark"), help="temporary theme override for visual testing")
     parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
     known, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
+    if known.self_test:
+        paths = AppPaths.discover()
+        paths.ensure()
+        configure_logging(paths.logs)
+        try:
+            run_packaged_self_test(
+                cache_directory=paths.cache,
+                ffmpeg=FfmpegService(),
+                deno_path=find_tool("deno"),
+            )
+            return 0
+        except Exception:
+            logger.exception("Packaged self-test failed")
+            return 2
     app, controller = create_application([sys.argv[0], *qt_args])
     try:
         if known.metadata_process_self_test:
             return run_metadata_process_self_test(app)
-        if known.self_test:
-            try:
-                run_packaged_self_test(
-                    cache_directory=controller.paths.cache,
-                    ffmpeg=controller.ffmpeg,
-                    deno_path=controller.deno_path,
-                )
-                return 0
-            except Exception:
-                logger.exception("Packaged self-test failed")
-                return 2
         if known.theme:
             controller.theme.set_mode(known.theme)
         page_indexes = {"download": 0, "download-demo": 0, "history": 1, "settings": 2, "about": 3}
