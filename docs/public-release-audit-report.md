@@ -6,7 +6,7 @@ Audit date: 2026-09-15. This audit does not rewrite Git history, move tags, or c
 
 - Repository: `kekaodeni/YTDownloader`
 - Default branch: `main`
-- Current main: `641dfcb1f6ea19d6ad8cc58eeb05943dd531b330`
+- Current main: `0bbb351` (public audit documentation commit; release package was built from the preceding verified source commit `641dfcb1f6ea19d6ad8cc58eeb05943dd531b330`)
 - Frozen v0.4.0 tag commit: `4a499ef00cab09f17d8431a39c2ba6940f8d4565`
 - Release: `v0.4.0`
 
