@@ -98,8 +98,8 @@ def create_signed_release_assets(
     if public != trusted_keys[key_id]:
         raise ValueError('Signing key does not match the embedded trusted public key')
     published = published_at or datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    base = f'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v{parsed_version}/'
-    release_url = f'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v{parsed_version}'
+    base = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{parsed_version}/'
+    release_url = f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{parsed_version}'
     payload = {
         'schema_version': 1,
         'app_id': 'YTDownloader', 'channel': 'stable', 'platform': 'windows', 'architecture': 'x64',

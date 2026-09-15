@@ -36,7 +36,7 @@ class SecureUpdateHttpClient:
         return session
 
     def get_json(self, url: str) -> Mapping:
-        if url != 'https://api.github.com/repos/kekaodeni/YTDownloader-releases/releases/latest':
+        if url != 'https://api.github.com/repos/kekaodeni/YTDownloader/releases/latest':
             raise ValueError('Update discovery URL is not trusted')
         session = self._session()
         response = None

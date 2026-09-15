@@ -17,7 +17,7 @@ from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS
 
 
 UPDATER_PROTOCOL = 1
-REPOSITORY = 'kekaodeni/YTDownloader-releases'
+REPOSITORY = 'kekaodeni/YTDownloader'
 
 
 def validate_upgrade_versions(current_value: str, target_value: str) -> tuple[Version, Version]:

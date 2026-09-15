@@ -86,7 +86,7 @@ try {
     $HostRuntimeMarker = if ($env:YT_DOWNLOADER_HOST_RUNTIME_MARKER) {
         $env:YT_DOWNLOADER_HOST_RUNTIME_MARKER
     } else {
-        "\\.cache\\(host-runtimes|codex-runtimes)\\"
+        "[\\/].cache[\\/](host-runtimes|codex-runtimes)[\\/]"
     }
     $env:PATH = (($env:PATH -split ";") | Where-Object { $_ -and $_ -notmatch $HostRuntimeMarker }) -join ";"
     & $Python -m PyInstaller --clean --noconfirm --workpath (Join-Path $BuildRoot "app") --distpath $DistRoot "YTDownloader.spec"

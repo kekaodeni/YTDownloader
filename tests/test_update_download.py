@@ -13,7 +13,7 @@ from yt_downloader.updates.http import SecureUpdateHttpClient
 def manifest(data: bytes, *, declared_size=None):
     package = UpdatePackage(
         'YTDownloader-0.4.1-win64.zip',
-        'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.1/YTDownloader-0.4.1-win64.zip',
+        'https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.1/YTDownloader-0.4.1-win64.zip',
         len(data) if declared_size is None else declared_size, 300, hashlib.sha256(data).hexdigest(),
     )
     return UpdateManifest(Version.parse('0.4.1'), 'now', Version.parse('0.4.0'), 1, 'key', 'zh', 'en', 'release', package)

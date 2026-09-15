@@ -20,10 +20,10 @@ def manifest(key_id='current-key'):
         'published_at': '2026-09-04T12:00:00Z', 'minimum_auto_update_version': '0.4.0',
         'updater_protocol': 1, 'key_id': key_id,
         'notes': {'zh-CN': '安全更新', 'en': 'Security update'},
-        'release_url': f'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v{version}',
+        'release_url': f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{version}',
         'package': {
             'name': f'YTDownloader-{version}-win64.zip',
-            'url': f'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v{version}/YTDownloader-{version}-win64.zip',
+            'url': f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}/YTDownloader-{version}-win64.zip',
             'compressed_size': 100, 'extracted_size': 300, 'sha256': 'a' * 64,
         },
     }

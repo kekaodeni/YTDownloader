@@ -22,8 +22,8 @@ def _signed_release(data=b'package'):
     key = Ed25519PrivateKey.generate()
     public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     version = Version.parse('0.4.1')
-    release_url = 'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v0.4.1'
-    package_url = 'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.1/YTDownloader-0.4.1-win64.zip'
+    release_url = 'https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.1'
+    package_url = 'https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.1/YTDownloader-0.4.1-win64.zip'
     payload = {
         'schema_version': 1, 'app_id': 'YTDownloader', 'channel': 'stable',
         'platform': 'windows', 'architecture': 'x64', 'version': '0.4.1',

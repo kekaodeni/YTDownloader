@@ -92,7 +92,7 @@ class TrustedKeyring:
         _exact_fields(package, _PACKAGE_FIELDS, 'Package')
         name = _text(package['name'], 'package name')
         expected_name = f'YTDownloader-{version}-win64.zip'
-        prefix = f'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v{version}/'
+        prefix = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}/'
         url = _text(package['url'], 'package URL')
         if name != expected_name or url != prefix + expected_name:
             raise ValueError('Package name, URL, and manifest version do not match')

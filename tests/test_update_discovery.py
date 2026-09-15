@@ -5,9 +5,9 @@ from yt_downloader.updates.http import SecureUpdateHttpClient
 
 
 def release(version='0.4.1', *, prerelease=False, draft=False):
-    base = f'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v{version}'
+    base = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}'
     return {
-        'tag_name': f'v{version}', 'html_url': f'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v{version}',
+        'tag_name': f'v{version}', 'html_url': f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{version}',
         'prerelease': prerelease, 'draft': draft,
         'assets': [
             {'name': 'update-manifest.json', 'browser_download_url': base + '/update-manifest.json'},
@@ -51,7 +51,7 @@ def test_discovery_http_uses_proxy_without_netrc_cookies_or_credentials():
     snapshot = type('S', (), {'mode': 'system', 'detected_proxies': {'https': 'http://127.0.0.1:23333'}, 'custom_proxy_url': ''})()
     policy = type('P', (), {'snapshot': lambda self: snapshot})()
     client = SecureUpdateHttpClient(policy, session_factory=lambda: session)
-    assert client.get_json('https://api.github.com/repos/kekaodeni/YTDownloader-releases/releases/latest')['tag_name'] == 'v0.4.1'
+    assert client.get_json('https://api.github.com/repos/kekaodeni/YTDownloader/releases/latest')['tag_name'] == 'v0.4.1'
     assert session.trust_env is False
     assert session.auth is None
     assert session.proxies == snapshot.detected_proxies
@@ -73,7 +73,7 @@ def test_update_metadata_bytes_are_bounded_and_use_release_asset_redirect_policy
     snapshot=type('S',(),{'mode':'direct','detected_proxies':{},'custom_proxy_url':''})()
     policy=type('P',(),{'snapshot':lambda self:snapshot})()
     client = SecureUpdateHttpClient(policy, session_factory=Session)
-    url = 'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.1/update-manifest.json'
+    url = 'https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.1/update-manifest.json'
     assert client.get_bytes(url, max_bytes=6) == b'abcdef'
     with pytest.raises(ValueError, match='large'):
         client.get_bytes(url, max_bytes=5)

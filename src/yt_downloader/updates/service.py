@@ -231,11 +231,11 @@ class UpdateService(QObject):
                 raise ValueError('Stored update transaction escaped staging root')
             raw = (transaction / 'update-manifest.json').read_bytes()
             signature = (transaction / 'update-manifest.sig').read_bytes()
-            base = f'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v{version}/'
+            base = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}/'
             release = UpdateRelease(
                 version, f'v{version}', base + 'update-manifest.json',
                 base + 'update-manifest.sig',
-                f'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v{version}',
+                f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{version}',
             )
             manifest = self.keyring.verify(raw, signature, release)
             package = transaction / manifest.package.name

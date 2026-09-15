@@ -8,7 +8,7 @@ from semver import Version
 from yt_downloader.updates.models import UpdateRelease
 
 
-RELEASE_REPOSITORY = 'kekaodeni/YTDownloader-releases'
+RELEASE_REPOSITORY = 'kekaodeni/YTDownloader'
 LATEST_RELEASE_API = f'https://api.github.com/repos/{RELEASE_REPOSITORY}/releases/latest'
 
 

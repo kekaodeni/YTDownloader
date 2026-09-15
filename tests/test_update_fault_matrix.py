@@ -116,7 +116,7 @@ def test_update_redirect_rejects_nonstandard_https_port_and_closes_resources():
     session=Session(); snapshot=type('S',(),{'mode':'direct','detected_proxies':{},'custom_proxy_url':''})()
     policy=type('P',(),{'snapshot':lambda self:snapshot})()
     client=SecureUpdateHttpClient(policy,session_factory=lambda:session)
-    url='https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.1/x.zip'
+    url='https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.1/x.zip'
     with pytest.raises(ValueError,match='443'):
         client.open_stream(url,(10,30))
     assert response.closed and session.closed

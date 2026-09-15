@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import re
 from pathlib import Path
 from PySide6.QtCore import QLibraryInfo
 from PyInstaller.utils.hooks import collect_all
@@ -54,11 +55,15 @@ a = Analysis(
 # let their native DLLs leak into this standalone application. A host can
 # provide a private regex through YT_DOWNLOADER_HOST_RUNTIME_MARKER.
 _host_runtime_marker = os.environ.get(
-    "YT_DOWNLOADER_HOST_RUNTIME_MARKER", "\\.cache\\(host-runtimes|codex-runtimes)\\"
+    "YT_DOWNLOADER_HOST_RUNTIME_MARKER",
+    r"[\\/]\.cache[\\/](?:host-runtimes|codex-runtimes)[\\/]",
 ).lower()
 a.binaries = type(a.binaries)(
     entry for entry in a.binaries
-    if _host_runtime_marker not in str(entry[1]).lower()
+    if not any(
+        re.search(_host_runtime_marker, str(value).lower())
+        for value in entry[:2]
+    )
 )
 pyz = PYZ(a.pure)
 exe = EXE(

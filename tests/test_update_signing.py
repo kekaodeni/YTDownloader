@@ -50,9 +50,9 @@ def test_signing_uses_encrypted_external_ed25519_key_and_creates_verifiable_asse
     )
     release=UpdateRelease(
         Version.parse('0.4.0'),'v0.4.0',
-        'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.0/update-manifest.json',
-        'https://github.com/kekaodeni/YTDownloader-releases/releases/download/v0.4.0/update-manifest.sig',
-        'https://github.com/kekaodeni/YTDownloader-releases/releases/tag/v0.4.0',
+        'https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.0/update-manifest.json',
+        'https://github.com/kekaodeni/YTDownloader/releases/download/v0.4.0/update-manifest.sig',
+        'https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.0',
     )
     manifest=TrustedKeyring({'prod-2026':public}).verify(raw,detached,release)
     assert manifest.package.name==package.name
