@@ -5,14 +5,14 @@ This document describes the required production release configuration. It does n
 ## Release key
 
 - Key algorithm: Ed25519.
-- Key ID: **TO BE APPROVED**. Use the exact stable identifier embedded in the production trust root.
+- Key ID: **yt-downloader-prod-2026**.
 - Private key: encrypted PKCS#8 file stored outside the repository. Pass its path only to the interactive signing command; never commit it, place it under `release/`, or write its password to an environment variable or log.
 - Public key fingerprint: **TO BE RECORDED AFTER KEY CEREMONY**. Record only the approved fingerprint and key ID, never the private key.
 - Key rotation: add a new approved public key before signing with it; do not trust a key supplied by a remote manifest.
 
 ## Trust root
 
-The application trust root is `src/yt_downloader/updates/trusted_keys.py` and currently contains zero production keys. A production build must not proceed until an approved Ed25519 public key is added to `PRODUCTION_TRUSTED_KEYS` and reviewed.
+The application trust root is `src/yt_downloader/updates/trusted_keys.py` and contains the approved Ed25519 production key `yt-downloader-prod-2026`.
 
 Required review evidence:
 
@@ -50,7 +50,7 @@ After a production package is built and accepted:
 
 - `release/YTDownloader-0.4.0-win64.zip` is hashed with SHA-256.
 - `release/YTDownloader-0.4.0-win64.zip.sha256.txt` contains only the hash and package filename; it must not contain an absolute local path.
-- `scripts/sign_update.py` is run only with the approved external private key, approved key ID, bilingual release notes, and the independent acceptance report.
+- `scripts/sign_update.py` is run only with the approved external private key, key ID `yt-downloader-prod-2026`, bilingual release notes, and the independent acceptance report.
 - `update-manifest.json` and `update-manifest.sig` are inspected for version, platform, package size, SHA-256, release URL, key ID, and signature before any upload.
 - The manifest signature is checked with the public key from the trust root.
 

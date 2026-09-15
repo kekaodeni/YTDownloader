@@ -1,69 +1,39 @@
 # YTDownloader v0.4.0 Public Release Audit
 
-Audit date: 2026-09-12
-Scope: public-visibility preparation only. No Git history, existing tag, release, or `main` history was rewritten.
+Audit date: 2026-09-15. This audit does not rewrite Git history, move tags, or change repository visibility.
 
-## Repository information
+## Repository
 
-```text
-Repository: kekaodeni/YTDownloader
-Branch: main
-Commit: 598d43d7ca3053b4560df39054fa91c4bc464efd
-Release: v0.4.0
-Default branch: main
-```
+- Repository: `kekaodeni/YTDownloader`
+- Default branch: `main`
+- Current main: `641dfcb1f6ea19d6ad8cc58eeb05943dd531b330`
+- Frozen v0.4.0 tag commit: `4a499ef00cab09f17d8431a39c2ba6940f8d4565`
+- Release: `v0.4.0`
 
-## Check results
+## Results
 
-| Check | Result | Evidence / action |
+| Check | Result | Evidence |
 | --- | --- | --- |
-| Git history sensitive information | PASS for secrets / CONDITIONAL for environment text | No tracked credential filenames, private-key markers, GitHub token patterns, or cloud-key patterns were found in the current tree or reachable history. Generic application terms such as `token`, `secret`, and `credential` are implementation vocabulary, not secret values. Historical development-environment text is documented below and cannot be removed without rewriting history. |
-| Personal and local-environment information | CONDITIONAL | No user-specific Windows home or workspace path is tracked. The machine-specific validation reports and development logs were moved to ignored local `docs/internal/`; the deletion of their tracked public copies is still uncommitted. |
-| Release artifact | FAIL | The ZIP contains only the application tree, updater, licenses, and build metadata; it contains no `.git`, tests, private docs, or Codex logs. However, `YTDownloader/BUILD-INFO.json` contains `validation_only: true`, which must not be exposed as a production-public artifact. The current source has zero production trusted keys, so the normal production build correctly refuses to generate a non-validation package. The published asset and its SHA-256 must remain unchanged until a replacement production build is approved. |
-| README and homepage content | PASS (pending commit) | The working-tree README uses repository-relative screenshots, accurately states that automatic updating and installation-directory replacement are disabled, contains no private URL or user path, and no longer links to internal validation reports. |
-| Release v0.4.0 | PASS | Authenticated GitHub read confirmed the non-draft, non-prerelease latest release `v0.4.0`, its two uploaded assets, the ZIP size `388157728` bytes, and SHA-256 `8574efaddd7d9dc0e6d439acd546df48292c3ed17b9120f2fe8889a25a095aef`. |
-| License and third-party notices | PASS | `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the `licenses/` directory are present. FFmpeg, yt-dlp/PySide6 runtime licensing references and bundled license files were found. |
-| Git status / ignore protection | CONDITIONAL | The audit added ignore rules for `*.tmp`, local `docs/validation-*/`, `docs/workspace-audit-*/`, and `docs/internal/` records. Existing local validation/audit directories were not deleted and are now protected from accidental staging. The working tree intentionally contains the audit changes, tracked-doc deletions, and this report pending review. |
+| Git history secrets | PASS | No GitHub token, cloud credential, or complete private-key PEM pattern was found in reachable history. |
+| Personal/local paths | PASS | No `<workspace>` or user-specific `<user-home>` path was found in reachable Git content, current source, README, or the final ZIP. |
+| README images | PASS | Both published screenshots were visually reviewed after replacement; the output directory shows the neutral `Videos` label and no development path. |
+| Historical checksum sidecars | PASS | v0.1.0, v0.2.1, and v0.3.0 Release sidecars contain only a SHA-256 and package filename. Historical ZIPs and tags were not changed. |
+| Production package | PASS | `YTDownloader-0.4.0-win64.zip`, 388,164,192 bytes, SHA-256 `d5dc95ae1f4fa36a6f8b2866228aebf95cc41241715535061d03150b3f2ede1f`; `app_version=0.4.0`, `validation_only=false`. |
+| Acceptance | PASS | Independent local and remote package reports: ownership, self-test, metadata helper, GUI smoke, updater windowed, and startup health all true. |
+| Update source | PASS | Discovery, HTTP policy, service, signing, signature verification, updater entrypoint, tests, and manifest all use `kekaodeni/YTDownloader`. |
+| Manifest/signature | PASS | key id `yt-downloader-prod-2026`; Ed25519 signature verifies with the embedded public key; manifest hash and package hash match. |
+| Release assets | PASS | Final Release contains the formal ZIP, checksum, manifest, and signature; current-validation duplicates are removed. GitHub-generated Source code links remain available. |
+| License notices | PASS | `LICENSE`, `THIRD_PARTY_NOTICES.md`, and bundled third-party license files are present. |
+| Working tree | PASS | `git status --short` is clean and `git diff --check` passes. |
 
-## Historical release audit
+## Release verification
 
-The four remote releases are published and non-draft/non-prerelease. Their uploaded ZIP hashes match the local archives. The following public-content issues were found without changing any historical tag or Release:
+The formal ZIP and manifest were downloaded again from the GitHub Release. The downloaded ZIP size and SHA-256 matched the local artifact. The downloaded manifest was verified against the downloaded detached signature and `PRODUCTION_TRUSTED_KEYS`; the downloaded package then passed the independent EXE startup acceptance flow.
 
-| Release | ZIP result | Public issue |
-| --- | --- | --- |
-| v0.1.0 | 238,263,575 bytes; SHA-256 matches the published asset; no `BUILD-INFO.json` | The published checksum sidecar contains an absolute local Windows workspace path. |
-| v0.2.1 | 245,716,358 bytes; SHA-256 matches the published asset; `validation_only` is `false` | The published checksum sidecar contains an absolute local Windows workspace path. |
-| v0.3.0 | 245,751,999 bytes; SHA-256 matches the published asset; `validation_only` is `false` | The published checksum sidecar contains an absolute local Windows workspace path. |
-| v0.4.0 | 388,157,728 bytes; SHA-256 matches the published asset; `validation_only` is `true` | The ZIP exposes the validation-only marker. Its checksum sidecar is sanitized. |
-
-All four ZIPs contain an application executable and no `.git`, test tree, internal-doc tree, or log directory by archive-name inspection. Existing Release assets and their sidecars were not replaced.
-
-### Historical environment residue
-
-The no-secret result does not mean the historical tree is free of development-environment text. Older reachable commits contain generic application-data paths, host-runtime filtering text, and v0.4 validation documentation mentioning local staging and desktop integration details. No user-specific home path or credential was found. Removing those historical strings would require rewriting commits, which this audit explicitly does not permit; the current branch cleanup only prevents them from being present in the next public tree.
-
-## History and tag preservation
-
-- Reachable history contains 55 commits; no history rewrite was performed.
-- Existing tags `v0.1.0`, `v0.2.1`, `v0.3.0`, and `v0.4.0` were left unchanged.
-- No force push, tag deletion, release deletion, or `main` history rewrite was performed.
-
-## Post-cleanup verification
-
-- Full test suite: **267 passed in 112.10s**; no failures or errors.
-- `git diff --check`: passed.
-- The public working tree no longer contains the moved validation reports, draft release notes, implementation log, or the host-specific Codex runtime marker. Their local copies remain under ignored `docs/internal/` for review.
-- `docs/release-production-checklist.md` records the production key, trust-root, build-flag, and manifest requirements without containing credentials.
-- Local v0.1.0–v0.3.0 checksum sidecars were rewritten to contain only the hash and package filename. The already-published remote sidecars were not changed.
-- The production build command stopped before modifying build outputs because the approved production trust root is not configured (`PRODUCTION_TRUSTED_KEYS` count: 0).
-
-## Public blockers to resolve
-
-1. Configure an approved production trust root, build a production package whose metadata does not expose a validation-only marker, and update the v0.4.0 asset and checksum through the normal reviewed release process. Do not change the marker manually in an existing ZIP.
-2. Regenerate sanitized checksum sidecars for v0.1.0–v0.3.0 if those historical assets are to be downloadable from a public repository. Otherwise, keep the historical Releases unchanged and label them as historical/development artifacts before publication.
-3. Review and commit the removal of machine-specific Icaros/COM registration details, local validation-log paths, and internal test-host notes from the public tree. The original records remain locally under ignored `docs/internal/`.
-4. Commit and push the reviewed audit fixes before changing repository visibility. The build configuration now uses a neutral, opt-in host-runtime marker instead of naming the Codex host.
+Windows Authenticode signing is not included. Windows Explorer display of embedded MKV covers depends on a compatible thumbnail provider and is not guaranteed on every Windows installation.
 
 ## Conclusion
 
-The repository is **not yet ready for public visibility**. No credential or private-key exposure was detected, but the validation-only build marker and internal environment details in tracked documentation/configuration must be resolved first. No release history modification is required.
+Repository is ready for public visibility.
+
+No sensitive information detected by the documented pattern checks. No release history modification was required. Repository visibility remains unchanged pending manual approval.
