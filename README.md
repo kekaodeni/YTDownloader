@@ -102,7 +102,7 @@ update-staging\
 .\scripts\build.ps1
 ```
 
-只做隔离的 onedir 验收、不覆盖现有 `build`/`dist`/`release`，并生成名称明确的 validation-only ZIP：
+使用隔离临时目录完成构建与验收，并在 `release` 生成 validation-only ZIP：
 
 ```powershell
 .\scripts\build.ps1 -ValidationOnly
@@ -111,14 +111,22 @@ update-staging\
 对 ZIP 做独立解压与启动验收：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\verify_release_archive.py --package <zip> --extract-dir <new-dir> --report <acceptance.json>
+.\.venv\Scripts\python.exe scripts\verify_release_archive.py --package <zip> --report <acceptance.json>
 ```
 
 正式包只能在生产信任根已配置后构建；签名脚本要求仓库外加密 PKCS8 私钥，并强制校验与该 ZIP 哈希匹配的独立验收报告。私钥密码通过终端交互输入，不进入参数、环境或日志。
 
 构建脚本会依次：运行完整 pytest、校验资源、构建 windowed 主程序与无 Qt 的独立 updater、启动打包后烟雾测试、生成文件清单和 SHA256、创建分发 ZIP。正式模式在生产公钥尚未嵌入时会安全停止；validation-only 包不会启用安装目录替换。
 
-主要输出：
+默认构建只保留 `release` 中的 ZIP 和校验文件；`-SkipZip` 才保留 `dist` 中的 onedir 产物。构建、测试、验收与 benchmark 的临时数据默认位于系统临时目录，每次使用唯一目录，成功后删除，失败时每类任务最多保留最近一次诊断目录。
+
+需要恢复已精简的开发环境时（Python 3.12，需能访问依赖下载源）：
+
+```powershell
+powershell -NoProfile -File .\scripts\restore-dev-environment.ps1
+```
+
+可生成的发布产物：
 
 ```text
 dist\YTDownloader\YTDownloader.exe

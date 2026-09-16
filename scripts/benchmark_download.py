@@ -355,7 +355,7 @@ def _summary(metrics: list[RunMetric]) -> dict[str, Any]:
     return result
 
 
-def main() -> int:
+def run_benchmark(work: Path) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
@@ -366,8 +366,8 @@ def main() -> int:
     parser.add_argument("--initial-traffic-bytes", type=int, default=0)
     parser.add_argument("--network-mode", choices=("system", "direct", "custom"), default="system")
     parser.add_argument("--proxy", default="")
-    parser.add_argument("--work-dir", type=Path, default=Path(".tool-stage") / "benchmark-download")
-    parser.add_argument("--report", type=Path, default=Path(".tool-stage") / "benchmark-download.json")
+    parser.add_argument("--work-dir", type=Path, default=work / "downloads")
+    parser.add_argument("--report", type=Path, default=Path("docs/internal/benchmark-download.json"))
     parser.add_argument(
         "--scenario",
         action="append",
@@ -499,6 +499,15 @@ def main() -> int:
     print(f"recommended_auto_fragment_count={recommendation}", flush=True)
     print(f"report={args.report.resolve()}", flush=True)
     return 0 if all(item.succeeded for item in metrics) else 2
+
+
+def main() -> int:
+    from dev_staging import session
+    with session('benchmark') as work:
+        result = run_benchmark(work)
+        if result:
+            raise SystemExit(result)
+    return 0
 
 
 if __name__ == "__main__":

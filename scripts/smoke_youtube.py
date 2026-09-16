@@ -14,10 +14,10 @@ from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.youtube_service import YoutubeService
 
 
-def main() -> int:
+def run_smoke(work: Path) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="https://www.youtube.com/watch?v=jNQXAC9IVRw")
-    parser.add_argument("--output", type=Path, default=Path("artifacts") / "live-smoke")
+    parser.add_argument("--output", type=Path, default=work / "download")
     args = parser.parse_args()
     deno = find_tool("deno")
     ffmpeg = find_tool("ffmpeg")
@@ -38,6 +38,12 @@ def main() -> int:
         raise SystemExit("Smoke output does not contain both audio and video streams.")
     print(result.file_path)
     return 0
+
+
+def main() -> int:
+    from dev_staging import session
+    with session('live-smoke') as work:
+        return run_smoke(work)
 
 
 if __name__ == "__main__":

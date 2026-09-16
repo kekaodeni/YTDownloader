@@ -4,11 +4,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'dev-staging.ps1')
+$Session = New-DevSession 'prepare-tools'
+$Success = $false
+try {
 $RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $LockPath = Join-Path $RepoRoot "tools.lock.json"
 $Lock = Get-Content -LiteralPath $LockPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $CacheDirectory) {
-    $CacheDirectory = Join-Path $RepoRoot ".tool-cache"
+    $CacheDirectory = Join-Path $Session.Path "downloads"
 }
 $CacheDirectory = [System.IO.Path]::GetFullPath($CacheDirectory)
 $VendorRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "vendor\tools"))
@@ -37,15 +41,8 @@ $DenoArchive = Get-LockedArtifact $Lock.deno
 $FfmpegArchive = Get-LockedArtifact $Lock.ffmpeg
 $FfmpegSource = Get-LockedArtifact $Lock.ffmpeg "source_sha256" "source_url" "source_archive"
 
-$StageRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot ".tool-stage"))
-if (-not $StageRoot.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Unsafe staging path: $StageRoot"
-}
-if (Test-Path -LiteralPath $StageRoot) {
-    Remove-Item -LiteralPath $StageRoot -Recurse -Force
-}
-New-Item -ItemType Directory -Force -Path $StageRoot | Out-Null
-try {
+$StageRoot = Join-Path $Session.Path 'extract'
+New-Item -ItemType Directory -Path $StageRoot | Out-Null
     $DenoStage = Join-Path $StageRoot "deno"
     $FfmpegStage = Join-Path $StageRoot "ffmpeg"
     Expand-Archive -LiteralPath $DenoArchive -DestinationPath $DenoStage -Force
@@ -75,14 +72,10 @@ try {
     Copy-Item -LiteralPath $FfmpegLicense.FullName -Destination (Join-Path $LicenseRoot "FFMPEG-GPL.txt") -Force
     Copy-Item -LiteralPath $FfmpegSource -Destination (Join-Path $SourceRoot $Lock.ffmpeg.source_archive) -Force
     Copy-Item -LiteralPath $LockPath -Destination (Join-Path $VendorRoot "VERSIONS.json") -Force
-}
-finally {
-    if (Test-Path -LiteralPath $StageRoot) {
-        Remove-Item -LiteralPath $StageRoot -Recurse -Force
-    }
-}
-
 & (Join-Path $VendorRoot "deno\deno.exe") --version
 & (Join-Path $VendorRoot "ffmpeg\ffmpeg.exe") -version | Select-Object -First 1
 Write-Host "Locked tools are ready in $VendorRoot"
 
+
+$Success = $true
+} finally { Close-DevSession $Session $Success }

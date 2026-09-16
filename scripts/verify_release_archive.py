@@ -124,10 +124,11 @@ def verify(package: Path, extract_dir: Path, report_path: Path) -> dict[str, obj
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--package', required=True, type=Path)
-    parser.add_argument('--extract-dir', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
     args = parser.parse_args()
-    report = verify(args.package, args.extract_dir, args.report)
+    from dev_staging import session
+    with session('release-acceptance') as work:
+        report = verify(args.package, work / 'extracted', args.report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

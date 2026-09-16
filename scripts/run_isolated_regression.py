@@ -1,7 +1,7 @@
 """Run existing pytest cases without Windows Shell integration or user data.
 
 Usage: .venv/Scripts/python.exe -B scripts/run_isolated_regression.py RUN_NAME [pytest args]
-Every invocation requires a new project-local output directory.
+Every invocation owns a temporary session outside the checkout.
 """
 from __future__ import annotations
 
@@ -11,13 +11,11 @@ from pathlib import Path
 import sys
 
 
-def main():
+def run(output):
     root = Path(__file__).resolve().parents[1]
     name = sys.argv[1]
     if not name or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in name):
         raise SystemExit('Use an alphanumeric run name with hyphens or underscores.')
-    output = root / '.tool-stage' / name
-    output.mkdir(parents=True, exist_ok=False)
     for key, folder in {
         'YT_DOWNLOADER_DATA_DIR': 'data', 'YT_DOWNLOADER_VIDEOS_DIR': 'videos',
         'LOCALAPPDATA': 'local', 'APPDATA': 'roaming', 'TEMP': 'temp', 'TMP': 'temp',
@@ -72,6 +70,15 @@ def main():
         'assertions_modified': False,
     }, indent=2), encoding='utf-8')
     return result
+
+
+def main():
+    from dev_staging import session
+    with session('regression') as output:
+        result = run(output)
+        if result:
+            raise SystemExit(result)
+    return 0
 
 
 if __name__ == '__main__':
