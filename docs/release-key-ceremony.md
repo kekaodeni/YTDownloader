@@ -140,13 +140,13 @@ PRODUCTION_TRUSTED_KEYS: dict[str, bytes] = {
 ```powershell
 $KeyRoot = Join-Path $env:USERPROFILE 'Documents\YTDownloader-ReleaseKeys'
 .\.venv\Scripts\python.exe scripts\sign_update.py `
-  --package release\YTDownloader-0.4.0-win64.zip `
+  --package release\YTDownloader-0.4.1-win64.zip `
   --private-key (Join-Path $KeyRoot 'yt-downloader-prod-2026.pem') `
   --key-id yt-downloader-prod-2026 `
-  --version 0.4.0 `
+  --version 0.4.1 `
   --minimum-auto-update-version 0.4.0 `
-  --notes-zh docs\release-notes-v0.4.0-zh.md `
-  --notes-en docs\release-notes-v0.4.0-en.md `
+  --notes-zh docs\release-notes-v0.4.1-zh.md `
+  --notes-en docs\release-notes-v0.4.1-en.md `
   --acceptance-report release\acceptance-report.json
 ```
 

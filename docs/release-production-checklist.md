@@ -1,4 +1,4 @@
-# YTDownloader v0.4.0 Production Release Checklist
+# YTDownloader v0.4.1 Production Release Checklist
 
 This document describes the required production release configuration. It does not contain a private key, key password, token, or other credential. Production signing material must remain outside the repository and outside build logs.
 
@@ -42,14 +42,14 @@ Validation-only command, for comparison only:
 .\scripts\build.ps1 -ValidationOnly -ValidationName production-candidate-review
 ```
 
-This command is not a production release and must not be uploaded as the formal v0.4.0 asset.
+This command is not a production release and must not be uploaded as the formal v0.4.1 asset.
 
 ## Manifest
 
 After a production package is built and accepted:
 
-- `release/YTDownloader-0.4.0-win64.zip` is hashed with SHA-256.
-- `release/YTDownloader-0.4.0-win64.zip.sha256.txt` contains only the hash and package filename; it must not contain an absolute local path.
+- `release/YTDownloader-0.4.1-win64.zip` is hashed with SHA-256.
+- `release/YTDownloader-0.4.1-win64.zip.sha256.txt` contains only the hash and package filename; it must not contain an absolute local path.
 - `scripts/sign_update.py` is run only with the approved external private key, key ID `yt-downloader-prod-2026`, bilingual release notes, and the independent acceptance report.
 - `update-manifest.json` and `update-manifest.sig` are inspected for version, platform, package size, SHA-256, release URL, key ID, and signature before any upload.
 - The manifest signature is checked with the public key from the trust root.

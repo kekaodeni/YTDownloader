@@ -1,4 +1,4 @@
-# YT Downloader 0.4.0
+# YT Downloader 0.4.1
 
 YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Quick/QML 与统一的 Windows 11 语义样式；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
 
@@ -23,13 +23,13 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 - 中文采用 Microsoft YaHei UI，英文与数字采用 Segoe UI，并明确配置多语言回退；右键菜单与整套界面共用主题、字体和控件状态。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
 
-本版本的用户可见功能、限制和发布说明见 [v0.4.0 GitHub Release](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.0)。
+本版本的用户可见功能、限制和发布说明见 [v0.4.1 GitHub Release](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.1)。
 
 ## 支持范围与法律提示
 
 仅支持公开的 YouTube 单视频。不支持播放列表、频道、搜索或账号/Cookie 登录。私享、年龄限制、地区限制等内容会显示明确错误。删除历史记录不会删除视频文件。
 
-本版本不启用自动更新或自动替换安装目录；v0.3.0 及更早版本请手动下载 v0.4.0。
+本版本不启用自动替换安装目录；v0.3.0 及更早版本请手动下载 v0.4.1。
 
 本项目与 YouTube 无关联。下载内容前请确认您有权保存和使用该内容，并遵守所在地法律与服务条款。
 
@@ -125,8 +125,8 @@ dist\YTDownloader\YTDownloader.exe
 dist\YTDownloader\YTDownloaderUpdater.exe
 dist\YTDownloader\third_party_licenses\
 dist\YTDownloader\SHA256SUMS.json
-release\YTDownloader-0.4.0-win64.zip
-release\YTDownloader-0.4.0-win64.zip.sha256.txt
+release\YTDownloader-0.4.1-win64.zip
+release\YTDownloader-0.4.1-win64.zip.sha256.txt
 release\update-manifest.json
 release\update-manifest.sig
 ```
@@ -157,6 +157,6 @@ licenses/            第三方许可与对应源码信息
 - 4K 视频通常需要较大临时空间并在下载后合并。
 - 没有代码签名与安装器；Windows SmartScreen 可能提示未知发布者。
 - MP4/M4V/MKV 可无损写入内嵌封面；WebM/MOV 可另存 MKV 并写入封面，保留原文件，历史记录指向新文件。写入后验证封面字节、音视频流、章节和元数据。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
-- 本轮后续开发以当前 `develop` 工作区的 v0.4.0 源码为准；完整 Git 历史保留；当前发布仍未提供代码签名或安装器。
+- 当前发布仍未提供 Windows Authenticode 代码签名或安装器；完整 Git 历史保留。
 
 开发阶段的验证记录保留在本地审计工作区，不作为公开用户文档发布。

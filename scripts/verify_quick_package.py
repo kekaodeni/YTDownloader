@@ -42,7 +42,7 @@ def main():
     marker=args.output/'update-ui-health'/'startup-health.json'
     run('update-health',['--update-health-check','quick-ui-validation',str(marker.resolve())])
     health=json.loads(marker.read_text(encoding='utf-8'))
-    assert health==dict(status='ok',transaction_id='quick-ui-validation',app_version='0.4.0')
+    assert health==dict(status='ok',transaction_id='quick-ui-validation',app_version='0.4.1')
     log=(data/'logs'/'yt-downloader.log').read_text(encoding='utf-8') if (data/'logs'/'yt-downloader.log').exists() else ''
     assert 'QML:' not in log, log
     if args.history_media:
