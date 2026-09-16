@@ -25,6 +25,10 @@ foreach ($Path in $Required) {
 }
 
 $Version = (& $Python -c "from yt_downloader import __version__; print(__version__)").Trim()
+$SourceCommit = (& git -C $RepoRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $SourceCommit) {
+    throw "Unable to determine the source commit for BUILD-INFO.json."
+}
 $TrustedKeyCount = (& $Python -c "from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS; print(len(PRODUCTION_TRUSTED_KEYS))").Trim()
 if (-not $ValidationOnly -and [int]$TrustedKeyCount -eq 0) {
     throw "Production update trust is not configured. Use -ValidationOnly until an approved production public key is embedded."
@@ -129,6 +133,7 @@ if ($LASTEXITCODE -ne 0) { throw "Runtime license collection failed." }
 $ToolVersions = Get-Content -LiteralPath (Join-Path $RepoRoot "tools.lock.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $BuildInfo = [ordered]@{
     app_version = $Version
+    source_commit = $SourceCommit
     built_at_utc = [DateTime]::UtcNow.ToString("o")
     validation_only = [bool]$ValidationOnly
     updater_protocol = 1

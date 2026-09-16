@@ -33,6 +33,7 @@ Required result:
 
 - Do not pass `-ValidationOnly`.
 - `YTDownloader/BUILD-INFO.json` contains `"validation_only": false`.
+- `YTDownloader/BUILD-INFO.json` records the exact source commit used for the build.
 - The build must run the complete pytest suite, packaged self-tests, ownership validation, license collection, and archive creation.
 - The existing validation ZIP must not be overwritten before the new package has been independently hashed and reviewed. Use a separate output directory or filename during review, then copy the approved artifact to the release location.
 
