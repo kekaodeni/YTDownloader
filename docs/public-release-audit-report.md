@@ -15,7 +15,7 @@ Audit date: 2026-09-15. This audit does not rewrite Git history, move tags, or c
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Git history secrets | PASS | No GitHub token, cloud credential, or complete private-key PEM pattern was found in reachable history. |
-| Personal/local paths | PASS | No `<workspace>` or user-specific `<user-home>` path was found in reachable Git content, current source, README, or the final ZIP. |
+| Personal/local paths | PASS | No machine-specific absolute path was found in reachable Git content, current source, README, or the final ZIP. |
 | README images | PASS | Both published screenshots were visually reviewed after replacement; the output directory shows the neutral `Videos` label and no development path. |
 | Historical checksum sidecars | PASS | v0.1.0, v0.2.1, and v0.3.0 Release sidecars contain only a SHA-256 and package filename. Historical ZIPs and tags were not changed. |
 | Production package | PASS | `YTDownloader-0.4.0-win64.zip`, 388,164,192 bytes, SHA-256 `d5dc95ae1f4fa36a6f8b2866228aebf95cc41241715535061d03150b3f2ede1f`; `app_version=0.4.0`, `validation_only=false`. |
