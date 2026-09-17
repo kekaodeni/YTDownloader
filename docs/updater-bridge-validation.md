@@ -15,3 +15,11 @@
 Only the existing development staging, build and verification support needed by this work was brought from develop. No application behavior was changed for the baseline. Main, develop and published tags were not modified. No production private key was accessed.
 
 Production-key, published-binary upgrade verification remains a separate release gate. Test-key frozen upgrades must never be reported as production-signature verification.
+
+## Phase 1: protocols and discovery
+
+- Captured v0.4.1 parser and discovery source verbatim with commit/hash provenance; exercised them dynamically.
+- Observed RED then GREEN for schema 2 acceptance, list discovery/compatible selection, official pagination transport, and invalid schema/protocol rejection.
+- Targeted tests cover signature failure without fallback, minimum app/helper versions, unsupported protocol, prerelease/draft filtering, incomplete pagination and the legacy Latest bridge.
+- Full isolated regression: **286 passed**, 89.84 seconds, no skips.
+- Native Windows Qt Quick regression: 27 screenshots, zero QML warnings, 150% scaling.

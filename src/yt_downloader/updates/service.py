@@ -20,6 +20,7 @@ from yt_downloader.updates.models import (
     UpdateCapability, UpdateManifest, UpdateProgress, UpdateRelease, UpdateState, VerifiedUpdatePackage,
 )
 from yt_downloader.updates.state import UpdatePersistentState, UpdateStateStore
+from yt_downloader.updates.protocol import compatible
 from yt_downloader.workers.function_worker import FunctionWorker
 
 
@@ -89,20 +90,28 @@ class UpdateService(QObject):
         return True
 
     def _check_worker(self):
-        release = self.discovery.check(self.current_version)
-        if release is None:
+        releases = self.discovery.check(self.current_version)
+        if not releases:
             return None
-        raw = self.fetch_bytes(release.manifest_url)
-        signature = self.fetch_bytes(release.signature_url)
-        manifest = self.keyring.verify(raw, signature, release)
-        persisted = self.state_store.load()
-        if persisted.highest_verified_version:
-            if manifest.version < Version.parse(persisted.highest_verified_version):
-                raise ValueError('Verified update is older than the highest previously verified version')
-        return manifest, raw, signature
+        for release in releases:
+            raw = self.fetch_bytes(release.manifest_url)
+            signature = self.fetch_bytes(release.signature_url)
+            manifest = self.keyring.verify(raw, signature, release)
+            if not compatible(manifest, self.current_version, self.current_version):
+                continue
+            persisted = self.state_store.load()
+            if persisted.highest_verified_version:
+                if manifest.version < Version.parse(persisted.highest_verified_version):
+                    raise ValueError('Verified update is older than the highest previously verified version')
+            return manifest, raw, signature
+        return UpdateState.NO_COMPATIBLE_UPDATE
 
     def _check_succeeded(self, result, manual: bool) -> None:
         checked = self.now().isoformat()
+        if result is UpdateState.NO_COMPATIBLE_UPDATE:
+            self._save_state(replace(self.state_store.load(), last_checked_at=checked, last_error=''))
+            self._set_state(UpdateState.NO_COMPATIBLE_UPDATE)
+            return
         if result is None:
             self._save_state(replace(self.state_store.load(), last_checked_at=checked, last_error=''))
             self._set_state(UpdateState.UP_TO_DATE)

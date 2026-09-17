@@ -349,6 +349,7 @@ class AppController:
         labels = {
             UpdateState.IDLE: "尚未检查", UpdateState.CHECKING: "正在检查…",
             UpdateState.UP_TO_DATE: "已是最新版本", UpdateState.AVAILABLE: "发现新版本",
+            UpdateState.NO_COMPATIBLE_UPDATE: "有更新版本，但当前更新组件不兼容，请查看发布说明。",
             UpdateState.DOWNLOADING: "正在下载更新…", UpdateState.CANCELLING: "正在取消更新…",
             UpdateState.VERIFYING: "正在验证更新…", UpdateState.READY_TO_INSTALL: "更新已验证",
             UpdateState.PREPARING_EXIT: "正在准备退出并更新…", UpdateState.FAILED: "更新操作失败",

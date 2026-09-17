@@ -11,11 +11,13 @@ class UpdateState(str, Enum):
     IDLE = 'IDLE'
     CHECKING = 'CHECKING'
     UP_TO_DATE = 'UP_TO_DATE'
+    NO_COMPATIBLE_UPDATE = 'NO_COMPATIBLE_UPDATE'
     AVAILABLE = 'AVAILABLE'
     DOWNLOADING = 'DOWNLOADING'
     CANCELLING = 'CANCELLING'
     VERIFYING = 'VERIFYING'
     READY_TO_INSTALL = 'READY_TO_INSTALL'
+    PREPARING_INSTALL = 'PREPARING_INSTALL'
     PREPARING_EXIT = 'PREPARING_EXIT'
     INSTALLING = 'INSTALLING'
     ROLLING_BACK = 'ROLLING_BACK'
@@ -44,6 +46,7 @@ class UpdatePackage:
     compressed_size: int
     extracted_size: int
     sha256: str
+    kind: str = 'legacy'
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +60,9 @@ class UpdateManifest:
     notes_en: str
     release_url: str
     package: UpdatePackage
+    schema_version: int = 1
+    minimum_updater_version: Version = Version.parse('0.4.0')
+    helper_layout: str = 'legacy-root'
 
 
 @dataclass(frozen=True, slots=True)

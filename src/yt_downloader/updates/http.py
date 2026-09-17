@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Callable
 import time
+import re
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -35,8 +36,10 @@ class SecureUpdateHttpClient:
             session.proxies.update({'http': snapshot.custom_proxy_url, 'https': snapshot.custom_proxy_url})
         return session
 
-    def get_json(self, url: str) -> Mapping:
-        if url != 'https://api.github.com/repos/kekaodeni/YTDownloader/releases/latest':
+    def get_json(self, url: str) -> Mapping | list:
+        base = 'https://api.github.com/repos/kekaodeni/YTDownloader/releases'
+        is_list = re.fullmatch(re.escape(base) + r'\?per_page=100&page=([1-9]|1[0-9]|20)', url) is not None
+        if not is_list and url != base + '/latest':
             raise ValueError('Update discovery URL is not trusted')
         session = self._session()
         response = None
@@ -44,8 +47,8 @@ class SecureUpdateHttpClient:
             response = session.get(url, timeout=(10, 10), allow_redirects=False)
             response.raise_for_status()
             payload = response.json()
-            if not isinstance(payload, Mapping):
-                raise ValueError('Release response must be a JSON object')
+            if (is_list and (not isinstance(payload, list) or len(payload) > 100)) or (not is_list and not isinstance(payload, Mapping)):
+                raise ValueError('Release response has invalid shape')
             return payload
         finally:
             if response is not None:

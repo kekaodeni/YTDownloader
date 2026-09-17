@@ -49,7 +49,7 @@ def _signed_release(data=b'package'):
 def test_check_verifies_manifest_and_persists_last_check(qtbot, tmp_path):
     release, raw, signature, public = _signed_release()
     class Discovery:
-        def check(self, current): assert current == '0.4.0'; return release
+        def check(self, current): assert current == '0.4.0'; return (release,)
     fetched = {release.manifest_url: raw, release.signature_url: signature}
     service = UpdateService(
         current_version='0.4.0', discovery=Discovery(), fetch_bytes=fetched.__getitem__,

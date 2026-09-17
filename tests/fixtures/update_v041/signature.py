@@ -20,7 +20,6 @@ _TOP_FIELDS = {
     'notes', 'release_url', 'package',
 }
 _PACKAGE_FIELDS = {'name', 'url', 'compressed_size', 'extracted_size', 'sha256'}
-_TOP_FIELDS_V2 = _TOP_FIELDS | {'minimum_updater_version', 'helper_layout'}
 _NOTES_FIELDS = {'zh-CN', 'en'}
 
 
@@ -63,10 +62,9 @@ class TrustedKeyring:
             raise ValueError('Manifest must be UTF-8') from exc
         if not isinstance(payload, Mapping):
             raise ValueError('Manifest must be an object')
-        schema = payload.get('schema_version')
-        if type(schema) is not int or schema not in {1, 2}:
+        _exact_fields(payload, _TOP_FIELDS, 'Manifest')
+        if type(payload['schema_version']) is not int or payload['schema_version'] != 1:
             raise ValueError('Manifest schema is unsupported')
-        _exact_fields(payload, _TOP_FIELDS if schema == 1 else _TOP_FIELDS_V2, 'Manifest')
         if (payload['app_id'], payload['channel'], payload['platform'], payload['architecture']) != (
             'YTDownloader', 'stable', 'windows', 'x64'
         ):
@@ -91,11 +89,7 @@ class TrustedKeyring:
         if not isinstance(notes, Mapping) or not isinstance(package, Mapping):
             raise ValueError('Manifest notes and package must be objects')
         _exact_fields(notes, _NOTES_FIELDS, 'Notes')
-        _exact_fields(package, _PACKAGE_FIELDS if schema == 1 else _PACKAGE_FIELDS | {'kind'}, 'Package')
-        if schema == 2 and (payload['helper_layout'] != 'internal-v1' or package['kind'] != 'standard'):
-            raise ValueError('Manifest helper layout or package kind is unsupported')
-        if schema == 2 and _positive_int(payload['updater_protocol'], 'updater protocol') < 2:
-            raise ValueError('Internal layout requires updater protocol 2 or newer')
+        _exact_fields(package, _PACKAGE_FIELDS, 'Package')
         name = _text(package['name'], 'package name')
         expected_name = f'YTDownloader-{version}-win64.zip'
         prefix = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}/'
@@ -126,9 +120,5 @@ class TrustedKeyring:
                 compressed_size=_positive_int(package['compressed_size'], 'compressed size'),
                 extracted_size=_positive_int(package['extracted_size'], 'extracted size'),
                 sha256=digest,
-                kind=package.get('kind', 'legacy'),
             ),
-            schema_version=schema,
-            minimum_updater_version=Version.parse(_text(payload['minimum_updater_version'], 'minimum updater version')) if schema == 2 else Version.parse('0.4.0'),
-            helper_layout=payload.get('helper_layout', 'legacy-root'),
         )
