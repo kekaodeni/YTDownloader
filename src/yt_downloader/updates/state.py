@@ -79,12 +79,15 @@ def detect_update_capability(
     if not is_frozen:
         return UpdateCapability.CHECK_ONLY
     build_info_path = build_info_path or (Path(sys.executable).parent / 'BUILD-INFO.json')
-    updater_path = updater_path or (Path(sys.executable).parent / 'YTDownloaderUpdater.exe')
     try:
         build_info = json.loads(build_info_path.read_text(encoding='utf-8-sig'))
         validation_only = build_info.get('validation_only') is True
     except (OSError, ValueError, json.JSONDecodeError):
         return UpdateCapability.CHECK_ONLY
+    if updater_path is None:
+        layout = build_info.get('helper_layout', 'legacy-root')
+        relative = 'YTDownloaderUpdater.exe' if layout == 'legacy-root' else '_internal/updater/YTDownloaderUpdater.exe'
+        updater_path = build_info_path.parent / relative
     if validation_only or not updater_path.is_file() or not trusted_keys:
         return UpdateCapability.DOWNLOAD_AND_VERIFY
     return UpdateCapability.AUTO_INSTALL

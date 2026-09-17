@@ -243,6 +243,7 @@ class AppController:
         self.app.aboutToQuit.connect(self._shutdown_background_operations)
         self.window.show_update_requested.connect(self._show_update_dialog)
         self.updates.state_changed.connect(self._update_state_changed)
+        self.updates.install_prepared.connect(self._launch_prepared_updater)
         self.updates.update_available.connect(self._update_available)
         self.updates.up_to_date.connect(lambda: self.window.settings_page.set_update_state("已是最新版本"))
         self.updates.progress.connect(self._update_progress)
@@ -353,9 +354,10 @@ class AppController:
             UpdateState.DOWNLOADING: "正在下载更新…", UpdateState.CANCELLING: "正在取消更新…",
             UpdateState.VERIFYING: "正在验证更新…", UpdateState.READY_TO_INSTALL: "更新已验证",
             UpdateState.PREPARING_EXIT: "正在准备退出并更新…", UpdateState.FAILED: "更新操作失败",
+            UpdateState.PREPARING_INSTALL: "正在复核更新包和更新组件…",
         }
         self.window.settings_page.set_update_state(labels.get(state, state.value), busy=state is UpdateState.CHECKING)
-        self.window.set_update_busy(state in {UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING})
+        self.window.set_update_busy(state in {UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT})
         if self._update_dialog is not None:
             self._update_dialog.set_state(state)
 
@@ -431,13 +433,18 @@ class AppController:
         self._launch_updater_and_exit()
 
     def _launch_updater_and_exit(self) -> None:
-        command = self.updates.prepare_install_command(Path(sys.executable).parent, self.paths.data, os.getpid())
-        if not command:
+        if not self.updates.prepare_install(Path(sys.executable).parent, self.paths.data, os.getpid()):
             self.show_error(AppError('update_install_unavailable', '当前运行环境不支持自动安装，请从发布页面手动升级。', 'AUTO_INSTALL capability unavailable'))
+
+    def _launch_prepared_updater(self, command) -> None:
+        if self.queue.is_busy or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
+            self.updates._set_state(UpdateState.READY_TO_INSTALL)
+            self.show_error(AppError('update_tasks_started', '有新任务开始，请在任务结束后再次更新。', 'Tasks started during update preparation'))
             return
         try:
             subprocess.Popen(command, cwd=Path(command[0]).parent, close_fds=True, creationflags=0x08000000 if sys.platform == 'win32' else 0)
         except OSError as exc:
+            self.updates._set_state(UpdateState.FAILED)
             self.show_error(AppError('updater_launch_failed', '无法启动更新程序，当前版本没有改变。', repr(exc)))
             return
         self.app.quit()

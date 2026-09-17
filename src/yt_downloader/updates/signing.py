@@ -37,6 +37,8 @@ def create_signed_release_assets(
     notes_en: str,
     published_at: str | None = None,
     acceptance_report_path: Path | None = None,
+    schema_version: int | None = None,
+    minimum_updater_version: str | None = None,
 ) -> tuple[bytes, bytes]:
     package = package.resolve(strict=True)
     key_path = private_key_path.resolve(strict=True)
@@ -84,6 +86,15 @@ def create_signed_release_assets(
         if build_info.get('app_version') != str(parsed_version) or build_info.get('validation_only') is not False:
             raise ValueError('Release ZIP is not a formal build for this version')
         extracted_size = sum(info.file_size for info in archive.infolist() if not info.is_dir())
+        build_info = json.loads(archive.read('YTDownloader/BUILD-INFO.json').decode('utf-8-sig'))
+    selected_schema = schema_version or (2 if build_info.get('helper_layout') == 'internal-v1' else 1)
+    if selected_schema not in {1, 2}:
+        raise ValueError('Unsupported release manifest schema')
+    helper_layout = build_info.get('helper_layout', 'legacy-root')
+    if selected_schema == 2 and helper_layout != 'internal-v1':
+        raise ValueError('Schema 2 requires the internal helper layout')
+    if selected_schema == 1 and helper_layout != 'legacy-root':
+        raise ValueError('Schema 1 requires the legacy root helper layout')
     if key_id not in trusted_keys:
         raise ValueError('Signing key_id is not trusted by this application version')
     try:
@@ -101,11 +112,11 @@ def create_signed_release_assets(
     base = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{parsed_version}/'
     release_url = f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{parsed_version}'
     payload = {
-        'schema_version': 1,
+        'schema_version': selected_schema,
         'app_id': 'YTDownloader', 'channel': 'stable', 'platform': 'windows', 'architecture': 'x64',
         'version': str(parsed_version), 'published_at': published,
         'minimum_auto_update_version': minimum_auto_update_version,
-        'updater_protocol': 1, 'key_id': key_id,
+        'updater_protocol': 2 if selected_schema == 2 else 1, 'key_id': key_id,
         'notes': {'zh-CN': notes_zh_cn, 'en': notes_en},
         'release_url': release_url,
         'package': {
@@ -114,6 +125,10 @@ def create_signed_release_assets(
             'sha256': package_digest,
         },
     }
+    if selected_schema == 2:
+        payload['minimum_updater_version'] = minimum_updater_version or minimum_auto_update_version
+        payload['helper_layout'] = 'internal-v1'
+        payload['package']['kind'] = 'standard'
     raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     detached = base64.b64encode(loaded.sign(raw))
     _atomic_write(package.parent / 'update-manifest.json', raw)

@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from pathlib import Path
 import sys
 
 from semver import Version
 
 from yt_downloader.updates.archive import SafePackageExtractor
-from yt_downloader.updates.models import UpdateRelease
+from yt_downloader import __version__
+from yt_downloader.updates.installation import InstallRequest, checked_path, validate_request
+from yt_downloader.updates.protocol import compatible
 from yt_downloader.updates.signature import TrustedKeyring
 from yt_downloader.updates.transaction import InstallPreflight, TransactionalInstaller
 from yt_downloader.updates.trusted_keys import PRODUCTION_TRUSTED_KEYS
 
 
-UPDATER_PROTOCOL = 1
+UPDATER_VERSION = __version__
 REPOSITORY = 'kekaodeni/YTDownloader'
 
 
@@ -30,6 +31,7 @@ def validate_upgrade_versions(current_value: str, target_value: str) -> tuple[Ve
 
 def _arguments(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description='Install a verified YTDownloader update')
+    parser.add_argument('--recover', action='store_true')
     parser.add_argument('--transaction-dir', required=True, type=Path)
     parser.add_argument('--install-dir', required=True, type=Path)
     parser.add_argument('--data-dir', required=True, type=Path)
@@ -44,25 +46,18 @@ def run(argv: list[str] | None = None) -> int:
     if not PRODUCTION_TRUSTED_KEYS:
         raise RuntimeError('Production update trust is not enabled in this build')
     current, target = validate_upgrade_versions(args.current_version, args.target_version)
-    transaction = args.transaction_dir.resolve(strict=True)
-    raw_manifest = (transaction / 'update-manifest.json').read_bytes()
-    signature = (transaction / 'update-manifest.sig').read_bytes()
-    release = UpdateRelease(
-        target,
-        f'v{target}',
-        f'https://github.com/{REPOSITORY}/releases/download/v{target}/update-manifest.json',
-        f'https://github.com/{REPOSITORY}/releases/download/v{target}/update-manifest.sig',
-        f'https://github.com/{REPOSITORY}/releases/tag/v{target}',
-    )
-    manifest = TrustedKeyring(PRODUCTION_TRUSTED_KEYS).verify(raw_manifest, signature, release)
-    if manifest.updater_protocol != UPDATER_PROTOCOL or current < manifest.minimum_auto_update_version:
+    transaction = checked_path(args.transaction_dir, exists=True)
+    install = checked_path(args.install_dir)
+    data = checked_path(args.data_dir)
+    request = InstallRequest(transaction, install, data, str(current), str(target), args.original_pid)
+    manifest = validate_request(request, TrustedKeyring(PRODUCTION_TRUSTED_KEYS),
+                                executing_helper=Path(sys.executable), recovery=args.recover)
+    if UPDATER_VERSION != str(current) or not compatible(manifest, str(current), UPDATER_VERSION):
         raise RuntimeError('This updater protocol cannot safely install the selected version')
+    if args.recover:
+        TransactionalInstaller().recover(transaction)
+        return 0
     package = transaction / manifest.package.name
-    if package.stat().st_size != manifest.package.compressed_size:
-        raise ValueError('Update package size changed after verification')
-    if hashlib.sha256(package.read_bytes()).hexdigest() != manifest.package.sha256:
-        raise ValueError('Update package hash changed after verification')
-    install = args.install_dir.resolve(strict=True)
     candidate = install.parent / f'.{install.name}.candidate-{transaction.name}'
     backup_size = sum(path.stat().st_size for path in install.rglob('*') if path.is_file())
     InstallPreflight().validate(
@@ -73,6 +68,7 @@ def run(argv: list[str] | None = None) -> int:
         package, candidate,
         signed_extracted_size=manifest.package.extracted_size,
         expected_version=str(manifest.version),
+        expected_layout=manifest.helper_layout,
     )
     TransactionalInstaller().install(
         transaction_id=transaction.name,

@@ -18,7 +18,7 @@ class ImmediateRunner:
         worker.run()
 
 
-def _signed_release(data=b'package'):
+def _signed_release(data=b'package', minimum='0.4.0'):
     key = Ed25519PrivateKey.generate()
     public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     version = Version.parse('0.4.1')
@@ -27,7 +27,7 @@ def _signed_release(data=b'package'):
     payload = {
         'schema_version': 1, 'app_id': 'YTDownloader', 'channel': 'stable',
         'platform': 'windows', 'architecture': 'x64', 'version': '0.4.1',
-        'published_at': '2026-09-04T10:00:00Z', 'minimum_auto_update_version': '0.4.0',
+        'published_at': '2026-09-04T10:00:00Z', 'minimum_auto_update_version': minimum,
         'updater_protocol': 1, 'key_id': 'test',
         'notes': {'zh-CN': '修复与改进', 'en': 'Fixes and improvements'},
         'release_url': release_url,
@@ -146,3 +146,22 @@ def test_verified_package_can_be_restored_across_restart_only_after_reverificati
     )
     assert not service2.restore_verified_package()
     assert service2.verified_package is None
+
+
+def test_restore_rechecks_protocol_and_minimum_version_gate(tmp_path):
+    data = b'package'
+    release, raw, signature, public = _signed_release(data, minimum='0.4.2')
+    transaction = tmp_path / 'staging' / 'update-bridge'; transaction.mkdir(parents=True)
+    (transaction / 'update-manifest.json').write_bytes(raw)
+    (transaction / 'update-manifest.sig').write_bytes(signature)
+    (transaction / 'YTDownloader-0.4.1-win64.zip').write_bytes(data)
+    store = UpdateStateStore(tmp_path / 'state.json')
+    store.save(UpdatePersistentState(transaction_id='bridge', pending_version='0.4.1'))
+    service = UpdateService(
+        current_version='0.4.0', discovery=None, fetch_bytes=lambda _url: b'',
+        keyring=TrustedKeyring({'test': public}), state_store=store, downloader=None,
+        staging_root=tmp_path/'staging', capability=UpdateCapability.DOWNLOAD_AND_VERIFY,
+        runner=ImmediateRunner(),
+    )
+    assert not service.restore_verified_package()
+    assert service.verified_package is None

@@ -97,3 +97,16 @@ def test_signing_refuses_missing_or_mismatched_acceptance_report(tmp_path):
     report=_acceptance(tmp_path/'acceptance.json',package,validation_only=True)
     with pytest.raises(ValueError,match='does not match'):
         create_signed_release_assets(**arguments,acceptance_report_path=report)
+
+
+def test_signing_schema_two_requires_internal_layout_and_emits_contract(tmp_path):
+    repo=tmp_path/'repo';repo.mkdir();package=repo/'YTDownloader-0.5.0-win64.zip'
+    with zipfile.ZipFile(package,'w') as archive:
+        archive.writestr('YTDownloader/BUILD-INFO.json', json.dumps({'app_version':'0.5.0','validation_only':False,'helper_layout':'internal-v1'}))
+        archive.writestr('YTDownloader/YTDownloader.exe', b'app')
+        archive.writestr('YTDownloader/_internal/updater/YTDownloaderUpdater.exe', b'updater')
+    key=Ed25519PrivateKey.generate();public=key.public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)
+    key_path=tmp_path/'key.pem'; key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.BestAvailableEncryption(b'secret')))
+    acceptance=_acceptance(tmp_path/'acceptance.json',package); acceptance_data=json.loads(acceptance.read_text()); acceptance_data['app_version']='0.5.0'; acceptance_data['package_name']=package.name; acceptance_data['package_sha256']=hashlib.sha256(package.read_bytes()).hexdigest(); acceptance.write_text(json.dumps(acceptance_data))
+    raw,_=create_signed_release_assets(package=package,private_key_path=key_path,password=b'secret',key_id='prod',trusted_keys={'prod':public},repo_root=repo,version='0.5.0',minimum_auto_update_version='0.4.2',minimum_updater_version='0.4.2',notes_zh_cn='zh',notes_en='en',published_at='2026-09-17T00:00:00Z',acceptance_report_path=acceptance,schema_version=2)
+    data=json.loads(raw); assert data['schema_version']==2 and data['helper_layout']=='internal-v1' and data['package']['kind']=='standard'

@@ -8,10 +8,13 @@ from pathlib import Path, PurePosixPath
 import shutil
 import stat
 import zipfile
+import re
+
+from yt_downloader.updates.protocol import HELPER_PATHS, INTERNAL_LAYOUT, LEGACY_LAYOUT
 
 
 _DEVICE_NAMES = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
-_CRITICAL_FILES = {'YTDownloader.exe', 'YTDownloaderUpdater.exe', 'BUILD-INFO.json', 'SHA256SUMS.json'}
+_CRITICAL_FILES = {'YTDownloader.exe', 'BUILD-INFO.json', 'SHA256SUMS.json'}
 
 
 class SafePackageExtractor:
@@ -24,6 +27,7 @@ class SafePackageExtractor:
         *,
         signed_extracted_size: int,
         expected_version: str,
+        expected_layout: str | None = None,
     ) -> Path:
         package = package.resolve(strict=True)
         candidate = candidate.resolve(strict=False)
@@ -38,7 +42,7 @@ class SafePackageExtractor:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with archive.open(info) as source, target.open('xb') as output:
                         shutil.copyfileobj(source, output, length=1024 * 1024)
-            self.validate_tree(candidate, expected_version=expected_version)
+            self.validate_tree(candidate, expected_version=expected_version, expected_layout=expected_layout)
             return candidate
         except BaseException:
             self._remove_created_candidate(candidate)
@@ -86,12 +90,25 @@ class SafePackageExtractor:
         return result
 
     @classmethod
-    def validate_tree(cls, root: Path, *, expected_version: str | None = None) -> None:
+    def validate_tree(cls, root: Path, *, expected_version: str | None = None, expected_layout: str | None = None) -> None:
+        if root.is_symlink() or cls._is_reparse(root):
+            raise ValueError('Package root is a link or reparse point')
         root = root.resolve(strict=True)
         for critical in _CRITICAL_FILES:
             if not (root / critical).is_file():
                 raise ValueError(f'Package critical file is missing: {critical}')
         build_info = cls._load_json(root / 'BUILD-INFO.json')
+        if not isinstance(build_info, dict):
+            raise ValueError('Invalid build metadata')
+        layout = cls.layout(build_info)
+        if expected_layout is not None and layout != expected_layout:
+            raise ValueError('Package helper layout does not match signed manifest')
+        helper = HELPER_PATHS[layout]
+        if not (root / helper).is_file():
+            raise ValueError('Package critical helper is missing')
+        for other_layout, other_path in HELPER_PATHS.items():
+            if other_layout != layout and (root / other_path).exists():
+                raise ValueError('Mixed helper layout is not allowed')
         if expected_version is not None and build_info.get('app_version') != expected_version:
             raise ValueError('Package build version does not match the signed manifest')
         entries = cls._load_json(root / 'SHA256SUMS.json')
@@ -106,22 +123,43 @@ class SafePackageExtractor:
             if folded in owned:
                 raise ValueError('Duplicate package ownership record')
             sha256 = entry['SHA256']
-            if not isinstance(sha256, str) or len(sha256) != 64:
+            if not isinstance(sha256, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', sha256):
                 raise ValueError('Invalid package ownership hash')
             owned[folded] = sha256.lower()
         actual: dict[str, Path] = {}
         for path in root.rglob('*'):
             if path.is_symlink() or cls._is_reparse(path):
                 raise ValueError('Package tree contains a link or reparse point')
-            if path.is_file() and path.name != 'SHA256SUMS.json':
+            if path.is_file() and path != root / 'SHA256SUMS.json':
                 relative = path.relative_to(root).as_posix()
                 actual[relative.casefold()] = path
         if set(actual) != set(owned):
             raise ValueError('Package contains missing or unknown unowned files')
         for key, path in actual.items():
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = cls.file_hash(path)
             if digest != owned[key]:
                 raise ValueError(f'Package file hash mismatch: {path.relative_to(root)}')
+
+    @staticmethod
+    def layout(build_info: dict) -> str:
+        layout = build_info.get('helper_layout', LEGACY_LAYOUT)
+        if layout not in HELPER_PATHS:
+            raise ValueError('Unsupported helper layout')
+        if 'helper_layout' in build_info:
+            required = [2] if layout == INTERNAL_LAYOUT else [1, 2]
+            if (build_info.get('updater_version') != build_info.get('app_version')
+                    or build_info.get('supported_update_protocols') != required
+                    or build_info.get('updater_protocol') != (2 if layout == INTERNAL_LAYOUT else 1)):
+                raise ValueError('Inconsistent helper layout metadata')
+        return layout
+
+    @staticmethod
+    def file_hash(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open('rb') as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _load_json(path: Path):

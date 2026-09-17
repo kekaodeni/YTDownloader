@@ -10,10 +10,10 @@ def test_package_and_runtime_versions_match() -> None:
     project_root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert __version__ == "0.4.1"
+    assert __version__ == "0.4.2"
     assert project["project"]["version"] == __version__
     assert (project_root / "README.md").read_text(encoding="utf-8").startswith(
-        "# YT Downloader 0.4.1"
+        "# YT Downloader 0.4.2"
     )
     build_script = (project_root / "scripts" / "build.ps1").read_text(encoding="utf-8")
     assert "--metadata-process-self-test" in build_script

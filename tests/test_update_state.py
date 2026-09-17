@@ -34,3 +34,10 @@ def test_capabilities_keep_source_and_validation_builds_out_of_auto_install(tmp_
     assert detect_update_capability(frozen=True, build_info_path=validation, updater_path=updater, trusted_keys={'prod': b'x' * 32}) is UpdateCapability.DOWNLOAD_AND_VERIFY
     assert detect_update_capability(frozen=True, build_info_path=production, updater_path=updater, trusted_keys={}) is UpdateCapability.DOWNLOAD_AND_VERIFY
     assert detect_update_capability(frozen=True, build_info_path=production, updater_path=updater, trusted_keys={'prod': b'x' * 32}) is UpdateCapability.AUTO_INSTALL
+
+
+def test_capability_uses_internal_helper_layout_from_build_metadata(tmp_path):
+    root = tmp_path / 'install'; (root / '_internal' / 'updater').mkdir(parents=True)
+    info = root / 'BUILD-INFO.json'; info.write_text(json.dumps({'validation_only': False, 'helper_layout': 'internal-v1'}))
+    (root / '_internal' / 'updater' / 'YTDownloaderUpdater.exe').write_bytes(b'helper')
+    assert detect_update_capability(frozen=True, build_info_path=info, trusted_keys={'prod': b'x' * 32}) is UpdateCapability.AUTO_INSTALL

@@ -23,3 +23,23 @@ Production-key, published-binary upgrade verification remains a separate release
 - Targeted tests cover signature failure without fallback, minimum app/helper versions, unsupported protocol, prerelease/draft filtering, incomplete pagination and the legacy Latest bridge.
 - Full isolated regression: **286 passed**, 89.84 seconds, no skips.
 - Native Windows Qt Quick regression: 27 screenshots, zero QML warnings, 150% scaling.
+
+## Phase 2: preparation, layout and recovery
+
+- Added independent installation preparation and helper staging under the transaction directory.
+- Legacy root-helper and internal-helper trees are validated separately; mixed layouts, links, reparse points, path escape, package tampering and transaction binding changes are rejected.
+- The external helper revalidates the signed manifest, package size/hash, installed tree and staged helper before creating a candidate directory. Recovery accepts both schema 1 journals and the new schema 2 journal metadata.
+- Restored staged packages are gated again by the current application/helper protocol capability after a restart.
+- Targeted bridge, transaction, fault-matrix and helper-entry tests: **24 passed**.
+- Full regression after the implementation: **298 passed**.
+
+## Phase 3: validation candidate
+
+- Validation-only build: `release/YTDownloader-0.4.2-validation-only-win64.zip`.
+- Archive SHA-256: `4d77b2d6b1db58acc0f7510e885a8eba55f62a55616471b599e81639c67fcb5b`.
+- Archive size: `379399281` bytes; extracted file size: `891400083` bytes.
+- `BUILD-INFO.json` reports app `0.4.2`, `legacy-root`, protocol `1`, and helper protocols `[1, 2]`; the root helper is present as required for the bridge package.
+- Independent archive acceptance passed ownership, packaged self-test, metadata helper, GUI smoke, windowed updater and startup health checks.
+- Native Windows Qt Quick regression after implementation: 27 screenshots, zero QML warnings, 150% scaling, software renderer.
+
+Formal production signing, publication, merge and tag creation remain intentionally unperformed and require separate authorization.

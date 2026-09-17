@@ -56,7 +56,10 @@ def verify(package: Path, extract_dir: Path, report_path: Path) -> dict[str, obj
         expected_version=version,
     )
     app = extract_dir / 'YTDownloader.exe'
-    updater = extract_dir / 'YTDownloaderUpdater.exe'
+    layout = build_info.get('helper_layout', 'legacy-root')
+    updater = extract_dir / 'YTDownloaderUpdater.exe' if layout == 'legacy-root' else extract_dir / '_internal' / 'updater' / 'YTDownloaderUpdater.exe'
+    if layout == 'internal-v1' and (extract_dir / 'YTDownloaderUpdater.exe').exists():
+        raise RuntimeError('Internal package exposes a root updater helper')
     if _subsystem(app) != 2 or _subsystem(updater) != 2:
         raise RuntimeError('Main application and updater must both use the Windows GUI subsystem')
     acceptance_root = extract_dir.parent / f'update-acceptance-{os.getpid()}'
