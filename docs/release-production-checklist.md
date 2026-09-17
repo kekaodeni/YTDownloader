@@ -6,8 +6,8 @@ This document describes the required production release configuration. It does n
 
 - Key algorithm: Ed25519.
 - Key ID: **yt-downloader-prod-2026**.
-- Private key: encrypted PKCS#8 file stored outside the repository. Pass its path only to the interactive signing command; never commit it, place it under `release/`, or write its password to an environment variable or log.
-- Public key fingerprint: **TO BE RECORDED AFTER KEY CEREMONY**. Record only the approved fingerprint and key ID, never the private key.
+- Private key: encrypted PKCS#8 file stored in an external controlled directory supplied by the release custodian. Use the redacted form `<EXTERNAL_RELEASE_KEY_DIR>\yt-downloader-prod-2026.pem` in public documentation; pass the actual path only to the interactive signing command. Never commit it, place it under `release/`, or write its password to an environment variable or log.
+- Public key fingerprint: **d7ed7bd453f35861dee0453d9f805e595e9797cbc1626a8bb59b7488fa037152**. Record only the approved fingerprint and key ID, never the private key.
 - Key rotation: add a new approved public key before signing with it; do not trust a key supplied by a remote manifest.
 
 ## Trust root

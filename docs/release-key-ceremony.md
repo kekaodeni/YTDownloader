@@ -19,7 +19,7 @@ yt-downloader-prod-2026
 在正常 Windows PowerShell 中执行。目录必须位于仓库之外：
 
 ```powershell
-$KeyRoot = Join-Path $env:USERPROFILE 'Documents\YTDownloader-ReleaseKeys'
+$KeyRoot = '<EXTERNAL_RELEASE_KEY_DIR>'
 New-Item -ItemType Directory -Force -Path $KeyRoot | Out-Null
 
 # 移除继承权限，仅授予当前 Windows 用户完全控制权限。
@@ -29,7 +29,7 @@ $env:YT_RELEASE_KEY_PATH = Join-Path $KeyRoot 'yt-downloader-prod-2026.pem'
 $env:YT_RELEASE_PUBLIC_PATH = Join-Path $KeyRoot 'yt-downloader-prod-2026.public.hex'
 ```
 
-确认 `$KeyRoot` 不在仓库内。不要把密钥放入 release、build、dist、临时验证目录、工具缓存目录或任何同步目录。
+由发布者在签名时将 `$KeyRoot` 设置为仓库外受控目录。公开文档只使用脱敏占位路径，例如 `<EXTERNAL_RELEASE_KEY_DIR>\yt-downloader-prod-2026.pem`；实际本机路径不写入 Git、README、Release、BUILD-INFO 或 ZIP。不要把密钥放入 release、build、dist、临时验证目录、工具缓存目录或任何同步目录。
 
 ## 3. 生成加密 PKCS#8 Ed25519 私钥
 
@@ -138,7 +138,7 @@ PRODUCTION_TRUSTED_KEYS: dict[str, bytes] = {
 在正常 Windows PowerShell 中执行。私钥路径只作为本机参数使用，密码会交互式询问：
 
 ```powershell
-$KeyRoot = Join-Path $env:USERPROFILE 'Documents\YTDownloader-ReleaseKeys'
+$KeyRoot = '<EXTERNAL_RELEASE_KEY_DIR>'
 .\.venv\Scripts\python.exe scripts\sign_update.py `
   --package release\YTDownloader-0.4.1-win64.zip `
   --private-key (Join-Path $KeyRoot 'yt-downloader-prod-2026.pem') `
