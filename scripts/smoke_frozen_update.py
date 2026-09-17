@@ -86,13 +86,7 @@ def run(baseline_zip: Path, work: Path) -> dict[str, object]:
     repo = Path(__file__).resolve().parents[1]
     baseline_zip = baseline_zip.resolve(strict=True)
     work = work.resolve(strict=False)
-    if work.exists():
-        resolved_repo = repo.resolve(strict=True)
-        relative_work = work.relative_to(resolved_repo / '.tool-stage')
-        if not relative_work.parts:
-            raise ValueError('Refusing to remove the shared .tool-stage root')
-        shutil.rmtree(work)
-    work.mkdir(parents=True)
+    work.mkdir(parents=True, exist_ok=False)
     (work / 'TEST-ONLY.txt').write_text(
         'Ephemeral frozen updater test. Never publish these files or trust roots.\n', encoding='utf-8',
     )
@@ -166,9 +160,10 @@ def main() -> int:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--baseline-zip', required=True, type=Path)
-    parser.add_argument('--work-dir', required=True, type=Path)
     args = parser.parse_args()
-    print(json.dumps(run(args.baseline_zip, args.work_dir), indent=2))
+    from dev_staging import session
+    with session('frozen-update') as work:
+        print(json.dumps(run(args.baseline_zip, work / 'build'), indent=2))
     return 0
 
 

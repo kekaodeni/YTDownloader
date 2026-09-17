@@ -33,44 +33,23 @@ $TrustedKeyCount = (& $Python -c "from yt_downloader.updates.trusted_keys import
 if (-not $ValidationOnly -and [int]$TrustedKeyCount -eq 0) {
     throw "Production update trust is not configured. Use -ValidationOnly until an approved production public key is embedded."
 }
-if ($ValidationOnly) {
-    $ValidationRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot (".tool-stage\" + $ValidationName)))
-    if (-not $ValidationRoot.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Unsafe validation target: $ValidationRoot"
-    }
-    if (Test-Path -LiteralPath $ValidationRoot) {
-        if ($ValidationName -ne "package-validation") { throw "Independent validation output already exists: $ValidationRoot" }
-        Remove-Item -LiteralPath $ValidationRoot -Recurse -Force
-    }
-    New-Item -ItemType Directory -Force -Path $ValidationRoot | Out-Null
-    $BuildRoot = Join-Path $ValidationRoot "build"
-    $DistRoot = Join-Path $ValidationRoot "dist"
-    $SmokeData = Join-Path $ValidationRoot "smoke-data"
-} else {
-    & $Python (Join-Path $RepoRoot "scripts\generate_assets.py")
-    $BuildRoot = Join-Path $RepoRoot "build"
-    $DistRoot = Join-Path $RepoRoot "dist"
-    $SmokeData = Join-Path $RepoRoot ".package-smoke-data"
-    $CleanTargets = @($BuildRoot, $DistRoot)
-    foreach ($Target in $CleanTargets) {
-        $ResolvedTarget = [System.IO.Path]::GetFullPath($Target)
-        if (-not $ResolvedTarget.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Unsafe build target: $ResolvedTarget"
-        }
-        if (Test-Path -LiteralPath $ResolvedTarget) {
-            Remove-Item -LiteralPath $ResolvedTarget -Recurse -Force
-        }
-    }
-}
-
-if ($ValidationOnly) {
-    $TestTempBase = $ValidationRoot
-}
-else {
-    $TestTempBase = Join-Path $RepoRoot ".tool-stage"
-}
-$TestTemp = Join-Path $TestTempBase ("build-pytest-" + [guid]::NewGuid().ToString("N"))
+# Scratch builds and test data are outside the checkout and bounded per task.
+. (Join-Path $PSScriptRoot 'dev-staging.ps1')
+$Session = New-DevSession 'build'
+$Success = $false
+$PreviousPyinstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+try {
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $Session.Path 'pyinstaller-cache'
+$ValidationRoot = $Session.Path
+$BuildRoot = Join-Path $Session.Path 'build'
+$DistRoot = Join-Path $Session.Path 'dist'
+$SmokeData = Join-Path $Session.Path 'smoke-data'
+$TestTemp = Join-Path $Session.Path 'pytest'
 New-Item -ItemType Directory -Force -Path $TestTemp | Out-Null
+if (-not $ValidationOnly) {
+    & $Python (Join-Path $RepoRoot 'scripts\generate_assets.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Asset generation failed' }
+}
 $OriginalTemp = $env:TEMP
 $OriginalTmp = $env:TMP
 $env:TEMP = $TestTemp
@@ -186,7 +165,7 @@ $Manifest | Sort-Object Path | ConvertTo-Json | Set-Content -LiteralPath (Join-P
 if ($LASTEXITCODE -ne 0) { throw "Packaged ownership validation failed." }
 
 if ($ValidationOnly) {
-    $Artifacts = Join-Path $ValidationRoot "artifacts"
+    $Artifacts = Join-Path $RepoRoot "release"
     New-Item -ItemType Directory -Force -Path $Artifacts | Out-Null
     $Zip = Join-Path $Artifacts "YTDownloader-$Version-validation-only-win64.zip"
     if (Test-Path -LiteralPath $Zip) { Remove-Item -LiteralPath $Zip -Force }
@@ -205,4 +184,16 @@ if ($ValidationOnly) {
     $ZipHash = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$ZipHash *$([System.IO.Path]::GetFileName($Zip))" | Set-Content -LiteralPath "$Zip.sha256.txt" -Encoding ASCII
 }
-Write-Host "Build ready: $Exe"
+if ($SkipZip -and -not $ValidationOnly) {
+    # Explicitly requested non-ZIP output is a deliverable, not scratch.
+    $Output = Join-Path $RepoRoot 'dist'
+    if (Test-Path -LiteralPath (Join-Path $Output 'YTDownloader')) { throw 'dist/YTDownloader already exists; refusing overwrite' }
+    New-Item -ItemType Directory -Force -Path $Output | Out-Null
+    Move-Item -LiteralPath $Dist -Destination $Output
+    Write-Host "Build ready: $Output"
+} else { Write-Host "Build ready: $Zip" }
+$Success = $true
+} finally {
+    $env:PYINSTALLER_CONFIG_DIR = $PreviousPyinstallerConfig
+    Close-DevSession $Session $Success
+}
