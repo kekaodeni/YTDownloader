@@ -20,6 +20,7 @@ from yt_downloader.updates.models import (
     UpdateCapability, UpdateManifest, UpdateProgress, UpdateRelease, UpdateState, VerifiedUpdatePackage,
 )
 from yt_downloader.updates.state import UpdatePersistentState, UpdateStateStore
+from yt_downloader.updates.protocol import compatible
 from yt_downloader.workers.function_worker import FunctionWorker
 
 
@@ -36,6 +37,7 @@ class UpdateService(QObject):
     ready = Signal(object)
     cancelled = Signal()
     failed = Signal(object, bool)
+    install_prepared = Signal(object)
 
     def __init__(
         self,
@@ -75,7 +77,7 @@ class UpdateService(QObject):
         self._workers: list[FunctionWorker] = []
 
     def check(self, *, manual: bool) -> bool:
-        if self.state in {UpdateState.CHECKING, UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING}:
+        if self.state in {UpdateState.CHECKING, UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT, UpdateState.INSTALLING, UpdateState.ROLLING_BACK}:
             return False
         if not manual and not self.state_store.should_auto_check(self.now()):
             return False
@@ -89,20 +91,28 @@ class UpdateService(QObject):
         return True
 
     def _check_worker(self):
-        release = self.discovery.check(self.current_version)
-        if release is None:
+        releases = self.discovery.check(self.current_version)
+        if not releases:
             return None
-        raw = self.fetch_bytes(release.manifest_url)
-        signature = self.fetch_bytes(release.signature_url)
-        manifest = self.keyring.verify(raw, signature, release)
-        persisted = self.state_store.load()
-        if persisted.highest_verified_version:
-            if manifest.version < Version.parse(persisted.highest_verified_version):
-                raise ValueError('Verified update is older than the highest previously verified version')
-        return manifest, raw, signature
+        for release in releases:
+            raw = self.fetch_bytes(release.manifest_url)
+            signature = self.fetch_bytes(release.signature_url)
+            manifest = self.keyring.verify(raw, signature, release)
+            if not compatible(manifest, self.current_version, self.current_version):
+                continue
+            persisted = self.state_store.load()
+            if persisted.highest_verified_version:
+                if manifest.version < Version.parse(persisted.highest_verified_version):
+                    raise ValueError('Verified update is older than the highest previously verified version')
+            return manifest, raw, signature
+        return UpdateState.NO_COMPATIBLE_UPDATE
 
     def _check_succeeded(self, result, manual: bool) -> None:
         checked = self.now().isoformat()
+        if result is UpdateState.NO_COMPATIBLE_UPDATE:
+            self._save_state(replace(self.state_store.load(), last_checked_at=checked, last_error=''))
+            self._set_state(UpdateState.NO_COMPATIBLE_UPDATE)
+            return
         if result is None:
             self._save_state(replace(self.state_store.load(), last_checked_at=checked, last_error=''))
             self._set_state(UpdateState.UP_TO_DATE)
@@ -199,24 +209,33 @@ class UpdateService(QObject):
     def prepare_install_command(self, install_dir: Path, data_dir: Path, original_pid: int) -> tuple[str, ...] | None:
         if self.capability is not UpdateCapability.AUTO_INSTALL or self.verified_package is None:
             return None
-        install = Path(install_dir).resolve(strict=True)
-        updater = install / 'YTDownloaderUpdater.exe'
-        if not updater.is_file():
-            return None
+        from yt_downloader.updates.installation import InstallRequest, prepare, checked_path
+        install = checked_path(install_dir, exists=True)
+        data = checked_path(data_dir)
         transaction = self.verified_package.path.parent.resolve(strict=True)
-        try:
-            transaction.relative_to(self.staging_root.resolve(strict=True))
-        except ValueError:
-            return None
-        staged_updater = transaction / 'YTDownloaderUpdater.exe'
-        shutil.copy2(updater, staged_updater)
+        if transaction.parent != self.staging_root.resolve(strict=True) or transaction.name != 'update-' + self.verified_package.transaction_id:
+            raise ValueError('Stored update transaction identity changed')
+        return prepare(InstallRequest(transaction, install, data, self.current_version,
+                                      str(self.verified_package.manifest.version), original_pid), self.keyring)
+
+    def prepare_install(self, install_dir: Path, data_dir: Path, original_pid: int) -> bool:
+        if self.state is not UpdateState.READY_TO_INSTALL or self.capability is not UpdateCapability.AUTO_INSTALL:
+            return False
+        self._set_state(UpdateState.PREPARING_INSTALL)
+        worker = FunctionWorker(lambda: self.prepare_install_command(install_dir, data_dir, original_pid))
+        self._workers.append(worker)
+        worker.signals.result.connect(self._install_prepared)
+        worker.signals.error.connect(lambda error: self._operation_failed(error, True))
+        worker.signals.finished.connect(lambda: self._worker_finished(worker))
+        self.runner.start(worker)
+        return True
+
+    def _install_prepared(self, command) -> None:
+        if command is None:
+            self._set_state(UpdateState.FAILED)
+            return
         self._set_state(UpdateState.PREPARING_EXIT)
-        return (
-            str(staged_updater), '--transaction-dir', str(transaction),
-            '--install-dir', str(install), '--data-dir', str(Path(data_dir).resolve(strict=False)),
-            '--original-pid', str(original_pid), '--current-version', self.current_version,
-            '--target-version', str(self.verified_package.manifest.version),
-        )
+        self.install_prepared.emit(command)
 
     def restore_verified_package(self) -> bool:
         if self.capability is UpdateCapability.CHECK_ONLY:
@@ -238,6 +257,12 @@ class UpdateService(QObject):
                 f'https://github.com/kekaodeni/YTDownloader/releases/tag/v{version}',
             )
             manifest = self.keyring.verify(raw, signature, release)
+            # A staged manifest is untrusted again after a restart.  Reapply
+            # the same application/helper capability gate used by discovery
+            # before exposing the package as installable.
+            from yt_downloader.updates.protocol import compatible
+            if not compatible(manifest, self.current_version, self.current_version):
+                raise ValueError('Stored update protocol or minimum version is incompatible')
             package = transaction / manifest.package.name
             if package.stat().st_size != manifest.package.compressed_size:
                 raise ValueError('Stored update package length changed')

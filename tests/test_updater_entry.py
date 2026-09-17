@@ -31,3 +31,25 @@ def test_external_updater_refuses_replay_or_downgrade():
         validate_upgrade_versions('0.4.0', '0.4.0')
     with pytest.raises(ValueError, match='newer'):
         validate_upgrade_versions('0.4.0', '0.3.0')
+
+
+def test_manual_updater_without_transaction_arguments_exits_before_file_work():
+    from yt_downloader_updater.__main__ import _arguments
+    with pytest.raises(SystemExit):
+        _arguments([])
+
+
+def test_helper_with_missing_transaction_exits_without_mutating_install(tmp_path, monkeypatch):
+    from yt_downloader_updater import __main__ as entry
+    install = tmp_path / 'install'; install.mkdir()
+    data = tmp_path / 'data'; data.mkdir()
+    transaction = tmp_path / 'missing-transaction'
+    monkeypatch.setattr(entry, 'PRODUCTION_TRUSTED_KEYS', {'test': b'x' * 32})
+    with pytest.raises((ValueError, FileNotFoundError)):
+        entry.run([
+            '--transaction-dir', str(transaction), '--install-dir', str(install),
+            '--data-dir', str(data), '--original-pid', '1',
+            '--current-version', '0.4.2', '--target-version', '0.5.0',
+        ])
+    assert list(install.iterdir()) == []
+    assert not transaction.exists()

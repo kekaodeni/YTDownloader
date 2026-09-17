@@ -88,7 +88,10 @@ $Exe = Join-Path $Dist "YTDownloader.exe"
 if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "Packaged executable was not created." }
 $UpdaterSource = Join-Path $UpdaterDistRoot "YTDownloaderUpdater.exe"
 if (-not (Test-Path -LiteralPath $UpdaterSource -PathType Leaf)) { throw "Packaged updater executable was not created." }
-$UpdaterExe = Join-Path $Dist "YTDownloaderUpdater.exe"
+$HelperLayout = if ([version]$Version -ge [version]'0.5.0') { 'internal-v1' } else { 'legacy-root' }
+$UpdaterRelative = if ($HelperLayout -eq 'internal-v1') { "_internal\updater\YTDownloaderUpdater.exe" } else { "YTDownloaderUpdater.exe" }
+$UpdaterExe = Join-Path $Dist $UpdaterRelative
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $UpdaterExe) | Out-Null
 Copy-Item -LiteralPath $UpdaterSource -Destination $UpdaterExe -Force
 $ExeBytes = [System.IO.File]::ReadAllBytes($Exe)
 $PeOffset = [System.BitConverter]::ToInt32($ExeBytes, 0x3c)
@@ -115,7 +118,10 @@ $BuildInfo = [ordered]@{
     source_commit = $SourceCommit
     built_at_utc = [DateTime]::UtcNow.ToString("o")
     validation_only = [bool]$ValidationOnly
-    updater_protocol = 1
+    updater_protocol = if ($HelperLayout -eq 'internal-v1') { 2 } else { 1 }
+    helper_layout = $HelperLayout
+    updater_version = $Version
+    supported_update_protocols = if ($HelperLayout -eq 'internal-v1') { @(2) } else { @(1, 2) }
     tools = $ToolVersions
 }
 $BuildInfo | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Dist "BUILD-INFO.json") -Encoding UTF8

@@ -17,8 +17,8 @@ def release(version='0.4.1', *, prerelease=False, draft=False):
 
 
 def test_discovers_new_stable_release_with_exact_manifest_assets():
-    service = UpdateDiscoveryService(lambda _url: release())
-    found = service.check('0.4.0')
+    service = UpdateDiscoveryService(lambda _url: [release()])
+    found, = service.check('0.4.0')
     assert str(found.version) == '0.4.1'
     assert found.tag == 'v0.4.1'
     assert found.manifest_url.endswith('/v0.4.1/update-manifest.json')
@@ -27,14 +27,14 @@ def test_discovers_new_stable_release_with_exact_manifest_assets():
 
 @pytest.mark.parametrize('payload', [release('0.4.0'), release('0.4.1', prerelease=True), release('0.4.1', draft=True)])
 def test_ignores_current_prerelease_and_draft(payload):
-    assert UpdateDiscoveryService(lambda _url: payload).check('0.4.0') is None
+    assert UpdateDiscoveryService(lambda _url: [payload]).check('0.4.0') == ()
 
 
 def test_rejects_missing_or_untrusted_manifest_asset_url():
     payload = release()
     payload['assets'][0]['browser_download_url'] = 'https://evil.invalid/update-manifest.json'
     with pytest.raises(ValueError, match='official release repository'):
-        UpdateDiscoveryService(lambda _url: payload).check('0.4.0')
+        UpdateDiscoveryService(lambda _url: [payload]).check('0.4.0')
 
 
 def test_discovery_http_uses_proxy_without_netrc_cookies_or_credentials():

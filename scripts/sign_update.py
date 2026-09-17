@@ -17,6 +17,8 @@ def main() -> int:
     parser.add_argument('--key-id', required=True)
     parser.add_argument('--version', required=True)
     parser.add_argument('--minimum-auto-update-version', default='0.4.0')
+    parser.add_argument('--schema-version', type=int)
+    parser.add_argument('--minimum-updater-version')
     parser.add_argument('--notes-zh', required=True, type=Path)
     parser.add_argument('--notes-en', required=True, type=Path)
     parser.add_argument('--acceptance-report', required=True, type=Path)
@@ -30,6 +32,8 @@ def main() -> int:
         notes_zh_cn=args.notes_zh.read_text(encoding='utf-8'),
         notes_en=args.notes_en.read_text(encoding='utf-8'),
         acceptance_report_path=args.acceptance_report,
+        schema_version=args.schema_version,
+        minimum_updater_version=args.minimum_updater_version,
     )
     print('Created update-manifest.json and update-manifest.sig beside the package.')
     return 0

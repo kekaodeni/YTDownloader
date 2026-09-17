@@ -165,6 +165,8 @@ class UpdateSession(DialogSession):
             self.update(progress=1.0, canCancel=False, canDownload=False, canInstall=install,
                         canRelease=not install,
                         message='更新已验证，可在退出应用后安全安装。' if install else '更新已下载并验证；当前构建不支持自动安装。')
+        elif state in {UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT}:
+            self.update(message='正在复核更新并准备退出…', canInstall=False, canDownload=False, canCancel=False)
         elif state in {UpdateState.FAILED, UpdateState.AVAILABLE}:
             self.update(message='更新操作失败，可以重试。' if state is UpdateState.FAILED else '请选择更新方式。',
                         canCancel=False, canDownload=self.capability is not UpdateCapability.CHECK_ONLY)

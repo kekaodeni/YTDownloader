@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
 import json
 import os
@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import sys
 import time
+import hashlib
+from contextlib import contextmanager
 from typing import Callable, Protocol
 
 from yt_downloader.updates.archive import SafePackageExtractor
@@ -38,6 +40,46 @@ class UpdateTransactionJournal:
     backup_dir: str
     health_marker: str
     error: str = ''
+    schema_version: int = 2
+    source_version: str = ''
+    target_version: str = ''
+    source_layout: str = 'legacy-root'
+    target_layout: str = 'legacy-root'
+    manifest_sha256: str = ''
+    package_sha256: str = ''
+
+
+@contextmanager
+def installation_mutex(install: Path):
+    """OS-owned per-install lock, released even if the updater process crashes."""
+    if sys.platform == 'win32':
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel.CreateMutexW.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.ReleaseMutex.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        digest = hashlib.sha256(str(install.resolve(strict=False)).casefold().encode()).hexdigest()
+        handle = kernel.CreateMutexW(None, False, 'Local\\YTDownloader-update-' + digest)
+        if not handle:
+            raise OSError('Cannot create installation mutex')
+        acquired = False
+        try:
+            if kernel.WaitForSingleObject(handle, 0) not in (0, 0x80):
+                raise RuntimeError('Another update transaction owns this installation')
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                kernel.ReleaseMutex(handle)
+            kernel.CloseHandle(handle)
+    else:
+        import fcntl
+        with (install.parent / f'.{install.name}.update-lock').open('a+b') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield
 
 
 class _ProcessLike(Protocol):
@@ -95,7 +137,11 @@ class TransactionalInstaller:
         self.preflight = preflight or InstallPreflight()
         self.replace_path = replace_path or os.replace
 
-    def install(
+    def install(self, **kwargs) -> UpdateTransactionJournal:
+        with installation_mutex(kwargs['install_dir']):
+            return self._install(**kwargs)
+
+    def _install(
         self,
         *,
         transaction_id: str,
@@ -128,15 +174,23 @@ class TransactionalInstaller:
         journal_path = staging / 'update-transaction.json'
         lock_path = staging / 'update-transaction.lock'
         lock_fd = self._acquire_lock(lock_path)
-        journal = UpdateTransactionJournal(transaction_id, UpdateTransactionStage.PREPARED, str(install), str(candidate), str(backup), str(health))
-        self._save(journal_path, journal)
+        source_info = SafePackageExtractor._load_json(install/'BUILD-INFO.json')
+        binding_path = staging/'install-request.json'
+        binding = SafePackageExtractor._load_json(binding_path) if binding_path.is_file() else {}
+        journal = UpdateTransactionJournal(transaction_id, UpdateTransactionStage.PREPARED, str(install), str(candidate), str(backup), str(health),
+            source_version=str(source_info.get('app_version', '')), target_version=candidate_version,
+            source_layout=SafePackageExtractor.layout(source_info), target_layout=SafePackageExtractor.layout(candidate_build_info),
+            manifest_sha256=binding.get('manifest_sha256', ''), package_sha256=binding.get('package_sha256', ''))
         try:
+            self._save(journal_path, journal)
+            if health.exists():
+                raise ValueError('Pre-existing startup health marker is not allowed')
             journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_EXIT)
             if not self.wait_for_exit(original_pid, 30):
                 raise TimeoutError('Original application did not exit within 30 seconds')
-            self.replace_path(install, backup)
-            journal = self._advance(journal_path, journal, UpdateTransactionStage.ORIGINAL_BACKED_UP)
             try:
+                self.replace_path(install, backup)
+                journal = self._advance(journal_path, journal, UpdateTransactionStage.ORIGINAL_BACKED_UP)
                 self.replace_path(candidate, install)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.CANDIDATE_INSTALLED)
                 process = self.launch_health_check(install / 'YTDownloader.exe', transaction_id, health)
@@ -147,7 +201,8 @@ class TransactionalInstaller:
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.COMMITTED)
                 return journal
             except BaseException as exc:
-                self._rollback(journal_path, journal, install, candidate, backup, exc)
+                if backup.exists():
+                    self._rollback(journal_path, journal, install, candidate, backup, exc)
                 raise
         finally:
             os.close(lock_fd)
@@ -157,6 +212,13 @@ class TransactionalInstaller:
                 pass
 
     def recover(self, staging_dir: Path) -> UpdateTransactionJournal:
+        raw = SafePackageExtractor._load_json(staging_dir/'update-transaction.json')
+        if not isinstance(raw, dict) or not isinstance(raw.get('install_dir'), str):
+            raise ValueError('Invalid recovery journal')
+        with installation_mutex(Path(raw['install_dir'])):
+            return self._recover(staging_dir)
+
+    def _recover(self, staging_dir: Path) -> UpdateTransactionJournal:
         """Idempotently restore the last known-good tree after an interrupted switch."""
         staging = staging_dir.resolve(strict=True)
         path = staging / 'update-transaction.json'
@@ -170,10 +232,17 @@ class TransactionalInstaller:
                 backup_dir=str(raw['backup_dir']),
                 health_marker=str(raw['health_marker']),
                 error=str(raw.get('error', '')),
+                schema_version=raw.get('schema_version', 1),
+                source_version=str(raw.get('source_version', '')),
+                target_version=str(raw.get('target_version', '')),
+                source_layout=str(raw.get('source_layout', 'legacy-root')),
+                target_layout=str(raw.get('target_layout', 'legacy-root')),
+                manifest_sha256=str(raw.get('manifest_sha256', '')),
+                package_sha256=str(raw.get('package_sha256', '')),
             )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError('Update transaction journal is invalid') from exc
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', journal.transaction_id):
+        if type(journal.schema_version) is not int or journal.schema_version not in {1, 2} or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', journal.transaction_id):
             raise ValueError('Update transaction journal is invalid')
         install = Path(journal.install_dir).resolve(strict=False)
         candidate = Path(journal.candidate_dir).resolve(strict=False)
@@ -187,11 +256,15 @@ class TransactionalInstaller:
         ):
             raise ValueError('Update transaction paths failed ownership validation')
         if journal.stage in {UpdateTransactionStage.COMMITTED, UpdateTransactionStage.ROLLED_BACK}:
+            SafePackageExtractor.validate_tree(install)
             return journal
-        if journal.stage in {UpdateTransactionStage.PREPARED, UpdateTransactionStage.WAITING_FOR_EXIT}:
+        if journal.stage in {UpdateTransactionStage.PREPARED, UpdateTransactionStage.WAITING_FOR_EXIT} and not backup.exists():
+            SafePackageExtractor.validate_tree(install)
             return journal
         rolling = self._advance(path, journal, UpdateTransactionStage.ROLLING_BACK, error=journal.error or 'Recovered interrupted transaction')
         try:
+            if backup.exists():
+                SafePackageExtractor.validate_tree(backup, expected_version=journal.source_version or None, expected_layout=journal.source_layout)
             if install.exists() and backup.exists():
                 if candidate.exists():
                     raise FileExistsError('Failed candidate path is already occupied')
@@ -200,6 +273,7 @@ class TransactionalInstaller:
                 self.replace_path(backup, install)
             if not install.is_dir():
                 raise FileNotFoundError('Known-good installation could not be restored')
+            SafePackageExtractor.validate_tree(install, expected_version=journal.source_version or None)
             return self._advance(path, rolling, UpdateTransactionStage.ROLLED_BACK, error=rolling.error)
         except BaseException as exc:
             self._advance(path, rolling, UpdateTransactionStage.ROLLBACK_FAILED, error=str(exc))
@@ -232,7 +306,7 @@ class TransactionalInstaller:
 
     @classmethod
     def _advance(cls, path: Path, journal: UpdateTransactionJournal, stage: UpdateTransactionStage, *, error: str = '') -> UpdateTransactionJournal:
-        updated = UpdateTransactionJournal(journal.transaction_id, stage, journal.install_dir, journal.candidate_dir, journal.backup_dir, journal.health_marker, error)
+        updated = replace(journal, stage=stage, error=error)
         cls._save(path, updated)
         return updated
 
@@ -241,7 +315,10 @@ class TransactionalInstaller:
         temporary = path.with_suffix('.tmp')
         payload = asdict(journal)
         payload['stage'] = journal.stage.value
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        with temporary.open('w', encoding='utf-8') as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, path)
 
 
