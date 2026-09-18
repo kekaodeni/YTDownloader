@@ -2,7 +2,7 @@
 import math
 from collections.abc import Mapping
 
-from yt_downloader.core.formats import normalize_formats
+from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
 from yt_downloader.core.models import CodecPreference, PlaylistMetadata, ResolvedMedia, SubtitleTrack
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
@@ -44,6 +44,10 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
     formats = () if is_playlist else tuple(normalize_formats(
         [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')],
         duration=duration, codec_preference=codec_preference))
+    usable = [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')]
+    audios = tuple(normalize_audio_formats(usable)) if not is_playlist else ()
+    videos = tuple(normalize_formats([item for item in usable if item.get('acodec') == 'none'],
+                                    duration=duration, codec_preference=codec_preference)) if not is_playlist else ()
     media_type = 'playlist' if is_playlist else 'live' if info.get('is_live') else 'audio' if info.get('vcodec') == 'none' else 'video'
     playlist = None
     if is_playlist or any(info.get(name) is not None for name in ('playlist_id', 'playlist_title', 'playlist_index')):
@@ -65,6 +69,7 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         title=str(info.get('title') or '未命名媒体'),
         channel=str(info.get('channel') or info.get('uploader') or '未知作者'),
         duration=duration, thumbnail_url=thumbnail, thumbnail_bytes=None, formats=formats,
+        audio_formats=audios, video_only_formats=videos,
         extractor=extractor, extractor_key=extractor_key, original_url=original_url,
         webpage_url=webpage_url, media_type=media_type, uploader=str(info.get('uploader') or ''),
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,

@@ -59,7 +59,9 @@ class DownloadPresenter(ViewState):
         super().__init__(parent, url='', filename='', directory=directory, ready=False,
                          busy=False, cancelling=False, parseText='解析', parseHint='',
                          clipboardHint='', title='', meta='', thumbnail='', formats=[],
-                         formatIndex=0, technical='', compatibilityHint='', mediaHint='')
+                         formatIndex=0, technical='', compatibilityHint='', mediaHint='',
+                         mediaMode='video_audio', audioCodec='original', audioQuality='original',
+                         modeHint='')
         self.images = images
         self.video: VideoInfo | None = None
         self.parse_state = ParseState.IDLE
@@ -131,6 +133,44 @@ class DownloadPresenter(ViewState):
                     formats=labels, formatIndex=selected, filename=sanitize_filename(video.title),
                     directory=self._default_directory)
         self.selectFormat(selected)
+        self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
+        if self._state['mediaMode'] == 'video_audio':
+            self.selectFormat(selected)
+
+    @property
+    def available_formats(self):
+        if not self.video:
+            return ()
+        mode = self._state['mediaMode']
+        if mode == 'audio_only':
+            choices = self.video.audio_formats
+            codec = self._state['audioCodec']
+            matching = tuple(option for option in choices if
+                             (codec == 'm4a' and option.acodec.startswith(('mp4a', 'aac'))) or
+                             (codec == 'opus' and option.acodec == 'opus'))
+            return matching or choices
+        if mode == 'video_only':
+            return self.video.video_only_formats
+        return self.video.formats
+
+    @Slot(str)
+    def selectMode(self, mode):
+        if mode not in {'video_audio', 'video_only', 'audio_only'}:
+            return
+        self.update(mediaMode=mode)
+        options = self.available_formats
+        hint = '仅视频：文件不会包含声音' if mode == 'video_only' else '目标码率不会提升源音频质量。' if mode == 'audio_only' else ''
+        if not options:
+            hint = '此媒体没有该模式可用的独立流，请选择其他下载模式。'
+        self.update(formats=[option.label for option in options], formatIndex=0, modeHint=hint, technical='')
+        self.selectFormat(0)
+
+    @Slot(str, str)
+    def selectAudio(self, codec, quality):
+        if codec not in {'original', 'm4a', 'mp3', 'opus', 'flac'} or quality not in {'original', '320', '256', '192', '128'}:
+            return
+        self.update(audioCodec=codec, audioQuality=quality)
+        self.selectMode(self._state['mediaMode'])
 
     def set_thumbnail(self, media_key, thumbnail_bytes):
         if self.video is None or self.video.media_key != media_key:
@@ -144,9 +184,9 @@ class DownloadPresenter(ViewState):
 
     @Slot(int)
     def selectFormat(self, index):
-        if self.video is None or not 0 <= index < len(self.video.formats):
+        if self.video is None or not 0 <= index < len(self.available_formats):
             return
-        option = self.video.formats[index]
+        option = self.available_formats[index]
         size = format_bytes(option.estimated_size)
         size_text = '大小未知' if option.estimated_size is None else f'估算 {size}' if option.size_is_estimate else f'大小 {size}'
         self.update(formatIndex=index, technical=f'{option.technical_summary}  ·  {size_text}')
@@ -163,13 +203,15 @@ class DownloadPresenter(ViewState):
     @Slot()
     def requestDownload(self):
         index = self._state['formatIndex']
-        if self.video and 0 <= index < len(self.video.formats) and not self._state['busy']:
-            self.download_requested.emit(self.video, self.video.formats[index], self._state['filename'], self._state['directory'])
+        if self.video and 0 <= index < len(self.available_formats) and not self._state['busy']:
+            self.download_requested.emit(self.video, self.available_formats[index], self._state['filename'], self._state['directory'])
 
     def add_task(self, request):
+        from yt_downloader.services.download_options import prepare_request
+        effective = prepare_request(request)
         card = TaskPresentation(request)
         card.values = dict(id=request.task_id, title=request.video.title,
-                           quality=f'{request.format.label} · {request.format.container}',
+                           quality=f'{effective.format.label} · {effective.format.container}',
                            thumbnail=self.images.add(request.video.thumbnail_bytes) if request.video.thumbnail_bytes else '',
                            cancel=True, cancelEnabled=True, cancelText='取消', open=False, folder=False)
         card.progress(DownloadProgress(request.task_id, TaskStatus.PENDING))

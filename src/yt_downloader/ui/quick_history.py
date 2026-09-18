@@ -40,7 +40,7 @@ class HistoryPresenter(ViewState):
     @Slot(str)
     def requestThumbnail(self, task_id):
         record = next((r for r in self.records if r.task_id == task_id), None)
-        if self._images and record and record.status is TaskStatus.COMPLETED:
+        if self._images and record and record.status is TaskStatus.COMPLETED and record.media_mode != 'audio_only':
             self._images.request(task_id, record.file_path)
 
     def invalidate_thumbnail(self, task_id):

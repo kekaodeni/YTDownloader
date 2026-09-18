@@ -124,7 +124,7 @@ class MediaResolver:
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
             media = resolve_metadata(info, normalized, self.codec_preference)
-            if not media.formats and media.media_type != 'playlist':
+            if not media.formats and not media.audio_formats and media.media_type != 'playlist':
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (info.get('formats') or []) if isinstance(item, Mapping))
                 raise AppError(
                     'DRM_UNSUPPORTED' if drm else 'formats_unavailable',

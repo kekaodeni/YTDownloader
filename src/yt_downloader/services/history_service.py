@@ -68,8 +68,25 @@ class HistoryRepository:
                     PRAGMA user_version=1;
                 """)
                 version = 1
-            if version != 1:
+            if version == 1:
+                backup = self.database_path.with_suffix(self.database_path.suffix + '.v1.bak')
+                if not backup.exists():
+                    with sqlite3.connect(backup) as destination:
+                        connection.backup(destination)
+                # DDL and version change commit together; failure rolls back the
+                # complete migration, leaving the original database usable.
+                connection.execute('BEGIN IMMEDIATE')
+                self._migrate_media_fields(connection)
+                connection.execute('PRAGMA user_version=2')
+                version = 2
+            if version != 2:
                 raise RuntimeError(f"Unsupported history database version: {version}")
+
+    @staticmethod
+    def _migrate_media_fields(connection):
+        for field, default in (('media_mode', 'video_audio'), ('audio_codec', 'original'),
+                               ('audio_bitrate', 'original'), ('container', '')):
+            connection.execute(f"ALTER TABLE downloads ADD COLUMN {field} TEXT NOT NULL DEFAULT '{default}'")
 
     def upsert(self, record: HistoryRecord) -> None:
         with self._connection() as connection:
@@ -96,6 +113,8 @@ class HistoryRepository:
                 record.status.value, record.created_at, record.completed_at,
                 record.error_summary,
             ))
+            connection.execute('UPDATE downloads SET media_mode=?, audio_codec=?, audio_bitrate=?, container=? WHERE task_id=?',
+                               (record.media_mode, record.audio_codec, record.audio_bitrate, record.container, record.task_id))
 
     def update_status(
         self,
@@ -193,4 +212,6 @@ class HistoryRepository:
             created_at=row["created_at"],
             completed_at=row["completed_at"],
             error_summary=row["error_summary"],
+            media_mode=row['media_mode'], audio_codec=row['audio_codec'],
+            audio_bitrate=row['audio_bitrate'], container=row['container'],
         )

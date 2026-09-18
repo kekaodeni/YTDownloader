@@ -58,6 +58,12 @@ class CodecPreference(StrEnum):
     H264 = "h264"
 
 
+class MediaMode(StrEnum):
+    VIDEO_AUDIO = "video_audio"
+    VIDEO_ONLY = "video_only"
+    AUDIO_ONLY = "audio_only"
+
+
 class SizeKind(StrEnum):
     EXACT = "EXACT"
     ESTIMATED = "ESTIMATED"
@@ -103,6 +109,8 @@ class FormatOption:
     video_protocol: str = ""
     audio_protocol: str = ""
     size_kind: SizeKind = SizeKind.UNKNOWN
+    video_extension: str = ''
+    audio_extension: str = ''
 
     @property
     def display_height(self) -> int | None:
@@ -114,6 +122,8 @@ class FormatOption:
 
     @property
     def technical_summary(self) -> str:
+        if self.vcodec == 'none':
+            return f'{self.container} · {self.acodec.upper()} · 仅音频'
         codec = self.vcodec.split(".", 1)[0].upper()
         audio = self.acodec.split(".", 1)[0].upper() if self.acodec != "none" else "无音频"
         merge = " · 需要自动合并" if self.requires_merge else ""
@@ -143,6 +153,8 @@ class ResolvedMedia:
     automatic_captions: tuple[SubtitleTrack, ...] = ()
     playlist: PlaylistMetadata | None = None
     compatibility: str = 'EXPERIMENTAL'
+    audio_formats: tuple[FormatOption, ...] = ()
+    video_only_formats: tuple[FormatOption, ...] = ()
 
     @property
     def media_key(self) -> str:
@@ -180,6 +192,9 @@ class DownloadRequest:
     format: FormatOption
     output_directory: Path
     filename_stem: str
+    media_mode: MediaMode = MediaMode.VIDEO_AUDIO
+    audio_codec: str = 'original'
+    audio_quality: str = 'original'
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +232,10 @@ class HistoryRecord:
     created_at: str
     completed_at: str | None = None
     error_summary: str | None = None
+    media_mode: str = 'video_audio'
+    audio_codec: str = 'original'
+    audio_bitrate: str = 'original'
+    container: str = ''
 
 
 @dataclass(frozen=True, slots=True)

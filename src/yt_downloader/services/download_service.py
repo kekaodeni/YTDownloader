@@ -36,6 +36,7 @@ from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.download_tuning import AUTO_FRAGMENT_COUNT
 from yt_downloader.services.task_artifacts import TaskArtifactRegistry
+from yt_downloader.services.download_options import media_options, prepare_request
 
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,7 @@ class DownloadService:
         progress_callback: Callable[[DownloadProgress], None],
         cancel_event: threading.Event,
     ) -> DownloadResult:
+        request = prepare_request(request)
         output_directory = request.output_directory.expanduser().resolve()
         context = ErrorContext(
             url=request.video.url,
@@ -278,7 +280,7 @@ class DownloadService:
         if self.require_tools:
             if not self.deno_path or not self.deno_path.is_file():
                 raise AppError("deno_missing", "缺少内置 Deno，无法开始下载。", "Deno not found", context)
-            if request.format.requires_merge and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
+            if (request.format.requires_merge or request.audio_codec != 'original') and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
                 raise AppError("ffmpeg_missing", "缺少 FFmpeg，无法合并视频与音频。", "FFmpeg not found", context)
 
         self._validate_output_directory(output_directory, request.format.estimated_size)
@@ -362,7 +364,7 @@ class DownloadService:
                 format_id = str((data.get("info_dict") or {}).get("format_id") or "")
                 stage = (
                     TaskStatus.DOWNLOADING_AUDIO
-                    if request.format.audio_format_id and format_id == request.format.audio_format_id
+                    if request.media_mode == 'audio_only' or (request.format.audio_format_id and format_id == request.format.audio_format_id)
                     else TaskStatus.DOWNLOADING_VIDEO
                 )
                 emit(stage, data)
@@ -394,9 +396,7 @@ class DownloadService:
             "continuedl": True,
             "overwrites": False,
             "nopart": False,
-            "format": request.format.format_selector,
             "outtmpl": {"default": output_template},
-            "merge_output_format": request.format.final_ext,
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [postprocessor_hook],
             "logger": ydl_logger,
@@ -412,6 +412,7 @@ class DownloadService:
             # Kept private to this app; test doubles use it without parsing an output template.
             "final_path": str(final_path),
         }
+        options.update(media_options(request))
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:
@@ -429,11 +430,11 @@ class DownloadService:
 
             validator = self.media_validator
             if validator is None and self.ffmpeg_path:
-                validator = FfmpegService(ffmpeg_path=self.ffmpeg_path).has_audio_and_video
+                validator = lambda path: FfmpegService(ffmpeg_path=self.ffmpeg_path).has_media_streams(path, request.media_mode)
             if validator and not validator(final_path):
                 raise AppError(
                     "media_validation_failed",
-                    "下载完成，但文件没有同时包含视频和音频流。",
+                    "下载完成，但文件中的音视频流与所选下载模式不一致。",
                     "ffprobe stream validation failed",
                     context,
                 )

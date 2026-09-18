@@ -75,7 +75,7 @@ def test_generic_reports_redact_url_credentials_and_signed_query():
     assert 'supersecret' not in result and 'secret-signature' not in result and 'private-token' not in result
 
 
-def test_generic_record_coexists_with_legacy_history_without_migration(tmp_path):
+def test_generic_record_coexists_with_legacy_history(tmp_path):
     import sqlite3
     from test_history_repository import _record
     from yt_downloader.core.models import TaskStatus
@@ -86,6 +86,6 @@ def test_generic_record_coexists_with_legacy_history_without_migration(tmp_path)
     media = service_for(media_fixture('BiliBili', 'https://www.bilibili.com/video/BV1xx411c7mD')).fetch_metadata('https://www.bilibili.com/video/BV1xx411c7mD', include_thumbnail=False)
     repository.upsert(replace(original, task_id='generic', video_id=media.media_key, url=media.webpage_url, title=media.title))
     with sqlite3.connect(tmp_path/'history.db') as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 1
+        assert db.execute('PRAGMA user_version').fetchone()[0] == 2
         assert db.execute('SELECT video_id,url FROM downloads WHERE task_id=?', ('legacy',)).fetchone() == (original.video_id, original.url)
         assert db.execute('SELECT video_id,url FROM downloads WHERE task_id=?', ('generic',)).fetchone() == (media.media_key, media.webpage_url)

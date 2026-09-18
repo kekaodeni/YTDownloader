@@ -186,6 +186,13 @@ class FfmpegService:
         types = {stream.get("codec_type") for stream in payload.get("streams", [])}
         return {"audio", "video"}.issubset(types)
 
+    def has_media_streams(self, media_path: str | Path, mode: str) -> bool:
+        payload = self.probe(media_path)
+        types = {stream.get('codec_type') for stream in payload.get('streams', [])
+                 if not stream.get('disposition', {}).get('attached_pic')}
+        required = {'video_audio': {'video', 'audio'}, 'video_only': {'video'}, 'audio_only': {'audio'}}[mode]
+        return types.intersection({'video', 'audio'}) == required
+
     def extract_frame(
         self,
         media_path: str | Path,

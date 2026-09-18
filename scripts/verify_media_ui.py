@@ -30,6 +30,8 @@ def main():
                      title='通用媒体解析 · Generic media', url='https://vimeo.com/76979871',
                      original_url='https://vimeo.com/76979871', webpage_url='https://vimeo.com/76979871',
                      compatibility='VERIFIED')
+    source = replace(source, video_only_formats=(replace(source.formats[0], acodec='none', audio_format_id=None, requires_merge=False),),
+                     audio_formats=(replace(source.formats[0], vcodec='none', video_format_id='140', audio_format_id=None, audio_extension='m4a', requires_merge=False),))
     captures = []
     def find(name):
         item = window.root.findChild(QObject, name)
@@ -56,12 +58,18 @@ def main():
             assert find('downloadButton').property('enabled')
             assert not find('compatibilityHint').property('visible')
             snapshot(mode+'-verified')
+            for media_mode in ('video_only', 'audio_only'):
+                page.selectMode(media_mode)
+                yield 300
+                assert find('downloadButton').property('enabled')
+                assert find('formatCombo').property('visible') == (media_mode != 'audio_only')
+                snapshot(mode+'-'+media_mode)
             page.show_video(replace(source, extractor='OtherExtractor', compatibility='EXPERIMENTAL'))
             yield 300
             assert find('compatibilityHint').property('visible')
             assert find('downloadButton').property('enabled')
             snapshot(mode+'-experimental')
-            page.show_video(replace(source, media_type='playlist', formats=(), playlist=PlaylistMetadata('collection', '集合')))
+            page.show_video(replace(source, media_type='playlist', formats=(), audio_formats=(), video_only_formats=(), playlist=PlaylistMetadata('collection', '集合')))
             yield 300
             assert not find('downloadButton').property('enabled')
             snapshot(mode+'-playlist-summary')

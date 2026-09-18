@@ -121,6 +121,8 @@ def normalize_formats(
             requires_merge=bool(audio_id),
             video_format_id=video_id,
             audio_format_id=audio_id,
+            video_extension=video_ext,
+            audio_extension=audio_ext,
             width=width,
             size_is_estimate=size_is_estimate,
             video_size=video_size,
@@ -157,4 +159,20 @@ def normalize_formats(
             key=lambda option: (option.display_height or 0, -abs((option.fps or 0) - 30)),
         ) if compatible else options[0]
         options = [replace(option, is_recommended=option is recommended) for option in options]
+    return options
+
+
+def normalize_audio_formats(raw_formats):
+    options = []
+    for item in sorted(raw_formats, key=lambda value: float(value.get('abr') or value.get('tbr') or 0), reverse=True):
+        if item.get('vcodec') != 'none' or item.get('acodec') in {None, 'none'} or not item.get('format_id'):
+            continue
+        ext = str(item.get('ext') or 'm4a')
+        size, estimate = _size(item)
+        bitrate = item.get('abr')
+        label = ext.upper() + (f' · {round(bitrate)} kbps' if isinstance(bitrate, (int, float)) else ' · Original')
+        options.append(FormatOption(label, None, None, 'none', str(item['acodec']), ext.upper(),
+                                    ext, str(item['format_id']), size, False, str(item['format_id']),
+                                    audio_extension=ext, video_size=size, audio_size=size,
+                                    size_is_estimate=estimate, video_protocol=str(item.get('protocol') or '')))
     return options

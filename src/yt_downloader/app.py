@@ -276,6 +276,9 @@ class AppController:
         self.window.download_page.show_video(video, preferred_quality=preferred)
         if retry:
             self._pending_retry = None
+            if retry.media_mode != 'video_audio':
+                self.window.download_page.selectAudio(retry.audio_codec, retry.audio_quality if isinstance(retry, DownloadRequest) else retry.audio_bitrate)
+                self.window.download_page.selectMode(str(retry.media_mode))
             self.window.download_page.set_retry_defaults(
                 retry.filename_stem if isinstance(retry, DownloadRequest) else retry.file_path.stem or video.title,
                 str(retry.output_directory if isinstance(retry, DownloadRequest) else retry.file_path.parent),
@@ -473,12 +476,20 @@ class AppController:
             if not directory.strip():
                 raise ValueError("下载目录不能为空。")
             stem = sanitize_filename(filename, directory=output, extension=f".{option.final_ext}")
-            request = DownloadRequest(uuid.uuid4().hex, video, option, output, stem)
+            state = self.window.download_page.state
+            request = DownloadRequest(uuid.uuid4().hex, video, option, output, stem,
+                                      media_mode=state['mediaMode'], audio_codec=state['audioCodec'],
+                                      audio_quality=state['audioQuality'])
+            from yt_downloader.services.download_options import prepare_request
+            effective = prepare_request(request)
+            option = effective.format
             created = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             record = HistoryRecord(
                 request.task_id, video.media_key, redact_sensitive(video.url), video.title,
                 output / f"{stem}.{option.final_ext}", option.label, None, None,
                 TaskStatus.PENDING, created,
+                media_mode=str(request.media_mode), audio_codec=request.audio_codec,
+                audio_bitrate=request.audio_quality, container=option.final_ext,
             )
             self.history.upsert(record)
             self._persisted_task_stages[request.task_id] = TaskStatus.PENDING
