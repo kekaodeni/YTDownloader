@@ -17,7 +17,7 @@ from yt_downloader.core.models import CodecPreference, ParseState
 from yt_downloader.infrastructure.windows_job import ProcessJob
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
-from yt_downloader.services.youtube_service import YoutubeService
+from yt_downloader.services.media_resolver import MediaResolver
 from yt_downloader.workers.request_gate import RequestToken
 
 
@@ -86,7 +86,7 @@ def metadata_process_entry(
     """Process entrypoint kept importable for PyInstaller spawn children."""
     try:
         network = NetworkPolicy(config.proxy_mode, config.custom_proxy_url)
-        service = YoutubeService(
+        service = MediaResolver(
             deno_path=Path(config.deno_path) if config.deno_path else None,
             require_deno=config.require_deno,
             network_policy=network,

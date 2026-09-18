@@ -185,7 +185,7 @@ def _download_error(message: str) -> tuple[str, str]:
     if "429" in lowered or "too many requests" in lowered:
         return "rate_limited", "请求过于频繁，请稍后再试。"
     if "403" in lowered or "forbidden" in lowered:
-        return "forbidden", "YouTube 拒绝了下载请求，请稍后重试或更新 yt-dlp。"
+        return "forbidden", "网站拒绝了下载请求，请稍后重试或更新 yt-dlp。"
     if "ffmpeg" in lowered:
         return "ffmpeg_failed", "FFmpeg 处理视频失败。"
     if "requested format" in lowered:

@@ -6,7 +6,7 @@ from yt_downloader.core.filename import ensure_unique_path, sanitize_filename
 def test_sanitizes_windows_names_without_losing_unicode() -> None:
     assert sanitize_filename('  中文😀: A/B*?"<>|.  ') == "中文😀_ A_B______"
     assert sanitize_filename("CON") == "_CON"
-    assert sanitize_filename("...   ") == "YouTube 视频"
+    assert sanitize_filename("...   ") == "未命名媒体"
 
 
 def test_limits_full_path_and_resolves_collisions(tmp_path: Path) -> None:

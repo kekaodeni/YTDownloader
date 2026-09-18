@@ -10,7 +10,7 @@ from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration, format_eta, format_speed
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
-from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
+from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.ui.quick_state import RowModel, ViewState
 
 
@@ -59,7 +59,7 @@ class DownloadPresenter(ViewState):
         super().__init__(parent, url='', filename='', directory=directory, ready=False,
                          busy=False, cancelling=False, parseText='解析', parseHint='',
                          clipboardHint='', title='', meta='', thumbnail='', formats=[],
-                         formatIndex=0, technical='')
+                         formatIndex=0, technical='', compatibilityHint='', mediaHint='')
         self.images = images
         self.video: VideoInfo | None = None
         self.parse_state = ParseState.IDLE
@@ -75,8 +75,8 @@ class DownloadPresenter(ViewState):
 
     def set_clipboard_hint(self, text):
         try:
-            normalized = normalize_youtube_url(text)
-        except InvalidYoutubeUrl:
+            normalized = normalize_media_url(text)
+        except InvalidMediaUrl:
             self.update(clipboardHint='')
             return
         self.update(clipboardHint=f'剪贴板中有可用链接：{normalized}')
@@ -124,14 +124,16 @@ class DownloadPresenter(ViewState):
             labels.append(f'{option.label}（推荐）' if option.is_recommended else option.label)
             if (preferred_quality == 'recommended' and option.is_recommended) or option.label == preferred_quality:
                 selected = index
+        self.update(compatibilityHint='该网站由 yt-dlp 支持，但尚未经过 YTDownloader 完整验证。' if video.compatibility == 'EXPERIMENTAL' else '',
+                    mediaHint='已识别播放列表；列表选择将在后续版本提供，请粘贴单个视频链接。' if video.media_type == 'playlist' else '', technical='')
         self.update(ready=True, title=video.title, meta=f'{video.channel}  ·  {format_duration(video.duration)}',
                     thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',
                     formats=labels, formatIndex=selected, filename=sanitize_filename(video.title),
                     directory=self._default_directory)
         self.selectFormat(selected)
 
-    def set_thumbnail(self, video_id, thumbnail_bytes):
-        if self.video is None or self.video.video_id != video_id:
+    def set_thumbnail(self, media_key, thumbnail_bytes):
+        if self.video is None or self.video.media_key != media_key:
             return False
         source = self.images.add(thumbnail_bytes)
         if not source:

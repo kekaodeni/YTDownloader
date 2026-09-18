@@ -34,7 +34,7 @@ def sanitize_filename(
     name = unicodedata.normalize("NFC", value).strip()
     name = _INVALID.sub("_", name).rstrip(" .")
     if not name:
-        name = "YouTube 视频"
+        name = "未命名媒体"
     if _RESERVED.fullmatch(name):
         name = f"_{name}"
 
@@ -60,4 +60,3 @@ def ensure_unique_path(path: str | Path) -> Path:
         if not alternative.exists():
             return alternative
     raise FileExistsError("无法为下载文件生成不冲突的名称。")
-

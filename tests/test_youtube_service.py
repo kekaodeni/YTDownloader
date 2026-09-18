@@ -19,11 +19,12 @@ class FakeYdl(AbstractContextManager["FakeYdl"]):
         return None
 
     def extract_info(self, url: str, *, download: bool) -> dict[str, Any]:
-        assert url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert url.startswith("https://youtu.be/dQw4w9WgXcQ")
         assert download is False
         return {
             "id": "dQw4w9WgXcQ",
-            "webpage_url": url,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "extractor": "youtube", "extractor_key": "Youtube",
             "title": "测试视频 😀",
             "channel": "测试频道",
             "duration": 65,
@@ -85,11 +86,11 @@ def test_helper_metadata_payload_is_compact_and_thumbnail_is_deferred() -> None:
     assert video.thumbnail_url == "https://i.ytimg.com/thumb.jpg"
     assert video.thumbnail_bytes is None
     assert requested == []
-    assert video.raw == {
-        "id": "dQw4w9WgXcQ",
-        "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        "extractor": "youtube",
-    }
+    assert video.raw == {}
+    assert video.webpage_url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert video.extractor == "youtube"
+    assert video.original_url == "https://youtu.be/dQw4w9WgXcQ"
+
 
 
 def test_cancellation_after_thumbnail_response_discards_metadata() -> None:

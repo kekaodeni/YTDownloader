@@ -8,6 +8,7 @@ from PyInstaller.utils.hooks import collect_all
 root = Path(SPEC).resolve().parent
 yt_datas, yt_bins, yt_hidden = collect_all("yt_dlp")
 ejs_datas, ejs_bins, ejs_hidden = collect_all("yt_dlp_ejs")
+curl_datas, curl_bins, curl_hidden = collect_all("curl_cffi")
 qt_translations = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
 
 required = {
@@ -19,7 +20,7 @@ missing = [name for name, path in required.items() if not path.is_file()]
 if missing:
     raise SystemExit("Missing locked tools: " + ", ".join(missing) + ". Run scripts/prepare_tools.ps1 first.")
 
-datas = yt_datas + ejs_datas + [
+datas = yt_datas + ejs_datas + curl_datas + [
     (str(root / "assets"), "assets"),
     (str(root / "src" / "yt_downloader" / "ui" / "qml"), "yt_downloader/ui/qml"),
     (str(root / "licenses"), "third_party_licenses"),
@@ -27,12 +28,12 @@ datas = yt_datas + ejs_datas + [
     (str(root / "tools.lock.json"), "."),
     (str(qt_translations / "qtbase_zh_CN.qm"), "PySide6/translations"),
 ]
-binaries = yt_bins + ejs_bins + [
+binaries = yt_bins + ejs_bins + curl_bins + [
     (str(required["ffmpeg"]), "tools/ffmpeg"),
     (str(required["ffprobe"]), "tools/ffmpeg"),
     (str(required["deno"]), "tools/deno"),
 ]
-hiddenimports = yt_hidden + ejs_hidden + [
+hiddenimports = yt_hidden + ejs_hidden + curl_hidden + [
     "socks",
     "PySide6.QtQml",
     "PySide6.QtQuick",

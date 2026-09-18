@@ -31,12 +31,12 @@ from yt_downloader.infrastructure.shell import open_path, reveal_in_folder
 from yt_downloader.infrastructure.system_info import build_system_info
 from yt_downloader.infrastructure.self_test import run_packaged_self_test
 from yt_downloader.services.download_service import DownloadService
-from yt_downloader.services.error_report_service import build_error_report
+from yt_downloader.services.error_report_service import build_error_report, redact_sensitive
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.history_service import HistoryDeleteResult, HistoryRepository
 from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
-from yt_downloader.services.youtube_service import YoutubeService
+from yt_downloader.services.media_resolver import MediaResolver
 from yt_downloader.ui.quick_window import MainWindow
 from yt_downloader.ui.progress_dispatch import ProgressEventCoalescer
 from yt_downloader.ui.localization import install_qt_zh_cn_translator
@@ -139,7 +139,7 @@ class AppController:
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
         self.deno_path = find_tool("deno")
         self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
-        self.youtube = YoutubeService(
+        self.media = MediaResolver(
             deno_path=self.deno_path,
             network_policy=self.network,
             codec_preference=self.settings.codec_preference,
@@ -295,11 +295,11 @@ class AppController:
         token = self._thumbnail_gate.begin(video.url)
         cancel = threading.Event()
         self._thumbnail_cancel = cancel
-        worker = FunctionWorker(self.youtube.fetch_thumbnail, video.thumbnail_url, cancel)
+        worker = FunctionWorker(self.media.fetch_thumbnail, video.thumbnail_url, cancel)
         self._thumbnail_workers.append(worker)
         worker.signals.result.connect(
-            lambda data, current=token, video_id=video.video_id: self._thumbnail_result(
-                current, video_id, data
+            lambda data, current=token, media_key=video.media_key: self._thumbnail_result(
+                current, media_key, data
             )
         )
         worker.signals.error.connect(
@@ -312,9 +312,9 @@ class AppController:
         )
         QThreadPool.globalInstance().start(worker)
 
-    def _thumbnail_result(self, token: RequestToken, video_id: str, data: bytes) -> None:
+    def _thumbnail_result(self, token: RequestToken, media_key: str, data: bytes) -> None:
         if self._thumbnail_gate.is_current(token):
-            self.window.download_page.set_thumbnail(video_id, data)
+            self.window.download_page.set_thumbnail(media_key, data)
 
     def _thumbnail_error(self, token: RequestToken, error: AppError) -> None:
         if self._thumbnail_gate.is_current(token):
@@ -476,7 +476,7 @@ class AppController:
             request = DownloadRequest(uuid.uuid4().hex, video, option, output, stem)
             created = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             record = HistoryRecord(
-                request.task_id, video.video_id, video.url, video.title,
+                request.task_id, video.media_key, redact_sensitive(video.url), video.title,
                 output / f"{stem}.{option.final_ext}", option.label, None, None,
                 TaskStatus.PENDING, created,
             )
@@ -586,7 +586,7 @@ class AppController:
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
-            self.youtube.codec_preference = settings.codec_preference
+            self.media.codec_preference = settings.codec_preference
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))

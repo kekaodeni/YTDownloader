@@ -23,6 +23,7 @@ RUNTIME_DISTRIBUTIONS = (
     "semver",
     "cryptography",
     "cffi",
+    "curl-cffi",
     "pycparser",
     "brotli",
     "certifi",

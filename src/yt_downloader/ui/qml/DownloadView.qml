@@ -23,10 +23,10 @@ Item {
             UiField {
                 id: urlField; objectName: "urlInput"
                 Layout.fillWidth: true; implicitHeight: 46
-                placeholderText: "粘贴 YouTube 视频链接…"
+                placeholderText: "粘贴视频、播放列表或支持的网站链接…"
                 text: download.state.url
                 enabled: !download.state.busy
-                Accessible.name: "YouTube 视频链接"
+                Accessible.name: "视频、播放列表或网站链接"
                 onTextChanged: download.setField("url", text)
                 onAccepted: download.requestParse()
                 rightPadding: clearUrl.visible ? 40 : 12
@@ -79,6 +79,8 @@ Item {
                             Layout.fillWidth: true; spacing: 12
                             UiText { objectName: "videoTitle"; Layout.fillWidth: true; text: download.state.title; role: "CardTitle"; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
                             UiText { Layout.fillWidth: true; text: download.state.meta; color: theme.state.secondary; role: "Secondary"; elide: Text.ElideRight }
+                            UiText { objectName: "compatibilityHint"; Layout.fillWidth: true; visible: text.length > 0; text: download.state.compatibilityHint; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
+                            UiText { Layout.fillWidth: true; visible: text.length > 0; text: download.state.mediaHint; color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
                             UiCombo { objectName: "formatCombo"; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
                             UiField { objectName: "filenameInput"; Layout.fillWidth: true; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
                             RowLayout {
@@ -90,7 +92,7 @@ Item {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Item { Layout.fillWidth: true }
-                                UiButton { objectName: "downloadButton"; text: "开始下载"; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && !download.state.busy; onClicked: download.requestDownload() }
+                                UiButton { objectName: "downloadButton"; text: "开始下载"; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && download.state.formats.length > 0 && !download.state.busy; onClicked: download.requestDownload() }
                             }
                         }
                     }
@@ -118,7 +120,7 @@ Item {
                     UiButton { anchors.centerIn: parent; icon.source: assetsBase + "icons/arrow_download_regular.svg"; icon.width: 28; icon.height: 28; appearance: "quiet"; selected: true; enabled: false; Accessible.ignored: true }
                 }
                 UiText { width: parent.width; text: "从一个链接开始"; role: "SectionTitle"; horizontalAlignment: Text.AlignHCenter }
-                UiText { width: parent.width; text: "粘贴视频链接，解析后选择清晰度、文件名和保存位置。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+                UiText { width: parent.width; text: "粘贴支持的网站链接，解析单个视频后选择清晰度、文件名和保存位置。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             }
         }
     }

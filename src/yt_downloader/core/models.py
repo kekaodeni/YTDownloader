@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+import hashlib
 from typing import Any, Mapping
 
 
@@ -120,7 +121,7 @@ class FormatOption:
 
 
 @dataclass(frozen=True, slots=True)
-class VideoInfo:
+class ResolvedMedia:
     video_id: str
     url: str
     title: str
@@ -130,6 +131,46 @@ class VideoInfo:
     thumbnail_bytes: bytes | None
     formats: tuple[FormatOption, ...]
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    extractor: str = ''
+    extractor_key: str = ''
+    original_url: str = ''
+    webpage_url: str = ''
+    media_type: str = 'video'
+    uploader: str = ''
+    upload_date: str | None = None
+    description: str = ''
+    subtitles: tuple[SubtitleTrack, ...] = ()
+    automatic_captions: tuple[SubtitleTrack, ...] = ()
+    playlist: PlaylistMetadata | None = None
+    compatibility: str = 'EXPERIMENTAL'
+
+    @property
+    def media_key(self) -> str:
+        """Cross-extractor identity safe for matching and local file names."""
+        identity = '\0'.join((self.extractor, self.webpage_url or self.url, self.video_id))
+        return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleTrack:
+    language: str
+    extension: str
+    url: str
+    name: str = ''
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistMetadata:
+    id: str = ''
+    title: str = ''
+    index: int | None = None
+    count: int | None = None
+
+
+# Keep existing download/history consumers and older fixtures source-compatible.
+# video_id is an extractor-local opaque ID, never a YouTube-specific identifier.
+VideoInfo = ResolvedMedia
+MediaInfo = ResolvedMedia
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,10 +9,10 @@ import sys
 from typing import Final
 
 from yt_downloader.core.errors import AppError
-from yt_downloader.core.url import InvalidYoutubeUrl, normalize_youtube_url
 
 
-_SECRET_NAMES: Final[str] = r"api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization|cookie"
+_SECRET_NAMES: Final[str] = r"api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization|cookie|signature|sig|credential"
+_URL_AUTH_RE = re.compile(r'(?i)(https?://)[^/@\s]+@')
 _HEADER_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*:\s*).*$")
 _JSON_RE = re.compile(rf"(?i)([\"'](?:{_SECRET_NAMES})[\"']\s*:\s*)[\"'][^\"']*[\"']")
 _KV_RE = re.compile(rf"(?i)\b({_SECRET_NAMES})(\s*=\s*)([^&\s,;]+)")
@@ -23,6 +23,7 @@ def redact_sensitive(text: str | None) -> str:
     if not text:
         return ""
     value = str(text)
+    value = _URL_AUTH_RE.sub(r'\1[REDACTED]@', value)
     value = _HEADER_RE.sub(lambda match: f"{match.group(1)}[REDACTED]", value)
     value = _JSON_RE.sub(lambda match: f'{match.group(1)}"[REDACTED]"', value)
     value = _KV_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value)
@@ -31,10 +32,7 @@ def redact_sensitive(text: str | None) -> str:
 
 
 def _safe_url(url: str) -> str:
-    try:
-        return normalize_youtube_url(url)
-    except InvalidYoutubeUrl:
-        return redact_sensitive(url)
+    return redact_sensitive(url)
 
 
 def build_error_report(
@@ -70,4 +68,3 @@ def build_error_report(
         lines.extend((f"{label}:", redact_sensitive(str(value)), ""))
     lines.append("--------------------------------")
     return "\n".join(lines)
-

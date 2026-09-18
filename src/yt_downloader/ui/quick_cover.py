@@ -1,6 +1,7 @@
 """Mechanical migration of the cover dialog's existing worker coordination."""
 from pathlib import Path
 import threading
+import hashlib
 
 from PySide6.QtCore import QThreadPool, Signal, Slot, QUrl
 from PySide6.QtGui import QImageReader, QDesktopServices
@@ -30,7 +31,8 @@ class CoverSession(DialogSession):
         self.ffmpeg = ffmpeg
         self.images = parent.images
         self.duration = 0.0
-        self.preview_path = output_directory / f'.{video_id}.preview.jpg'
+        identity = hashlib.sha256(f'{video_id}\0{media_path}'.encode('utf-8')).hexdigest()
+        self.preview_path = output_directory / f'.{identity}.preview.jpg'
         self._workers = []
         self._apply_cancel = threading.Event()
         self._reject_pending = False
