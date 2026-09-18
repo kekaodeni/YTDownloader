@@ -13,6 +13,10 @@ Item {
             ColumnLayout { Layout.fillWidth: true; spacing: 8
                 UiText { text: "YT Downloader"; role: "PageTitle"; font.pointSize: 23 }
                 UiText { text: "版本 " + shell.state.version; role: "Secondary"; color: theme.state.secondary }
+                Flow { Layout.fillWidth: true; spacing: 8
+                    UiButton { objectName: "aboutUpdateAction"; text: shell.state.updateChecking ? "正在检查…" : shell.state.updateAction; enabled: !shell.state.updateChecking; onClicked: shell.updateAction() }
+                }
+                UiText { Layout.fillWidth: true; text: shell.state.updateStatus; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
             }
             UiText { Layout.fillWidth: true; text: "简洁的 Windows 11 YouTube 单视频下载器，由 yt-dlp、FFmpeg 与 PySide6 驱动。"; color: theme.state.secondary; wrapMode: Text.Wrap }
             Flow { Layout.fillWidth: true; spacing: 8

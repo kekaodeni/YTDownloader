@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 from semver import Version
+from yt_downloader import __version__
 
 from yt_downloader.updates.models import UpdateCapability, UpdateManifest, UpdatePackage, UpdateProgress, UpdateState
 from yt_downloader.ui.quick_dialogs import UpdateSession as UpdateDialog
@@ -40,3 +41,56 @@ def test_validation_build_stops_at_verified_package(quick_window):
     dialog.set_state(UpdateState.READY_TO_INSTALL)
     assert '不支持自动安装' in dialog.state['message']
     assert not dialog.state['canInstall']
+
+
+def test_update_details_language_and_explicit_install_confirmation(quick_window, qtbot):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL, quick_window)
+    assert dialog.state['currentVersion'] == __version__
+    assert dialog.state['targetVersion'] == '0.4.1'
+    assert dialog.state['packageSize']
+    assert '确认' in dialog.state['message']
+    dialog.setLanguage('en')
+    assert dialog.state['notes'] == 'English notes'
+    dialog.show()
+    installs = []
+    dialog.install_requested.connect(lambda: installs.append(True))
+    dialog.set_state(UpdateState.READY_TO_INSTALL)
+    assert installs == []
+    dialog.reject()
+    assert installs == []
+
+
+def test_preparing_cannot_close_and_failure_restores_install(quick_window):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL, quick_window)
+    dialog.show()
+    dialog.set_state(UpdateState.PREPARING_INSTALL)
+    dialog.reject()
+    assert dialog.state['open']
+    assert not dialog.state['closeEnabled']
+    dialog.set_state(UpdateState.FAILED, operation='prepare')
+    assert dialog.state['canInstall']
+    assert not dialog.state['canDownload']
+    assert dialog.state['closeEnabled']
+    dialog.reject()
+    assert not dialog.state['open']
+
+
+def test_progress_displays_bytes_speed_eta_and_cancel_hides_no_task(quick_window):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL, quick_window)
+    dialog.set_state(UpdateState.DOWNLOADING)
+    dialog.set_progress(UpdateProgress(25, 100, 5.0, 15))
+    assert '25%' in dialog.state['progressText']
+    assert 'B' in dialog.state['progressText']
+    assert '计算中' not in dialog.state['progressText']
+    dialog.set_progress(UpdateProgress(25, 100))
+    assert '计算中' in dialog.state['progressText']
+
+
+def test_cancelled_attempt_does_not_show_old_progress_on_retry(quick_window):
+    dialog = UpdateDialog(_manifest(), UpdateCapability.AUTO_INSTALL, quick_window)
+    dialog.set_state(UpdateState.DOWNLOADING)
+    dialog.set_progress(UpdateProgress(80, 100, 10, 2))
+    dialog.set_state(UpdateState.AVAILABLE)
+    dialog.set_state(UpdateState.DOWNLOADING)
+    assert dialog.state['progress'] == 0
+    assert '计算中' in dialog.state['progressText']

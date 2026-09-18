@@ -14,7 +14,6 @@ class SettingsPresenter(ViewState):
     theme_preview_requested = Signal(str)
     open_logs_requested = Signal()
     copy_system_info_requested = Signal()
-    update_check_requested = Signal()
     browse_requested = Signal(str)
 
     def __init__(self, settings, *, ytdlp_version, ffmpeg_description, parent=None):
@@ -22,8 +21,7 @@ class SettingsPresenter(ViewState):
         values['codec_preference'] = settings.codec_preference.value
         super().__init__(parent, **values, version=__version__, ytdlpVersion=ytdlp_version,
                          ffmpegDescription=ffmpeg_description, saveVisible=False, saveText='',
-                         networkBusy=False, networkText='', networkSuccess=False,
-                         updateText='尚未检查', updateBusy=False)
+                         networkBusy=False, networkText='', networkSuccess=False)
         self._saved = settings
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
@@ -89,6 +87,3 @@ class SettingsPresenter(ViewState):
     def set_network_test_result(self, success, message):
         self.set_network_test_busy(False)
         self.update(networkSuccess=success, networkText=message)
-
-    def set_update_state(self, text, *, busy=False):
-        self.update(updateText=text, updateBusy=busy)

@@ -190,7 +190,7 @@ class AppController:
         restored_update = self.updates.restore_verified_package()
         persisted_update = self.updates.state_store.load()
         if persisted_update.last_checked_at and not restored_update:
-            self.window.settings_page.set_update_state(f"上次检查：{persisted_update.last_checked_at}")
+            self.window.set_update_state(f"上次检查：{persisted_update.last_checked_at}")
         clipboard = QGuiApplication.clipboard().text().strip()
         if clipboard:
             self.window.download_page.set_clipboard_hint(clipboard)
@@ -223,7 +223,7 @@ class AppController:
         self.theme.theme_changed.connect(self.window.apply_theme)
         settings.open_logs_requested.connect(lambda: self._open_directory(self.paths.logs))
         settings.copy_system_info_requested.connect(self.copy_system_info)
-        settings.update_check_requested.connect(lambda: self.updates.check(manual=True))
+        self.window.check_update_requested.connect(lambda: self.updates.check(manual=True))
         self.queue.task_queued.connect(download.add_task)
         self.queue.task_started.connect(download.task_started)
         self.queue.cancelling.connect(self._cancelling)
@@ -245,7 +245,7 @@ class AppController:
         self.updates.state_changed.connect(self._update_state_changed)
         self.updates.install_prepared.connect(self._launch_prepared_updater)
         self.updates.update_available.connect(self._update_available)
-        self.updates.up_to_date.connect(lambda: self.window.settings_page.set_update_state("已是最新版本"))
+        self.updates.up_to_date.connect(lambda: self.window.set_update_state("已是最新版本"))
         self.updates.progress.connect(self._update_progress)
         self.updates.ready.connect(self._update_ready)
         self.updates.failed.connect(self._update_failed)
@@ -356,14 +356,25 @@ class AppController:
             UpdateState.PREPARING_EXIT: "正在准备退出并更新…", UpdateState.FAILED: "更新操作失败",
             UpdateState.PREPARING_INSTALL: "正在复核更新包和更新组件…",
         }
-        self.window.settings_page.set_update_state(labels.get(state, state.value), busy=state is UpdateState.CHECKING)
+        if state is UpdateState.CHECKING:
+            self.window.hideUpdate()
+            if self._update_dialog is not None:
+                self._update_dialog.close()
+        if state is UpdateState.FAILED:
+            labels[state] = {'check': '检查失败', 'download': '更新下载失败', 'prepare': '安装准备失败'}.get(self.updates.last_operation, '更新操作失败')
+        ready = self.update_capability is UpdateCapability.AUTO_INSTALL and (state is UpdateState.READY_TO_INSTALL or (state is UpdateState.FAILED and self.updates.last_operation == 'prepare'))
+        review = ready or state in {UpdateState.READY_TO_INSTALL, UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT}
+        self.window.set_update_state(labels.get(state, state.value), busy=state is UpdateState.CHECKING, review=review, ready=ready)
         self.window.set_update_busy(state in {UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT})
         if self._update_dialog is not None:
-            self._update_dialog.set_state(state)
+            self._update_dialog.set_state(state, operation=self.updates.last_operation)
 
     def _update_available(self, manifest) -> None:
-        self.window.show_update_available(str(manifest.version))
-        self.window.settings_page.set_update_state(f"发现 {manifest.version}")
+        self.window.set_update_state(f"发现 {manifest.version}")
+        if self.updates.check_manual:
+            self._show_update_dialog()
+        else:
+            self.window.show_update_available(str(manifest.version))
 
     def _show_update_dialog(self) -> None:
         manifest = self.updates.manifest
@@ -381,6 +392,9 @@ class AppController:
         dialog.release_page_requested.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
         dialog.closed.connect(lambda: setattr(self, '_update_dialog', None))
         self._update_dialog = dialog
+        dialog.set_state(self.updates.state, operation=self.updates.last_operation)
+        if self.updates.latest_progress is not None:
+            dialog.set_progress(self.updates.latest_progress)
         dialog.show()
 
     def _update_progress(self, progress) -> None:
@@ -394,12 +408,13 @@ class AppController:
 
     def _update_failed(self, error: AppError, manual: bool) -> None:
         logger.warning("Update operation failed: %s", error.technical_message)
-        self.window.settings_page.set_update_state("检查或下载失败")
         if manual:
             self.show_error(error, title_text="更新失败", retry_callback=self._retry_update)
 
     def _retry_update(self) -> None:
-        if self.updates.manifest is not None:
+        if self.updates.last_operation == 'prepare':
+            self._request_update_install()
+        elif self.updates.last_operation == 'download':
             self.updates.download()
         else:
             self.updates.check(manual=True)
@@ -444,8 +459,7 @@ class AppController:
         try:
             subprocess.Popen(command, cwd=Path(command[0]).parent, close_fds=True, creationflags=0x08000000 if sys.platform == 'win32' else 0)
         except OSError as exc:
-            self.updates._set_state(UpdateState.FAILED)
-            self.show_error(AppError('updater_launch_failed', '无法启动更新程序，当前版本没有改变。', repr(exc)))
+            self.updates._operation_failed(AppError('updater_launch_failed', '无法启动更新程序，当前版本没有改变。', repr(exc)), True)
             return
         self.app.quit()
 

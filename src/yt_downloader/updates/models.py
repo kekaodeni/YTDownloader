@@ -76,3 +76,5 @@ class VerifiedUpdatePackage:
 class UpdateProgress:
     downloaded_bytes: int
     total_bytes: int
+    speed: float | None = None
+    eta: float | None = None

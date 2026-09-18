@@ -9,6 +9,8 @@ import hashlib
 import json
 import shutil
 import threading
+import time
+import math
 from typing import Callable
 from semver import Version
 
@@ -54,6 +56,7 @@ class UpdateService(QObject):
         now: Callable[[], datetime] | None = None,
         backup_size: Callable[[], int] | None = None,
         disk_margin: int = 64 * 1024 * 1024,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__()
         self.current_version = current_version
@@ -68,7 +71,12 @@ class UpdateService(QObject):
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.backup_size = backup_size or (lambda: 0)
         self.disk_margin = disk_margin
+        self.clock = clock
+        self._download_started = 0.0
         self.state = UpdateState.IDLE
+        self.check_manual = False
+        self.last_operation = ''
+        self.latest_progress: UpdateProgress | None = None
         self.manifest: UpdateManifest | None = None
         self.verified_package: VerifiedUpdatePackage | None = None
         self._raw_manifest = b''
@@ -77,10 +85,15 @@ class UpdateService(QObject):
         self._workers: list[FunctionWorker] = []
 
     def check(self, *, manual: bool) -> bool:
-        if self.state in {UpdateState.CHECKING, UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT, UpdateState.INSTALLING, UpdateState.ROLLING_BACK}:
+        if self.verified_package is not None or self.state in {UpdateState.READY_TO_INSTALL, UpdateState.CHECKING, UpdateState.DOWNLOADING, UpdateState.CANCELLING, UpdateState.VERIFYING, UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT, UpdateState.INSTALLING, UpdateState.ROLLING_BACK}:
             return False
         if not manual and not self.state_store.should_auto_check(self.now()):
             return False
+        self.check_manual = manual
+        self.last_operation = 'check'
+        self.manifest = None
+        self._raw_manifest = self._signature = b''
+        self.latest_progress = None
         self._set_state(UpdateState.CHECKING)
         worker = FunctionWorker(self._check_worker)
         self._workers.append(worker)
@@ -136,6 +149,11 @@ class UpdateService(QObject):
             return False
         if self.state not in {UpdateState.AVAILABLE, UpdateState.FAILED}:
             return False
+        if self.state is UpdateState.FAILED and self.last_operation != 'download':
+            return False
+        self.last_operation = 'download'
+        self.latest_progress = None
+        self._download_started = self.clock()
         self._cancel = threading.Event()
         self._set_state(UpdateState.DOWNLOADING)
         worker = FunctionWorker(self._download_worker)
@@ -151,7 +169,7 @@ class UpdateService(QObject):
         try:
             verified = self.downloader.download(
                 self.manifest, self.staging_root,
-                lambda values: self.progress.emit(UpdateProgress(*values)), self._cancel,
+                self._report_progress, self._cancel,
                 backup_size=self.backup_size(), margin=self.disk_margin,
                 verification_callback=lambda: self._set_state(UpdateState.VERIFYING),
             )
@@ -163,6 +181,16 @@ class UpdateService(QObject):
         (transaction / 'update-manifest.json').write_bytes(self._raw_manifest)
         (transaction / 'update-manifest.sig').write_bytes(self._signature)
         return verified
+
+    def _report_progress(self, values) -> None:
+        downloaded, total = values
+        elapsed = self.clock() - self._download_started
+        speed = downloaded / elapsed if elapsed > 0 and downloaded > 0 else None
+        if speed is not None and (not math.isfinite(speed) or speed <= 0):
+            speed = None
+        eta = max(0, total - downloaded) / speed if speed else None
+        self.latest_progress = UpdateProgress(downloaded, total, speed, eta)
+        self.progress.emit(self.latest_progress)
 
     def cancel(self) -> bool:
         if self.state is not UpdateState.DOWNLOADING:
@@ -219,8 +247,10 @@ class UpdateService(QObject):
                                       str(self.verified_package.manifest.version), original_pid), self.keyring)
 
     def prepare_install(self, install_dir: Path, data_dir: Path, original_pid: int) -> bool:
-        if self.state is not UpdateState.READY_TO_INSTALL or self.capability is not UpdateCapability.AUTO_INSTALL:
+        retry = self.state is UpdateState.FAILED and self.last_operation == 'prepare' and self.verified_package is not None
+        if (self.state is not UpdateState.READY_TO_INSTALL and not retry) or self.capability is not UpdateCapability.AUTO_INSTALL:
             return False
+        self.last_operation = 'prepare'
         self._set_state(UpdateState.PREPARING_INSTALL)
         worker = FunctionWorker(lambda: self.prepare_install_command(install_dir, data_dir, original_pid))
         self._workers.append(worker)
@@ -232,7 +262,7 @@ class UpdateService(QObject):
 
     def _install_prepared(self, command) -> None:
         if command is None:
-            self._set_state(UpdateState.FAILED)
+            self._operation_failed(AppError('update_prepare_failed', '无法准备更新，请重试。', 'No prepared updater command'), True)
             return
         self._set_state(UpdateState.PREPARING_EXIT)
         self.install_prepared.emit(command)

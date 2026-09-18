@@ -6,16 +6,37 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import uuid
 
 from yt_downloader.core.models import AppSettings
+
+
+def verify_identity(exe, expected_version, expected_source_commit):
+    info = json.loads((exe.parent / 'BUILD-INFO.json').read_text(encoding='utf-8-sig'))
+    if info.get('app_version') != expected_version:
+        raise ValueError('Frozen package version does not match expected version')
+    if info.get('source_commit') != expected_source_commit:
+        raise ValueError('Frozen package source commit does not match expected source')
+    return info
+
+
+def verify_health(health, expected_version, transaction_id):
+    if health != dict(status='ok', transaction_id=transaction_id, app_version=expected_version):
+        raise ValueError('Startup health does not match this acceptance version/transaction')
+
 
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--exe',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--history-media',type=Path)
+    parser.add_argument('--expected-version', required=True)
+    parser.add_argument('--expected-source-commit', required=True)
     args=parser.parse_args()
-    args.output.mkdir(parents=True,exist_ok=True)
+    info = verify_identity(args.exe.resolve(), args.expected_version, args.expected_source_commit)
+    with args.exe.open('rb') as handle:
+        exe_sha256 = hashlib.file_digest(handle, 'sha256').hexdigest()
+    args.output.mkdir(parents=True,exist_ok=False)
     data=args.output/'app-data';data.mkdir(exist_ok=True)
     settings=asdict(AppSettings(download_directory=str(args.output/'Videos'),auto_check_updates=False))
     settings['codec_preference']=settings['codec_preference'].value
@@ -39,16 +60,23 @@ def main():
             run(f'{page}-{theme}',['--theme',theme,'--preview-page',page,'--render-preview',str(image.resolve())])
             if not image.is_file() or image.stat().st_size<1000:raise RuntimeError('Missing rendered preview')
     env['YT_DOWNLOADER_UPDATE_HEALTH_SMOKE_EXIT']='1'
-    marker=args.output/'update-ui-health'/'startup-health.json'
-    run('update-health',['--update-health-check','quick-ui-validation',str(marker.resolve())])
+    transaction_id = 'quick-ui-' + uuid.uuid4().hex
+    marker=args.output/('update-' + transaction_id)/'startup-health.json'
+    run('update-health',['--update-health-check',transaction_id,str(marker.resolve())])
     health=json.loads(marker.read_text(encoding='utf-8'))
-    assert health==dict(status='ok',transaction_id='quick-ui-validation',app_version='0.4.1')
+    verify_health(health, args.expected_version, transaction_id)
     log=(data/'logs'/'yt-downloader.log').read_text(encoding='utf-8') if (data/'logs'/'yt-downloader.log').exists() else ''
     assert 'QML:' not in log, log
     if args.history_media:
         assert list((data/'cache'/'history-previews').glob('*.jpg')), 'Frozen history cover cache was not created'
         results.append(dict(check='history-video-thumbnail',exit_code=0))
-    report=dict(results=results,health=health,exe_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),qml_warnings=[])
+    if verify_identity(args.exe.resolve(), args.expected_version, args.expected_source_commit) != info:
+        raise ValueError('BUILD-INFO changed during acceptance')
+    with args.exe.open('rb') as handle:
+        if hashlib.file_digest(handle, 'sha256').hexdigest() != exe_sha256:
+            raise ValueError('Executable changed during acceptance')
+    report=dict(results=results,health=health,exe_sha256=exe_sha256,
+                app_version=args.expected_version,source_commit=args.expected_source_commit,qml_warnings=[])
     (args.output/'package-verification.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return 0
 

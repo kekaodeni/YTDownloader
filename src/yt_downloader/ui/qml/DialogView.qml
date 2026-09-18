@@ -59,8 +59,16 @@ Dialog {
             }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "update"; spacing: 12
-                UiText { Layout.fillWidth: true; text: popup.s.notes || ""; wrapMode: Text.Wrap }
+                UiText { objectName: "updateVersions"; Layout.fillWidth: true; text: "当前版本 " + (popup.s.currentVersion || "") + "  →  " + (popup.s.targetVersion || "") + "    ·    " + (popup.s.packageSize || ""); wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                UiCombo { objectName: "updateLanguage"; accessibleName: "更新说明语言"; model: ["中文", "English"]; currentIndex: popup.s.language === "en" ? 1 : 0; onActivated: popup.session.setLanguage(currentIndex === 1 ? "en" : "zh-CN") }
+                ScrollView {
+                    objectName: "updateNotesScroll"
+                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, Math.max(70, popup.height * 0.24))
+                    clip: true; contentWidth: availableWidth
+                    TextArea { objectName: "updateNotes"; text: popup.s.notes || ""; textFormat: TextEdit.PlainText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; color: theme.state.text; selectionColor: theme.state.selection; selectedTextColor: theme.state.text; font.family: theme.fontFamily("Body", text); font.pointSize: theme.fontSize("Body"); background: Rectangle { color: theme.state.subtle; radius: 8 } }
+                }
                 UiProgress { Layout.fillWidth: true; visible: popup.s.progressVisible || false; value: popup.s.progress || 0 }
+                UiText { objectName: "updateProgressText"; Layout.fillWidth: true; visible: popup.s.progressVisible || false; text: popup.s.progressText || ""; role: "Caption"; wrapMode: Text.Wrap }
             }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "cover"; spacing: 12
@@ -98,11 +106,11 @@ Dialog {
             UiButton { text: "预览"; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.previewEnabled || false; onClicked: popup.session.generatePreview() }
             UiButton { text: popup.s.applyText || "写入视频封面"; appearance: "primary"; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.applyEnabled || false; onClicked: popup.session.apply() }
             UiButton { text: "资源管理器封面支持"; visible: popup.s.kind === "cover" && (popup.s.explorerNeedsSupport || false); onClicked: popup.session.openExplorerSupport() }
-            UiButton { text: "打开发布页面"; visible: popup.s.kind === "update" && (popup.s.canRelease || false); onClicked: popup.session.action("release") }
-            UiButton { text: "下载并验证"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canDownload || false); onClicked: popup.session.action("download") }
+            UiButton { text: "完整发布说明"; visible: popup.s.kind === "update" && (popup.s.canRelease || false); onClicked: popup.session.action("release") }
+            UiButton { objectName: "updateDownload"; text: popup.s.downloadText || "下载并安装"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canDownload || false); onClicked: popup.session.action("download") }
             UiButton { text: popup.s.cancelEnabled ? "取消下载" : "正在取消…"; enabled: popup.s.cancelEnabled || false; visible: popup.s.kind === "update" && (popup.s.canCancel || false); onClicked: popup.session.action("cancel") }
-            UiButton { text: "退出并更新"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
-            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? "稍后" : "关闭"; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
+            UiButton { objectName: "updateInstall"; text: "立即安装并重启"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
+            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : "关闭"; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
         }
     }
 }

@@ -27,11 +27,13 @@ class MainWindow(ViewState):
     cancel_all_requested = Signal()
     cancel_update_requested = Signal()
     show_update_requested = Signal()
+    check_update_requested = Signal()
     scrollToTopRequested = Signal()
 
     def __init__(self, settings, *, ytdlp_version, ffmpeg_description, theme=None, icons=None):
         super().__init__(None, page=0, reduceMotion=settings.reduce_motion, allowClose=False,
-                         updateVisible=False, updateText='', version=__version__, projectError='')
+                         updateVisible=False, updateText='', version=__version__, projectError='',
+                         updateStatus='尚未检查', updateChecking=False, updateAction='检查更新', updateReview=False)
         self._busy = False
         self._update_busy = False
         self._closing_after_cancel = False
@@ -131,6 +133,19 @@ class MainWindow(ViewState):
 
     def show_update_available(self, version):
         self.update(updateVisible=True, updateText=f'YT Downloader {version} 已可用')
+
+    def set_update_state(self, text, *, busy=False, review=False, ready=False):
+        self.update(updateStatus=text, updateChecking=busy, updateReview=review,
+                    updateAction='查看待安装更新' if ready else '查看更新进度' if review else '检查更新')
+
+    @Slot()
+    def updateAction(self):
+        if self._state['updateChecking']:
+            return
+        if self._state['updateReview']:
+            self.show_update_requested.emit()
+        else:
+            self.check_update_requested.emit()
 
     @Slot()
     def hideUpdate(self):

@@ -52,12 +52,8 @@ Item {
                 UiSwitch { objectName: "reduceMotion"; text: "减少界面动态效果"; checked: settings.state.reduce_motion; onToggled: settings.edit("reduce_motion", checked) }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
                 UiText { text: "更新"; role: "SectionTitle" }
-                UiText { text: "版本 " + settings.state.version + "  ·  稳定通道"; role: "Secondary"; color: theme.state.secondary }
+                UiText { text: "稳定通道"; role: "Secondary"; color: theme.state.secondary }
                 UiSwitch { objectName: "autoCheckUpdates"; text: "自动检查更新"; checked: settings.state.auto_check_updates; onToggled: settings.edit("auto_check_updates", checked) }
-                RowLayout { Layout.fillWidth: true
-                    UiButton { text: settings.state.updateBusy ? "正在检查…" : "检查更新"; enabled: !settings.state.updateBusy; onClicked: settings.update_check_requested() }
-                    UiText { Layout.fillWidth: true; text: settings.state.updateText; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
                 UiText { text: "工具与诊断"; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "yt-dlp  " + settings.state.ytdlpVersion; role: "Secondary"; color: theme.state.secondary }

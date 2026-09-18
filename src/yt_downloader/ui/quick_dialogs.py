@@ -4,6 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot, QUrl
 from PySide6.QtGui import QGuiApplication
 
+from yt_downloader import __version__
+from yt_downloader.core.formatting import format_bytes, format_speed, format_eta
 from yt_downloader.ui.quick_state import ViewState, RowModel
 from yt_downloader.updates.models import UpdateCapability, UpdateState
 
@@ -143,33 +145,57 @@ class UpdateSession(DialogSession):
 
     def __init__(self, manifest, capability, parent):
         super().__init__(parent.dialogs, kind='update', title=f'YT Downloader {manifest.version} 更新',
-                         notes=manifest.notes_zh_cn, canDownload=capability is not UpdateCapability.CHECK_ONLY,
-                         canRelease=capability is UpdateCapability.CHECK_ONLY, canInstall=False,
-                         canCancel=False, cancelEnabled=True, progressVisible=False, progress=0.0)
+                         notes=manifest.notes_zh_cn, language='zh-CN',
+                         currentVersion=__version__, targetVersion=str(manifest.version),
+                         packageSize=format_bytes(manifest.package.compressed_size),
+                         canDownload=False, canRelease=True, canInstall=False,
+                         canCancel=False, cancelEnabled=True, progressVisible=False, progress=0.0,
+                         progressText='', downloadText='下载并安装' if capability is UpdateCapability.AUTO_INSTALL else '下载并验证',
+                         dismissText='取消')
         self.manifest = manifest
         self.capability = capability
-        self.update(message='当前运行环境仅支持检查更新，请从发布页面手动升级。' if capability is UpdateCapability.CHECK_ONLY else '请选择更新方式。')
+        self.set_state(UpdateState.AVAILABLE)
+
+    @Slot(str)
+    def setLanguage(self, language):
+        if language in {'zh-CN', 'en'}:
+            self.update(language=language, notes=self.manifest.notes_en if language == 'en' else self.manifest.notes_zh_cn)
+
+    @Slot()
+    def reject(self):
+        if self._state['closeEnabled']:
+            super().reject()
 
     def set_progress(self, progress):
-        self.update(progress=progress.downloaded_bytes / max(1, progress.total_bytes))
+        fraction = min(1.0, max(0.0, progress.downloaded_bytes / max(1, progress.total_bytes)))
+        speed = format_speed(progress.speed) if progress.speed is not None else '计算中'
+        eta = format_eta(progress.eta) if progress.eta is not None else '计算中'
+        self.update(progress=fraction, progressText=f'{fraction:.0%} · {format_bytes(progress.downloaded_bytes)} / {format_bytes(progress.total_bytes)} · {speed} · 剩余 {eta}')
 
-    def set_state(self, state):
+    def set_state(self, state, *, operation=''):
+        install = self.capability is UpdateCapability.AUTO_INSTALL
+        download = self.capability is not UpdateCapability.CHECK_ONLY
+        values = dict(canDownload=False, canInstall=False, canCancel=False, cancelEnabled=True,
+                      closeEnabled=True, canRelease=True, progressVisible=False, dismissText='关闭')
         if state is UpdateState.DOWNLOADING:
-            self.update(message='正在下载更新…', progressVisible=True, canDownload=False, canCancel=True, cancelEnabled=True)
+            values.update(message='正在下载更新，可关闭此窗口并稍后在关于页面查看进度。', progressVisible=True, canCancel=True,
+                          progress=0.0, progressText=f'0% · 0 B / {self._state["packageSize"]} · 计算中')
         elif state is UpdateState.CANCELLING:
-            self.update(message='正在取消…', cancelEnabled=False)
+            values.update(message='正在取消…', progressVisible=True, canCancel=True, cancelEnabled=False)
         elif state is UpdateState.VERIFYING:
-            self.update(message='正在验证签名与文件完整性…', canCancel=False)
+            values.update(message='正在验证签名与文件完整性…', progressVisible=True)
         elif state is UpdateState.READY_TO_INSTALL:
-            install = self.capability is UpdateCapability.AUTO_INSTALL
-            self.update(progress=1.0, canCancel=False, canDownload=False, canInstall=install,
-                        canRelease=not install,
-                        message='更新已验证，可在退出应用后安全安装。' if install else '更新已下载并验证；当前构建不支持自动安装。')
+            values.update(progress=1.0, canInstall=install, dismissText='稍后',
+                          message='更新已验证，确认后将安装并重启。' if install else '更新已下载并验证；当前构建不支持自动安装。')
         elif state in {UpdateState.PREPARING_INSTALL, UpdateState.PREPARING_EXIT}:
-            self.update(message='正在复核更新并准备退出…', canInstall=False, canDownload=False, canCancel=False)
-        elif state in {UpdateState.FAILED, UpdateState.AVAILABLE}:
-            self.update(message='更新操作失败，可以重试。' if state is UpdateState.FAILED else '请选择更新方式。',
-                        canCancel=False, canDownload=self.capability is not UpdateCapability.CHECK_ONLY)
+            values.update(message='正在复核更新并准备退出…', closeEnabled=False, canRelease=False)
+        elif state is UpdateState.FAILED:
+            values.update(message='更新操作失败，可以重试。', canInstall=install and operation == 'prepare',
+                          canDownload=download and operation == 'download')
+        else:
+            message = ('下载完成后需确认安装并重启。' if install else '当前构建仅支持下载并验证更新。') if download else '当前运行环境仅支持检查更新，请从发布页面手动升级。'
+            values.update(message=message, canDownload=download, dismissText='取消')
+        self.update(**values)
 
     @Slot(str)
     def action(self, name):
