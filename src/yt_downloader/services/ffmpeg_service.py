@@ -193,6 +193,20 @@ class FfmpegService:
         required = {'video_audio': {'video', 'audio'}, 'video_only': {'video'}, 'audio_only': {'audio'}}[mode]
         return types.intersection({'video', 'audio'}) == required
 
+    def convert_subtitle(self, source, target, *, cancel_event=None):
+        self._run([str(self._require(self.ffmpeg_path, 'FFmpeg')), '-v', 'error', '-i', str(source),
+                   '-y', str(target)], cancel_event=cancel_event, stage='Converting subtitles')
+
+    def embed_subtitles(self, media, subtitles, target, *, cancel_event=None):
+        args = [str(self._require(self.ffmpeg_path, 'FFmpeg')), '-v', 'error', '-i', str(media)]
+        for _, path in subtitles:
+            args += ['-i', str(path)]
+        args += ['-map', '0']
+        for index, (language, _) in enumerate(subtitles, 1):
+            args += ['-map', f'{index}:0', f'-metadata:s:s:{index-1}', f'language={language}']
+        args += ['-c', 'copy', '-c:s', 'mov_text' if media.suffix.lower() == '.mp4' else 'srt', '-y', str(target)]
+        self._run(args, cancel_event=cancel_event, stage='Embedding subtitles')
+
     def extract_frame(
         self,
         media_path: str | Path,

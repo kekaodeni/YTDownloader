@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
+import json
 from typing import Iterator
 
 from yt_downloader.core.models import HistoryRecord, TaskStatus
@@ -68,18 +69,26 @@ class HistoryRepository:
                     PRAGMA user_version=1;
                 """)
                 version = 1
-            if version == 1:
-                backup = self.database_path.with_suffix(self.database_path.suffix + '.v1.bak')
+            if version in {1, 2}:
+                backup = self.database_path.with_suffix(self.database_path.suffix + f'.v{version}.bak')
                 if not backup.exists():
                     with sqlite3.connect(backup) as destination:
                         connection.backup(destination)
                 # DDL and version change commit together; failure rolls back the
                 # complete migration, leaving the original database usable.
                 connection.execute('BEGIN IMMEDIATE')
+            if version == 1:
                 self._migrate_media_fields(connection)
                 connection.execute('PRAGMA user_version=2')
                 version = 2
-            if version != 2:
+            if version == 2:
+                for field, default in (('subtitle_languages', '[]'), ('subtitle_format', 'srt')):
+                    connection.execute(f"ALTER TABLE downloads ADD COLUMN {field} TEXT NOT NULL DEFAULT '{default}'")
+                for field in ('subtitle_embedded', 'subtitle_auto_used'):
+                    connection.execute(f'ALTER TABLE downloads ADD COLUMN {field} INTEGER NOT NULL DEFAULT 0')
+                connection.execute('PRAGMA user_version=3')
+                version = 3
+            if version != 3:
                 raise RuntimeError(f"Unsupported history database version: {version}")
 
     @staticmethod
@@ -115,6 +124,13 @@ class HistoryRepository:
             ))
             connection.execute('UPDATE downloads SET media_mode=?, audio_codec=?, audio_bitrate=?, container=? WHERE task_id=?',
                                (record.media_mode, record.audio_codec, record.audio_bitrate, record.container, record.task_id))
+            connection.execute('UPDATE downloads SET subtitle_languages=?, subtitle_format=?, subtitle_embedded=?, subtitle_auto_used=? WHERE task_id=?',
+                               (json.dumps(record.subtitle_languages), record.subtitle_format, record.subtitle_embedded, record.subtitle_auto_used, record.task_id))
+
+    def update_subtitle_result(self, task_id, *, embedded, automatic):
+        with self._connection() as connection:
+            connection.execute('UPDATE downloads SET subtitle_embedded=?, subtitle_auto_used=? WHERE task_id=?',
+                               (embedded, automatic, task_id))
 
     def update_status(
         self,
@@ -214,4 +230,6 @@ class HistoryRepository:
             error_summary=row["error_summary"],
             media_mode=row['media_mode'], audio_codec=row['audio_codec'],
             audio_bitrate=row['audio_bitrate'], container=row['container'],
+            subtitle_languages=tuple(json.loads(row['subtitle_languages'])), subtitle_format=row['subtitle_format'],
+            subtitle_embedded=bool(row['subtitle_embedded']), subtitle_auto_used=bool(row['subtitle_auto_used']),
         )

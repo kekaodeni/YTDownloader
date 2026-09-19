@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yt_downloader.core.models import AppSettings, PlaylistMetadata
+from yt_downloader.core.models import AppSettings, PlaylistMetadata, SubtitleTrack
 from yt_downloader.ui.quick_window import MainWindow
 from verify_quick_ui import sample_video
 
@@ -64,6 +64,17 @@ def main():
                 assert find('downloadButton').property('enabled')
                 assert find('formatCombo').property('visible') == (media_mode != 'audio_only')
                 snapshot(mode+'-'+media_mode)
+            page.show_video(replace(source, subtitles=(SubtitleTrack('zh-Hans', 'vtt', 'https://example.org/sub'),),
+                                    automatic_captions=(SubtitleTrack('en', 'vtt', 'https://example.org/auto', is_auto=True),)))
+            page.setSubtitleOption('enabled', True)
+            page.selectSubtitle('zh-Hans', True)
+            yield 300
+            snapshot(mode+'-subtitles-manual')
+            page.setSubtitleOption('auto', True)
+            page.selectSubtitle('en', True)
+            yield 300
+            snapshot(mode+'-subtitles-auto')
+            page.setSubtitleOption('enabled', False)
             page.show_video(replace(source, extractor='OtherExtractor', compatibility='EXPERIMENTAL'))
             yield 300
             assert find('compatibilityHint').property('visible')

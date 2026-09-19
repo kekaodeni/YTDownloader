@@ -22,10 +22,10 @@ def _number(value):
     return float(value) if isinstance(value, (float, int)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0 else None
 
 
-def _tracks(value):
+def _tracks(value, is_auto=False):
     if not isinstance(value, Mapping):
         return ()
-    return tuple(SubtitleTrack(str(language), str(item.get('ext') or ''), url, str(item.get('name') or ''))
+    return tuple(SubtitleTrack(str(language), str(item.get('ext') or ''), url, str(item.get('name') or ''), is_auto)
                  for language, items in value.items() if isinstance(items, list)
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
 
@@ -74,6 +74,6 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         webpage_url=webpage_url, media_type=media_type, uploader=str(info.get('uploader') or ''),
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,
         description=str(info.get('description') or ''), subtitles=_tracks(info.get('subtitles')),
-        automatic_captions=_tracks(info.get('automatic_captions')), playlist=playlist,
+        automatic_captions=_tracks(info.get('automatic_captions'), True), playlist=playlist,
         compatibility='VERIFIED' if extractor_key.casefold() in VERIFIED_EXTRACTORS or extractor.casefold() in VERIFIED_EXTRACTORS else 'EXPERIMENTAL',
     )

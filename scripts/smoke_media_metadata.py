@@ -30,6 +30,8 @@ def main():
         report.update(extractor=media.extractor, title=media.title, duration=media.duration,
                       formats=len(media.formats), thumbnail_url=bool(media.thumbnail_url),
                       thumbnail_bytes=len(media.thumbnail_bytes or b''), media_type=media.media_type)
+        report.update(subtitle_languages=sorted({track.language for track in media.subtitles}),
+                      automatic_caption_languages=sorted({track.language for track in media.automatic_captions}))
         if media.title and media.duration is not None and media.formats and media.thumbnail_bytes:
             report['status'] = 'PASS'
         else:

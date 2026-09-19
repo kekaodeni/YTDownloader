@@ -37,6 +37,7 @@ from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.download_tuning import AUTO_FRAGMENT_COUNT
 from yt_downloader.services.task_artifacts import TaskArtifactRegistry
 from yt_downloader.services.download_options import media_options, prepare_request
+from yt_downloader.services.subtitle_service import SubtitleService, SubtitleResult
 
 
 logger = logging.getLogger(__name__)
@@ -438,7 +439,22 @@ class DownloadService:
                     "ffprobe stream validation failed",
                     context,
                 )
-            final_path = artifacts.commit(final_path, destination)
+            subtitles = SubtitleResult(final_path)
+            if request.subtitle_enabled:
+                try:
+                    subtitles = SubtitleService(self.ffmpeg_path, self.network_policy).process(
+                        request, final_path, artifacts.workspace, cancel_event)
+                except OperationCancelled:
+                    raise
+                except Exception:
+                    subtitles = SubtitleResult(final_path, warnings=('字幕处理失败，媒体已保留。',))
+            final_path = artifacts.commit(subtitles.media, destination)
+            subtitle_paths = []
+            for language, path in subtitles.files:
+                try:
+                    subtitle_paths.append(artifacts.commit(path, final_path.with_suffix(f'.{language}.{request.subtitle_format}')))
+                except OSError:
+                    subtitles = SubtitleResult(final_path, warnings=(*subtitles.warnings, '字幕文件保存失败，媒体已保留。'))
             cleanup_report = artifacts.cleanup()
             if not cleanup_report.succeeded:
                 logger.error(
@@ -460,6 +476,8 @@ class DownloadService:
                 final_path,
                 final_size,
                 datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+                warnings=subtitles.warnings, subtitle_paths=tuple(subtitle_paths),
+                subtitle_embedded=subtitles.embedded, subtitle_auto_used=subtitles.auto_used,
             )
         except OperationCancelled as exc:
             cancellation_context = exc.context or context

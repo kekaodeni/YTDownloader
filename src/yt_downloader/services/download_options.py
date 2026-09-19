@@ -6,6 +6,10 @@ from yt_downloader.core.models import MediaMode
 def prepare_request(request):
     """Derive the actual output and progress contract before any IO."""
     mode = MediaMode(request.media_mode)
+    if request.subtitle_format not in {'srt', 'vtt'}:
+        raise ValueError('不支持的字幕格式')
+    if request.subtitle_enabled and request.subtitle_embed and (mode is MediaMode.AUDIO_ONLY or request.format.final_ext not in {'mp4', 'mkv'}):
+        raise ValueError('此模式或容器不支持嵌入字幕，请明确选择独立字幕文件。')
     option = request.format
     if mode is MediaMode.VIDEO_ONLY:
         if not option.audio_format_id and option.acodec != 'none':

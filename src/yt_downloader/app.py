@@ -479,7 +479,10 @@ class AppController:
             state = self.window.download_page.state
             request = DownloadRequest(uuid.uuid4().hex, video, option, output, stem,
                                       media_mode=state['mediaMode'], audio_codec=state['audioCodec'],
-                                      audio_quality=state['audioQuality'])
+                                      audio_quality=state['audioQuality'],
+                                      subtitle_enabled=state['subtitleEnabled'], subtitle_auto=state['subtitleAuto'],
+                                      subtitle_embed=state['subtitleEmbed'], subtitle_format=state['subtitleFormat'],
+                                      subtitle_languages=tuple(state['subtitleLanguages']))
             from yt_downloader.services.download_options import prepare_request
             effective = prepare_request(request)
             option = effective.format
@@ -490,6 +493,8 @@ class AppController:
                 TaskStatus.PENDING, created,
                 media_mode=str(request.media_mode), audio_codec=request.audio_codec,
                 audio_bitrate=request.audio_quality, container=option.final_ext,
+                subtitle_languages=request.subtitle_languages if request.subtitle_enabled else (),
+                subtitle_format=request.subtitle_format,
             )
             self.history.upsert(record)
             self._persisted_task_stages[request.task_id] = TaskStatus.PENDING
@@ -531,7 +536,10 @@ class AppController:
                 file_path=result.file_path,
                 file_size=result.file_size,
                 completed_at=result.completed_at,
+                error_summary='；'.join(result.warnings) or None,
             )
+            if hasattr(self.history, 'update_subtitle_result'):
+                self.history.update_subtitle_result(result.task_id, embedded=result.subtitle_embedded, automatic=result.subtitle_auto_used)
         except Exception:
             logger.exception("Failed to persist completed task")
         self.refresh_history()

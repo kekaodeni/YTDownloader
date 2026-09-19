@@ -36,9 +36,32 @@ the QML warning list is empty. Secret/path scan and diff whitespace check passed
 Frozen packages and public download acceptance are not claimed in this phase.
 Final full regression: **383 passed in 127.96 seconds**.
 
+## Phase 4 — subtitles
+
+Manual and explicitly enabled automatic captions use typed tracks and original
+language codes, with friendly common-language names. The UI provides virtualized
+language selection, SRT/VTT, and explicit standalone/embedded policy. Audio-only
+and incompatible containers cannot silently enable embedding. An embed failure
+is disclosed and keeps independent subtitles plus the successful media. Optional
+subtitle errors do not turn successful media into total failure.
+
+Schema 3 adds subtitle policy and actual embed/automatic results, using the same
+backup-before-transaction migration mechanism. Local HTTP and real FFmpeg tests
+verify VTT preservation, SRT conversion and embedded subtitle tracks; video codec
+remains H.264 in the stream-copy embedding fixture. Light/dark subtitle screenshots
+and source GUI/startup health passed without QML warnings.
+
+Full regression: **396 passed in 135.13 seconds**. Final subtitle-focused run:
+**13 passed**. Public anonymous samples from yt-dlp's official subtitle tests:
+QRS8MkLhQmM manual English → SRT (2231 bytes), 8YoUxe5ncPo automatic English →
+SRT (48087 bytes), both PASS. Initial sandbox YouTube networking timed out; the
+authorized ordinary network environment succeeded. Bilibili BV13x41117TL metadata
+passed but returned no subtitles: Bilibili subtitle transfer is NOT VERIFIED.
+No Cookie/login was used. Tests downloaded only subtitle text, not public videos.
+
 ## Remaining phases
 
-Phase 4 subtitles; Phase 5 explicit Cookie profiles and redaction; Phase 6
+Phase 5 explicit Cookie profiles and redaction; Phase 6
 playlist selection, global scheduling and history extension; Phase 7 external
 updater recovery dispatch; Phase 8 version bump, RC builds and frozen A–F matrix.
 Each phase requires its own focused and full regression before commit.

@@ -169,6 +169,24 @@ class SubtitleTrack:
     extension: str
     url: str
     name: str = ''
+    is_auto: bool = False
+
+    @property
+    def language_code(self):
+        return self.language
+
+    @property
+    def display_name(self):
+        from yt_downloader.services.subtitle_service import language_name
+        return language_name(self.language)
+
+    @property
+    def source_type(self):
+        return 'automatic' if self.is_auto else 'manual'
+
+    @property
+    def formats(self):
+        return (self.extension,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +213,11 @@ class DownloadRequest:
     media_mode: MediaMode = MediaMode.VIDEO_AUDIO
     audio_codec: str = 'original'
     audio_quality: str = 'original'
+    subtitle_enabled: bool = False
+    subtitle_languages: tuple[str, ...] = ()
+    subtitle_auto: bool = False
+    subtitle_embed: bool = False
+    subtitle_format: str = 'srt'
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +239,10 @@ class DownloadResult:
     file_path: Path
     file_size: int
     completed_at: str
+    warnings: tuple[str, ...] = ()
+    subtitle_paths: tuple[Path, ...] = ()
+    subtitle_embedded: bool = False
+    subtitle_auto_used: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +263,10 @@ class HistoryRecord:
     audio_codec: str = 'original'
     audio_bitrate: str = 'original'
     container: str = ''
+    subtitle_languages: tuple[str, ...] = ()
+    subtitle_format: str = 'srt'
+    subtitle_embedded: bool = False
+    subtitle_auto_used: bool = False
 
 
 @dataclass(frozen=True, slots=True)

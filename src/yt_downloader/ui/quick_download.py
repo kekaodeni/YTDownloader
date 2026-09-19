@@ -61,9 +61,13 @@ class DownloadPresenter(ViewState):
                          clipboardHint='', title='', meta='', thumbnail='', formats=[],
                          formatIndex=0, technical='', compatibilityHint='', mediaHint='',
                          mediaMode='video_audio', audioCodec='original', audioQuality='original',
-                         modeHint='')
+                         modeHint='', subtitleEnabled=False, subtitleAuto=False,
+                         subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
+                         subtitleChoices=[], subtitleCanEmbed=False, subtitleHint='')
         self.images = images
         self.video: VideoInfo | None = None
+        from yt_downloader.services.ffmpeg_service import FfmpegService
+        self.subtitle_ffmpeg_available = FfmpegService().available
         self.parse_state = ParseState.IDLE
         self.cards: dict[str, TaskPresentation] = {}
         self._terminal_task_ids: set[str] = set()
@@ -164,6 +168,44 @@ class DownloadPresenter(ViewState):
             hint = '此媒体没有该模式可用的独立流，请选择其他下载模式。'
         self.update(formats=[option.label for option in options], formatIndex=0, modeHint=hint, technical='')
         self.selectFormat(0)
+        self._subtitle_state()
+
+    def _subtitle_state(self):
+        from yt_downloader.services.subtitle_service import language_name
+        tracks = (*self.video.subtitles, *(self.video.automatic_captions if self._state['subtitleAuto'] else ())) if self.video else ()
+        codes = tuple(dict.fromkeys(track.language for track in tracks))
+        selected = self._state['subtitleLanguages']
+        choices = [dict(code=code, name=language_name(code), selected=code in selected) for code in codes]
+        options = self.available_formats
+        index = self._state['formatIndex']
+        can_embed = bool(self.subtitle_ffmpeg_available and self._state['mediaMode'] != 'audio_only'
+                         and 0 <= index < len(options) and options[index].final_ext in {'mp4', 'mkv'})
+        hint = '此模式无法嵌入字幕，请选择独立字幕文件。' if self._state['subtitleEmbed'] and not can_embed else ''
+        if self._state['subtitleEnabled'] and not codes:
+            hint = '没有可用字幕，可尝试包含自动生成字幕。'
+        self.update(subtitleChoices=choices, subtitleCanEmbed=can_embed, subtitleHint=hint)
+
+    @Slot(str, bool)
+    def setSubtitleOption(self, name, enabled):
+        key = {'enabled': 'subtitleEnabled', 'auto': 'subtitleAuto', 'embed': 'subtitleEmbed'}.get(name)
+        if key:
+            self.update(**{key: enabled})
+            self._subtitle_state()
+
+    @Slot(str, bool)
+    def selectSubtitle(self, code, enabled):
+        codes = list(self._state['subtitleLanguages'])
+        if enabled and code not in codes:
+            codes.append(code)
+        if not enabled and code in codes:
+            codes.remove(code)
+        self.update(subtitleLanguages=codes)
+        self._subtitle_state()
+
+    @Slot(str)
+    def selectSubtitleFormat(self, value):
+        if value in {'srt', 'vtt'}:
+            self.update(subtitleFormat=value)
 
     @Slot(str, str)
     def selectAudio(self, codec, quality):
@@ -190,6 +232,7 @@ class DownloadPresenter(ViewState):
         size = format_bytes(option.estimated_size)
         size_text = '大小未知' if option.estimated_size is None else f'估算 {size}' if option.size_is_estimate else f'大小 {size}'
         self.update(formatIndex=index, technical=f'{option.technical_summary}  ·  {size_text}')
+        self._subtitle_state()
 
     def set_default_directory(self, directory):
         self._default_directory = directory
@@ -237,6 +280,8 @@ class DownloadPresenter(ViewState):
             card.file_path = result.file_path
             card.progress(DownloadProgress(result.task_id, TaskStatus.COMPLETED, 100, result.file_size, result.file_size))
             card.values.update(cancel=False, open=True, folder=True)
+            if result.warnings:
+                card.values['statusText'] = '下载完成 · ' + '；'.join(result.warnings)
             self._tasks.put(dict(card.values))
             self._mark_terminal(result.task_id)
 
