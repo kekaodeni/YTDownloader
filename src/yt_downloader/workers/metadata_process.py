@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
-from yt_downloader.core.models import CodecPreference, ParseState
+from yt_downloader.core.models import CodecPreference, ParseState, CookieProfile
 from yt_downloader.infrastructure.windows_job import ProcessJob
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
@@ -31,6 +31,7 @@ class MetadataProcessConfig:
     custom_proxy_url: str
     codec_preference: CodecPreference
     require_deno: bool = True
+    cookie_profile: CookieProfile | None = None
 
 
 def metadata_process_self_test_entry(
@@ -91,6 +92,7 @@ def metadata_process_entry(
             require_deno=config.require_deno,
             network_policy=network,
             codec_preference=config.codec_preference,
+            cookie_profile=config.cookie_profile,
         )
         video = service.fetch_metadata(url, cancel_event, include_thumbnail=False)
         send_connection.send(("result", video))

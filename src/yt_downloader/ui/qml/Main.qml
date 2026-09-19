@@ -24,6 +24,8 @@ ApplicationWindow {
     palette.highlightedText: theme.state.text
     onClosing: function(event) { if (!shell.state.allowClose) { event.accepted = false; shell.requestClose() } }
     readonly property bool compact: width < 900
+    FileDialog { id: cookiePicker; title: "选择 Netscape cookies.txt"; fileMode: FileDialog.OpenFile; nameFilters: ["Cookie 文件 (*.txt)", "所有文件 (*)"]; onAccepted: cookies.fileSelected(selectedFile.toString()) }
+    Connections { target: cookies; function onPick_requested() { cookiePicker.open() } }
     RowLayout {
         anchors.fill: parent; spacing: 0
         Rectangle {

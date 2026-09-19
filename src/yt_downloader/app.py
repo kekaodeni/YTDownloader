@@ -158,6 +158,13 @@ class AppController:
             theme=self.theme,
         )
         self.window.history_page.configure_thumbnails(self.ffmpeg, self.paths.cache / "history-previews")
+        from yt_downloader.services.cookie_service import CookieProfileStore
+        self.cookie_store = CookieProfileStore(self.paths.data / 'cookie-profiles.json')
+        try:
+            self.window.cookies.set_profiles(self.cookie_store.load())
+        except (OSError, ValueError, TypeError):
+            self.window.cookies.update(message='Cookie 配置无法读取，已保持不使用；原文件未修改。')
+        self.window.cookies.save_requested.connect(self._save_cookie_profiles)
         self.queue = DownloadQueueController(self.download_service, self.window)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
@@ -252,6 +259,7 @@ class AppController:
 
     def fetch_metadata(self, url: str) -> None:
         self._cancel_thumbnail()
+        self.window.cookies.recommend(url)
         token = self._metadata_gate.begin(url.strip())
         self.metadata_process.start(token, url, MetadataProcessConfig(
             deno_path=str(self.deno_path or ""),
@@ -259,7 +267,16 @@ class AppController:
             custom_proxy_url=self.settings.custom_proxy_url,
             codec_preference=self.settings.codec_preference,
             require_deno=True,
+            cookie_profile=self.window.cookies.selected_profile,
         ))
+
+    def _save_cookie_profiles(self, profiles):
+        try:
+            self.cookie_store.save(profiles)
+            self.window.cookies.set_profiles(profiles)
+            self.window.cookies.update(message='Cookie 配置已保存，请在下载页明确选择要使用的配置。')
+        except (OSError, ValueError):
+            self.window.cookies.update(message='Cookie 配置保存失败，原配置已保留。')
 
     def _metadata_result(self, token: RequestToken, video) -> None:
         if not self._metadata_gate.deliver(token, self._apply_metadata_result, video):
@@ -268,6 +285,8 @@ class AppController:
         self._start_thumbnail(video)
 
     def _apply_metadata_result(self, video) -> None:
+        if hasattr(self.window, 'cookies'):
+            self.window.cookies.update(authRequired=False)
         retry = self._pending_retry
         preferred = (
             retry.format.label if isinstance(retry, DownloadRequest)
@@ -468,6 +487,8 @@ class AppController:
 
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
+        if error.code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
+            self.window.cookies.update(authRequired=True, message=error.user_message)
         self.show_error(error)
 
     def enqueue_download(self, video, option, filename: str, directory: str) -> None:
@@ -483,6 +504,8 @@ class AppController:
                                       subtitle_enabled=state['subtitleEnabled'], subtitle_auto=state['subtitleAuto'],
                                       subtitle_embed=state['subtitleEmbed'], subtitle_format=state['subtitleFormat'],
                                       subtitle_languages=tuple(state['subtitleLanguages']))
+            profile = self.window.cookies.selected_profile
+            request = replace(request, cookie_profile=profile, cookie_profile_id=profile.id if profile else '')
             from yt_downloader.services.download_options import prepare_request
             effective = prepare_request(request)
             option = effective.format

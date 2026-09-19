@@ -19,6 +19,7 @@ from yt_downloader.ui.quick_images import ImageStore
 from yt_downloader.ui.quick_settings import SettingsPresenter
 from yt_downloader.ui.quick_state import ViewState
 from yt_downloader.ui.quick_theme import QuickTheme
+from yt_downloader.ui.quick_cookies import CookiePresenter
 
 PROJECT_URL = 'https://github.com/kekaodeni/YTDownloader'
 
@@ -41,6 +42,7 @@ class MainWindow(ViewState):
         self.theme = theme or QuickTheme(QGuiApplication.instance())
         self.images = ImageStore()
         self.dialogs = DialogBridge(self)
+        self.cookies = CookiePresenter(self)
         self.dialogs.sessionsChanged.connect(self._finish_close)
         self.download_page = DownloadPresenter(settings.download_directory, self.images, self)
         self.history_page = HistoryPresenter(self.dialogs, self)
@@ -59,7 +61,7 @@ class MainWindow(ViewState):
         self.engine.addImageProvider('thumbnails', self.images)
         context = self.engine.rootContext()
         for name, value in (('shell', self), ('theme', self.theme), ('download', self.download_page),
-                            ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs)):
+                            ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies)):
             context.setContextProperty(name, value)
         context.setContextProperty('assetsBase', QUrl.fromLocalFile(str(resource_path('assets')) + '/'))
         self.engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / 'qml' / 'Main.qml')))
@@ -83,6 +85,10 @@ class MainWindow(ViewState):
                 self.theme.applyFont(field, 'Body', field.property('text') or field.property('placeholderText'))
             except RuntimeError:
                 return
+
+    @Slot()
+    def openCookieSettings(self):
+        self._select_page(2)
 
     def dispose(self):
         # Destroy the QML object tree while all context objects are still alive.

@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yt_downloader.core.models import AppSettings, PlaylistMetadata, SubtitleTrack
+from yt_downloader.core.models import AppSettings, PlaylistMetadata, SubtitleTrack, CookieProfile
 from yt_downloader.ui.quick_window import MainWindow
 from verify_quick_ui import sample_video
 
@@ -87,6 +87,15 @@ def main():
             window._select_page(3)
             yield 400
             snapshot(mode+'-about')
+            window._select_page(2)
+            window.cookies.set_profiles((CookieProfile('fixture', 'Fixture / Firefox', 'browser', browser='firefox'),))
+            window.cookies.selectProfile(1)
+            yield 300
+            snapshot(mode+'-cookie-browser')
+            window.cookies.edit('source', 'file')
+            yield 300
+            snapshot(mode+'-cookie-file')
+            window.cookies.selectProfile(0)
         assert not window.qml_warnings, window.qml_warnings
         report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_download_disabled', 'about', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')

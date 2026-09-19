@@ -38,6 +38,7 @@ from yt_downloader.services.download_tuning import AUTO_FRAGMENT_COUNT
 from yt_downloader.services.task_artifacts import TaskArtifactRegistry
 from yt_downloader.services.download_options import media_options, prepare_request
 from yt_downloader.services.subtitle_service import SubtitleService, SubtitleResult
+from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,10 @@ class _DownloadLogger:
 
 
 def _download_error(message: str) -> tuple[str, str]:
+    from yt_downloader.services.media_errors import classify_metadata_error
+    cookie_code, cookie_message = classify_metadata_error(Exception(message))
+    if cookie_code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
+        return cookie_code, cookie_message
     lowered = message.lower()
     if "no space" in lowered or "disk full" in lowered:
         return "disk_full", "磁盘空间不足，无法完成下载。"
@@ -218,7 +223,7 @@ class DownloadService:
     def __init__(
         self,
         *,
-        ydl_factory: Callable[[dict[str, Any]], Any] = yt_dlp.YoutubeDL,
+        ydl_factory: Callable[[dict[str, Any]], Any] = ReadOnlyCookieYoutubeDL,
         deno_path: str | Path | None = None,
         ffmpeg_path: str | Path | None = None,
         require_tools: bool = True,
@@ -393,6 +398,8 @@ class DownloadService:
             js_config["deno"]["path"] = str(self.deno_path)
         options: dict[str, Any] = {
             "ignoreconfig": True,
+            "usenetrc": False,
+            "cachedir": False,
             "noplaylist": True,
             "continuedl": True,
             "overwrites": False,
@@ -417,6 +424,10 @@ class DownloadService:
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:
+            try:
+                options.update(cookie_options(request.cookie_profile))
+            except ValueError as error:
+                raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
             with _interruptible_ytdlp_resources(cancel_event, context):
                 with self.ydl_factory(options) as ydl:
                     exit_code = ydl.download([request.video.url])

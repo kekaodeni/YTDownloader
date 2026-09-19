@@ -61,7 +61,29 @@ No Cookie/login was used. Tests downloaded only subtitle text, not public videos
 
 ## Remaining phases
 
-Phase 5 explicit Cookie profiles and redaction; Phase 6
+Phase 6
 playlist selection, global scheduling and history extension; Phase 7 external
 updater recovery dispatch; Phase 8 version bump, RC builds and frozen A–F matrix.
 Each phase requires its own focused and full regression before commit.
+
+## Phase 5 — Cookie profiles
+
+Profiles store references only in the local application data directory, separate
+from general settings and history. Browser sources use yt-dlp's own loader. File
+sources validate Netscape structure without echoing rows; a YoutubeDL adapter
+disables cookiefile writeback. Default selection remains none, recommendations
+never activate credentials, and profiles can be switched or disabled. Cookie
+requirements preserve the URL and expose settings/retry while retaining copyable
+technical error details. Names and domain hints are user-owned configuration.
+
+Deterministic tests cover browser options, file options, missing/invalid files,
+domain boundaries, persistence, read-only cookiejar lifetime, browser lock/read/
+decrypt classifications and retry UI. Real local HTTP confirms a selected fixture
+cookie reaches the request without changing its source file. Browser credential
+stores and real accounts were not opened during acceptance.
+
+Injected Cookie/Bearer/session/SAPISID values are absent from formatted logs and
+copy reports. User profile paths and Netscape rows are redacted. Light/dark Cookie
+UI, source GUI smoke and startup health passed; QML warnings were empty. No real
+Cookie, browser database, token or private key was used or committed.
+Final full regression: **416 passed in 136.11 seconds**.

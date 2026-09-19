@@ -33,6 +33,28 @@ Item {
                     }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
+                UiText { text: "账户与 Cookie"; role: "SectionTitle" }
+                UiText { Layout.fillWidth: true; text: "不保存网站账号密码。仅在你明确选择配置时读取浏览器 Cookie 或 cookies.txt。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiCombo { Layout.fillWidth: true; accessibleName: "Cookie 配置"; model: cookies.state.profiles; currentIndex: cookies.state.profileIndex; onActivated: cookies.selectProfile(currentIndex) }
+                UiCombo { objectName: "cookieSource"; Layout.fillWidth: true; accessibleName: "Cookie 来源"; model: ["不使用", "从浏览器读取", "Cookie 文件"]; property var values: ["none", "browser", "file"]; currentIndex: values.indexOf(cookies.state.source); onActivated: cookies.edit("source", values[currentIndex]) }
+                ColumnLayout {
+                    Layout.fillWidth: true; visible: cookies.state.source !== "none"; spacing: 10
+                    UiField { Layout.fillWidth: true; Accessible.name: "Cookie 配置名称"; placeholderText: "配置名称，例如 YouTube / Firefox"; text: cookies.state.name; onTextChanged: cookies.edit("name", text) }
+                    UiField { Layout.fillWidth: true; Accessible.name: "Cookie 推荐域名"; placeholderText: "推荐域名（可选），例如 youtube.com"; text: cookies.state.domain; onTextChanged: cookies.edit("domain", text) }
+                    UiCombo { Layout.fillWidth: true; visible: cookies.state.source === "browser"; accessibleName: "浏览器"; model: ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Chromium"]; property var values: ["chrome", "edge", "firefox", "brave", "opera", "chromium"]; currentIndex: values.indexOf(cookies.state.browser); onActivated: cookies.edit("browser", values[currentIndex]) }
+                    RowLayout { Layout.fillWidth: true; visible: cookies.state.source === "file"
+                        UiText { Layout.fillWidth: true; text: cookies.state.fileLabel; role: "Caption"; elide: Text.ElideLeft }
+                        UiButton { text: "选择 cookies.txt"; onClicked: cookies.pick_requested() }
+                    }
+                    Flow { Layout.fillWidth: true; spacing: 8
+                        UiButton { text: "保存配置"; onClicked: cookies.saveProfile() }
+                        UiButton { text: "新增配置"; onClicked: { cookies.selectProfile(0); cookies.edit("source", "browser") } }
+                        UiButton { text: "删除配置"; enabled: cookies.state.profileIndex > 0; onClicked: cookies.removeProfile() }
+                    }
+                }
+                UiText { Layout.fillWidth: true; text: cookies.state.message; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiButton { text: "返回并重新解析"; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
+                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
                 UiText { text: "网络"; role: "SectionTitle" }
                 SettingField { Layout.fillWidth: true; label: "网络连接"
                     UiCombo { Layout.fillWidth: true; accessibleName: "网络代理模式"; model: ["系统代理", "直连", "自定义代理"]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.edit("proxy_mode", values[currentIndex]) }

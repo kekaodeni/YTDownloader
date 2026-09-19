@@ -40,6 +40,13 @@ Item {
             }
         }
         UiText { Layout.fillWidth: true; visible: download.state.clipboardHint.length > 0 && !download.state.busy; text: download.state.clipboardHint; role: "Caption"; color: theme.state.muted; elide: Text.ElideRight }
+        RowLayout {
+            Layout.fillWidth: true
+            UiCombo { Layout.fillWidth: true; accessibleName: "解析与下载 Cookie 配置"; model: cookies.state.profiles; currentIndex: cookies.state.profileIndex; enabled: !download.state.busy; onActivated: cookies.selectProfile(currentIndex) }
+            UiButton { text: "Cookie 设置"; onClicked: shell.openCookieSettings() }
+            UiButton { text: "重新解析"; visible: cookies.state.authRequired; enabled: !download.state.busy; onClicked: download.requestParse() }
+        }
+        UiText { Layout.fillWidth: true; visible: cookies.state.recommendation.length > 0; text: cookies.state.recommendation; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
         ColumnLayout {
             Layout.fillWidth: true; visible: download.state.busy; spacing: 8
             UiProgress { Layout.fillWidth: true; indeterminate: true }

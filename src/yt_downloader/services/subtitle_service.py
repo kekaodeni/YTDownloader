@@ -6,6 +6,7 @@ import re
 import yt_dlp
 from yt_downloader.core.errors import OperationCancelled
 from yt_downloader.services.ffmpeg_service import FfmpegService
+from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,10 @@ class SubtitleService:
                    'cachedir': False, 'socket_timeout': 15}
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
-        with yt_dlp.YoutubeDL(options) as ydl:
+        options.update(cookie_options(request.cookie_profile))
+        from yt_downloader.services.media_resolver import _YdlLogger
+        options['logger'] = _YdlLogger()
+        with ReadOnlyCookieYoutubeDL(options) as ydl:
             for track in tracks:
                 if cancel_event.is_set():
                     raise OperationCancelled()

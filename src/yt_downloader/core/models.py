@@ -218,6 +218,20 @@ class DownloadRequest:
     subtitle_auto: bool = False
     subtitle_embed: bool = False
     subtitle_format: str = 'srt'
+    cookie_profile: CookieProfile | None = None
+    cookie_profile_id: str = ''
+
+
+@dataclass(frozen=True, slots=True)
+class CookieProfile:
+    id: str
+    name: str
+    source_type: str
+    browser: str = ''
+    cookie_file: str = field(default='', repr=False)
+    domain_hint: str = ''
+    created_at: str = ''
+    updated_at: str = ''
 
 
 @dataclass(frozen=True, slots=True)

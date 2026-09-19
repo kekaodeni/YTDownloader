@@ -11,9 +11,9 @@ from typing import Final
 from yt_downloader.core.errors import AppError
 
 
-_SECRET_NAMES: Final[str] = r"api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization|cookie|signature|sig|credential"
+_SECRET_NAMES: Final[str] = r"api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|token|password|passwd|secret|authorization|cookie|signature|sig|credential|SAPISID|APISID|HSID|SSID|SID|session(?:id)?"
 _URL_AUTH_RE = re.compile(r'(?i)(https?://)[^/@\s]+@')
-_HEADER_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*:\s*).*$")
+_HEADER_RE = re.compile(r"(?im)(\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*:\s*).*$")
 _JSON_RE = re.compile(rf"(?i)([\"'](?:{_SECRET_NAMES})[\"']\s*:\s*)[\"'][^\"']*[\"']")
 _KV_RE = re.compile(rf"(?i)\b({_SECRET_NAMES})(\s*=\s*)([^&\s,;]+)")
 _BEARER_RE = re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]+")
@@ -23,6 +23,8 @@ def redact_sensitive(text: str | None) -> str:
     if not text:
         return ""
     value = str(text)
+    value = re.sub(r'(?i)([A-Z]:[\\/]+Users[\\/]+)[^\\/\r\n]+', lambda match: match.group(1) + '[USER]', value)
+    value = re.sub(r'(?m)^(?:#HttpOnly_)?[^\t\r\n]+\t(?:TRUE|FALSE)\t[^\r\n]+$', '[REDACTED COOKIE ROW]', value)
     value = _URL_AUTH_RE.sub(r'\1[REDACTED]@', value)
     value = _HEADER_RE.sub(lambda match: f"{match.group(1)}[REDACTED]", value)
     value = _JSON_RE.sub(lambda match: f'{match.group(1)}"[REDACTED]"', value)

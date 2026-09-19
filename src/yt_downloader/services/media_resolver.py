@@ -22,6 +22,7 @@ from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
+from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 
 
 logger = logging.getLogger(__name__)
@@ -59,12 +60,13 @@ class MediaResolver:
     def __init__(
         self,
         *,
-        ydl_factory: Callable[[dict[str, Any]], Any] = yt_dlp.YoutubeDL,
+        ydl_factory: Callable[[dict[str, Any]], Any] = ReadOnlyCookieYoutubeDL,
         http_get: Callable[..., _Response] = requests.get,
         deno_path: str | Path | None = None,
         require_deno: bool = True,
         network_policy: NetworkPolicy | None = None,
         codec_preference: CodecPreference = CodecPreference.AUTO,
+        cookie_profile=None,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
@@ -74,6 +76,7 @@ class MediaResolver:
         self.require_deno = require_deno
         self.network_policy = network_policy
         self.codec_preference = codec_preference
+        self.cookie_profile = cookie_profile
 
     def fetch_metadata(
         self,
@@ -115,6 +118,10 @@ class MediaResolver:
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:
+            try:
+                options.update(cookie_options(self.cookie_profile))
+            except ValueError as error:
+                raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
             with self.ydl_factory(options) as ydl:
                 extracted = ydl.extract_info(normalized, download=False)
                 # Do not materialize a lazy playlist or send raw entries over IPC.
