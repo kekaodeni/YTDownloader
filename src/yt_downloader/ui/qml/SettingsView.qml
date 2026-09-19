@@ -25,6 +25,9 @@ Item {
                     SettingField { Layout.fillWidth: true; label: "默认画质"
                         UiCombo { Layout.fillWidth: true; accessibleName: "默认画质"; model: ["自动推荐", "2160p", "1440p", "1080p", "720p"]; property var values: ["recommended", "2160p 4K", "1440p 2K", "1080p", "720p"]; currentIndex: Math.max(0, values.indexOf(settings.state.default_quality)); onActivated: settings.edit("default_quality", values[currentIndex]) }
                     }
+                    SettingField { Layout.fillWidth: true; label: "同时下载任务数"
+                        UiCombo { Layout.fillWidth: true; accessibleName: "同时下载任务数"; model: ["1", "2（默认）", "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.edit("max_concurrent_downloads", currentIndex + 1) }
+                    }
                     SettingField { Layout.fillWidth: true; label: "分片并发"
                         UiCombo { Layout.fillWidth: true; accessibleName: "分片并发数"; model: ["自动", "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.edit("concurrent_fragments", values[currentIndex]) }
                     }

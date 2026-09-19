@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from urllib.parse import urlsplit
 
 from PySide6.QtCore import QLocale, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QDesktopServices, QGuiApplication
@@ -165,7 +166,7 @@ class AppController:
         except (OSError, ValueError, TypeError):
             self.window.cookies.update(message='Cookie 配置无法读取，已保持不使用；原文件未修改。')
         self.window.cookies.save_requested.connect(self._save_cookie_profiles)
-        self.queue = DownloadQueueController(self.download_service, self.window)
+        self.queue = DownloadQueueController(self.download_service, self.window, max_concurrent=self.settings.max_concurrent_downloads)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
         self._thumbnail_workers: list[FunctionWorker] = []
@@ -209,6 +210,8 @@ class AppController:
         download.parse_requested.connect(self.fetch_metadata)
         download.parse_cancel_requested.connect(self.metadata_process.cancel)
         download.download_requested.connect(self.enqueue_download)
+        download.batch_requested.connect(self.enqueue_batch)
+        download.batch_action_requested.connect(self._batch_action)
         download.cancel_requested.connect(self.queue.cancel)
         download.open_file_requested.connect(self._open_file)
         download.open_folder_requested.connect(self._reveal_file)
@@ -293,6 +296,8 @@ class AppController:
             else retry.quality_label if retry else self.settings.default_quality
         )
         self.window.download_page.show_video(video, preferred_quality=preferred)
+        if hasattr(self.window, 'scroll_download_to_top'):
+            self.window.scroll_download_to_top()
         if retry:
             self._pending_retry = None
             if retry.media_mode != 'video_audio':
@@ -517,7 +522,8 @@ class AppController:
                 media_mode=str(request.media_mode), audio_codec=request.audio_codec,
                 audio_bitrate=request.audio_quality, container=option.final_ext,
                 subtitle_languages=request.subtitle_languages if request.subtitle_enabled else (),
-                subtitle_format=request.subtitle_format,
+                subtitle_format=request.subtitle_format, extractor=video.extractor,
+                source_site=urlsplit(video.webpage_url or video.url).hostname or '',
             )
             self.history.upsert(record)
             self._persisted_task_stages[request.task_id] = TaskStatus.PENDING
@@ -530,6 +536,70 @@ class AppController:
                 repr(exc),
                 ErrorContext(url=video.url, selected_format=option.label, output_directory=directory, stage="Preparing download"),
             ))
+
+    def enqueue_batch(self, media, entries):
+        from yt_downloader.core.models import ResolvedMedia
+        from urllib.parse import urlsplit
+        page = self.window.download_page
+        state = page.state
+        entries = tuple(entry for entry in entries if not entry.unavailable)
+        if not entries:
+            return
+        output = Path(state['directory'].strip()).expanduser()
+        if not state['directory'].strip() or not output.is_absolute():
+            self.show_error(AppError('invalid_output', '请选择有效的绝对下载目录。', 'Invalid batch output directory'))
+            return
+        batch_id = uuid.uuid4().hex
+        created = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
+        page.add_batch(batch_id, media, len(entries), created)
+        profile = self.window.cookies.selected_profile
+        # Deferred placeholders are presentation only. Actual formats are resolved
+        # by the existing worker after acquiring a slot in the shared queue.
+        placeholder = FormatOption('解析后自动选择', None, None, 'none', 'none', '', '', '', None, False, '')
+        self.queue.pause(batch_id)
+        try:
+            for entry in entries:
+                child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
+                                      entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
+                request = DownloadRequest(uuid.uuid4().hex, child, placeholder, output,
+                                          sanitize_filename(entry.title), media_mode=state['mediaMode'],
+                                          audio_codec=state['audioCodec'], audio_quality=state['audioQuality'],
+                                          subtitle_enabled=state['subtitleEnabled'], subtitle_languages=tuple(state['subtitleLanguages']),
+                                          subtitle_auto=state['subtitleAuto'], subtitle_embed=state['subtitleEmbed'],
+                                          subtitle_format=state['subtitleFormat'], cookie_profile=profile,
+                                          cookie_profile_id=profile.id if profile else '', batch_id=batch_id,
+                                          playlist_id=media.playlist.id if media.playlist else '', playlist_title=media.title,
+                                          resolve_before_download=True, preferred_quality=self.settings.default_quality)
+                record = HistoryRecord(request.task_id, child.media_key, redact_sensitive(child.url), child.title,
+                                       output / request.filename_stem, '解析后自动选择', None, None, TaskStatus.PENDING, created,
+                                       media_mode=str(request.media_mode), audio_codec=request.audio_codec,
+                                       audio_bitrate=request.audio_quality, subtitle_languages=request.subtitle_languages,
+                                       subtitle_format=request.subtitle_format, extractor=entry.extractor_key,
+                                       source_site=urlsplit(entry.url).hostname or '', playlist_id=request.playlist_id,
+                                       playlist_title=media.title, batch_id=batch_id)
+                self.history.upsert(record)
+                self.queue.enqueue(request)
+        except (OSError, ValueError) as error:
+            self.show_error(AppError('batch_prepare_failed', '部分项目无法加入下载，请检查下载目录和历史存储。', redact_sensitive(str(error))))
+        finally:
+            page.finish_batch_registration(batch_id)
+            self.queue.resume(batch_id)
+            self.refresh_history()
+
+    def _batch_action(self, batch_id, action):
+        if action == 'pause':
+            self.queue.pause(batch_id)
+        elif action == 'resume':
+            self.queue.resume(batch_id)
+        elif action == 'cancel':
+            self.queue.cancel_all(batch_id)
+        elif action == 'retry':
+            requests = self.window.download_page.failed_batch_requests(batch_id)
+            for request in requests:
+                if self.queue.task_position(request.task_id) is None:
+                    self.history.update_status(request.task_id, TaskStatus.PENDING)
+                    self.queue.enqueue(request)
+            self.refresh_history()
 
     def _progress(self, progress) -> None:
         self.window.download_page.update_task(progress)
@@ -561,6 +631,8 @@ class AppController:
                 completed_at=result.completed_at,
                 error_summary='；'.join(result.warnings) or None,
             )
+            if result.resolved_media and result.resolved_format and hasattr(self.history, 'update_media_identity'):
+                self.history.update_media_identity(result.task_id, result.resolved_media, result.resolved_format)
             if hasattr(self.history, 'update_subtitle_result'):
                 self.history.update_subtitle_result(result.task_id, embedded=result.subtitle_embedded, automatic=result.subtitle_auto_used)
         except Exception:
@@ -628,6 +700,7 @@ class AppController:
             self.ffmpeg = FfmpegService(configured_directory=settings.ffmpeg_directory or None)
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
+            self.queue.set_concurrency(settings.max_concurrent_downloads)
             self.media.codec_preference = settings.codec_preference
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
@@ -704,6 +777,10 @@ class AppController:
             return
         request = page.task_request(task_id)
         if request is None or page.task_status(task_id) is not TaskStatus.FAILED:
+            return
+        if request.batch_id:
+            self.history.update_status(task_id, TaskStatus.PENDING)
+            self.queue.enqueue(request)
             return
         # Retry is a new parse/selection, not an implicit download. Use the
         # retained request so deleting a history entry cannot break this action.

@@ -34,7 +34,7 @@ class SettingsPresenter(ViewState):
     @Slot(str, 'QVariant')
     def edit(self, name, value):
         editable = {'download_directory', 'default_quality', 'theme', 'reduce_motion', 'ffmpeg_directory',
-                    'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'codec_preference', 'auto_check_updates'}
+                    'max_concurrent_downloads', 'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'codec_preference', 'auto_check_updates'}
         if name not in editable or self._state[name] == value:
             return
         self.update(**{name: value})
@@ -54,6 +54,7 @@ class SettingsPresenter(ViewState):
                            reduce_motion=bool(v['reduce_motion']), ffmpeg_directory=v['ffmpeg_directory'].strip(),
                            proxy_mode=str(v['proxy_mode']), custom_proxy_url=v['custom_proxy_url'].strip(),
                            concurrent_fragments=int(v['concurrent_fragments']),
+                           max_concurrent_downloads=int(v['max_concurrent_downloads']),
                            codec_preference=CodecPreference(v['codec_preference']), auto_check_updates=bool(v['auto_check_updates']))
 
     @Slot()

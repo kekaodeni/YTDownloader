@@ -155,6 +155,8 @@ class ResolvedMedia:
     compatibility: str = 'EXPERIMENTAL'
     audio_formats: tuple[FormatOption, ...] = ()
     video_only_formats: tuple[FormatOption, ...] = ()
+    entries: tuple[PlaylistEntry, ...] = ()
+    entries_truncated: bool = False
 
     @property
     def media_key(self) -> str:
@@ -197,6 +199,18 @@ class PlaylistMetadata:
     count: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PlaylistEntry:
+    id: str
+    index: int
+    title: str
+    url: str
+    extractor_key: str = ''
+    duration: float | None = None
+    thumbnail: str = ''
+    unavailable: bool = False
+
+
 # Keep existing download/history consumers and older fixtures source-compatible.
 # video_id is an extractor-local opaque ID, never a YouTube-specific identifier.
 VideoInfo = ResolvedMedia
@@ -220,6 +234,11 @@ class DownloadRequest:
     subtitle_format: str = 'srt'
     cookie_profile: CookieProfile | None = None
     cookie_profile_id: str = ''
+    batch_id: str = ''
+    playlist_id: str = ''
+    playlist_title: str = ''
+    resolve_before_download: bool = False
+    preferred_quality: str = 'recommended'
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +276,8 @@ class DownloadResult:
     subtitle_paths: tuple[Path, ...] = ()
     subtitle_embedded: bool = False
     subtitle_auto_used: bool = False
+    resolved_media: ResolvedMedia | None = field(default=None, repr=False)
+    resolved_format: FormatOption | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +303,12 @@ class HistoryRecord:
     subtitle_embedded: bool = False
     subtitle_auto_used: bool = False
 
+    extractor: str = ''
+    source_site: str = ''
+    playlist_id: str = ''
+    playlist_title: str = ''
+    batch_id: str = ''
+
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
@@ -294,5 +321,22 @@ class AppSettings:
     proxy_mode: str = "system"
     custom_proxy_url: str = ""
     concurrent_fragments: int = 0
+    max_concurrent_downloads: int = 2
     codec_preference: CodecPreference = CodecPreference.AUTO
     auto_check_updates: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class BatchTask:
+    batch_id: str
+    source_url: str
+    title: str
+    total_count: int
+    selected_count: int
+    created_at: str
+    queued_count: int = 0
+    active_count: int = 0
+    completed_count: int = 0
+    failed_count: int = 0
+    cancelled_count: int = 0
+    status: str = 'queued'

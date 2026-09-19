@@ -45,18 +45,22 @@ def test_typed_geo_error_wins_over_ambiguous_text():
     assert caught.value.code == 'GEO_RESTRICTED'
 
 
-def test_playlist_saves_summary_without_consuming_entries_or_enabling_download(quick_window):
-    class NoIteration:
-        def __iter__(self):
-            raise AssertionError('Playlist enumeration is outside Phase 2')
+def test_playlist_enumeration_is_bounded_and_requires_explicit_selection(quick_window):
+    def entries():
+        for index in range(1002):
+            if index == 1001:
+                raise AssertionError('Enumeration must stop at its explicit safety bound')
+            yield {'title': str(index), 'url': f'https://example.org/{index}'}
     seen = []
     result = service_for({'_type': 'playlist', 'id': 'collection', 'title': 'Collection',
-                          'extractor': 'vimeo', 'entries': NoIteration()}, seen).fetch_metadata('https://vimeo.com/showcase/123')
+                          'extractor': 'vimeo', 'entries': entries()}, seen).fetch_metadata('https://vimeo.com/showcase/123')
     assert result.media_type == 'playlist' and result.playlist.id == 'collection'
     assert result.formats == () and result.raw == {}
-    assert seen[0][1]['noplaylist'] is True and seen[0][1]['extract_flat'] == 'in_playlist'
+    assert len(result.entries) == 1000 and result.entries_truncated
+    assert seen[0][1]['noplaylist'] is False and seen[0][1]['extract_flat'] == 'in_playlist'
     quick_window.download_page.show_video(result)
-    assert '后续版本' in quick_window.download_page.state['mediaHint']
+    assert quick_window.download_page.state['selectedCount'] == 0
+    assert '1000' in quick_window.download_page.state['mediaHint']
 
 
 def test_missing_metadata_is_safe_and_thumbnail_fallback_works():
@@ -86,6 +90,6 @@ def test_generic_record_coexists_with_legacy_history(tmp_path):
     media = service_for(media_fixture('BiliBili', 'https://www.bilibili.com/video/BV1xx411c7mD')).fetch_metadata('https://www.bilibili.com/video/BV1xx411c7mD', include_thumbnail=False)
     repository.upsert(replace(original, task_id='generic', video_id=media.media_key, url=media.webpage_url, title=media.title))
     with sqlite3.connect(tmp_path/'history.db') as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 3
+        assert db.execute('PRAGMA user_version').fetchone()[0] == 1
         assert db.execute('SELECT video_id,url FROM downloads WHERE task_id=?', ('legacy',)).fetchone() == (original.video_id, original.url)
         assert db.execute('SELECT video_id,url FROM downloads WHERE task_id=?', ('generic',)).fetchone() == (media.media_key, media.webpage_url)

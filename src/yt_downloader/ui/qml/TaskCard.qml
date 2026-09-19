@@ -7,7 +7,8 @@ Rectangle {
     required property var item
     property bool exiting: false
     objectName: "task-" + item.id
-    height: content.implicitHeight + 32
+    implicitHeight: content.implicitHeight + 32
+    height: implicitHeight
     color: theme.state.surface; radius: 12; border.color: theme.state.stroke
     enabled: !exiting
     ListView.onRemove: exiting = true

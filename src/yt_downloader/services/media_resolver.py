@@ -100,10 +100,10 @@ class MediaResolver:
             "usenetrc": False,
             "cachedir": False,
             "allow_playlist_files": False,
-            "noplaylist": True,
+            "noplaylist": False,
             "extract_flat": "in_playlist",
             "lazy_playlist": True,
-            "playlistend": 1,
+            "playlistend": 1001,
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
@@ -124,9 +124,11 @@ class MediaResolver:
                 raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
             with self.ydl_factory(options) as ydl:
                 extracted = ydl.extract_info(normalized, download=False)
-                # Do not materialize a lazy playlist or send raw entries over IPC.
+                # Bound the lazy enumeration; children are resolved only after selection.
                 if isinstance(extracted, Mapping) and extracted.get('_type') in {'playlist', 'multi_video'}:
-                    extracted = {key: value for key, value in extracted.items() if key != 'entries'}
+                    from itertools import islice
+                    extracted = dict(extracted)
+                    extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
                 info = ydl.sanitize_info(extracted)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))

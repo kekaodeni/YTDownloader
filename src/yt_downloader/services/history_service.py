@@ -69,27 +69,33 @@ class HistoryRepository:
                     PRAGMA user_version=1;
                 """)
                 version = 1
-            if version in {1, 2}:
-                backup = self.database_path.with_suffix(self.database_path.suffix + f'.v{version}.bak')
-                if not backup.exists():
-                    with sqlite3.connect(backup) as destination:
-                        connection.backup(destination)
-                # DDL and version change commit together; failure rolls back the
-                # complete migration, leaving the original database usable.
-                connection.execute('BEGIN IMMEDIATE')
+            if version not in {1, 2, 3}:
+                raise RuntimeError(f"Unsupported history database version: {version}")
+            has_extension = connection.execute("SELECT 1 FROM sqlite_master WHERE name='history_extension'").fetchone()
+            revision = connection.execute('SELECT revision FROM history_extension').fetchone()[0] if has_extension else 0
+            if revision == 4:
+                return
+            if revision:
+                raise RuntimeError(f'Unsupported history extension: {revision}')
+            backup = self.database_path.with_suffix(self.database_path.suffix + f'.v{version}.bak')
+            if not backup.exists():
+                with sqlite3.connect(backup) as destination:
+                    connection.backup(destination)
+            connection.execute('BEGIN IMMEDIATE')
             if version == 1:
                 self._migrate_media_fields(connection)
-                connection.execute('PRAGMA user_version=2')
-                version = 2
-            if version == 2:
+            if version in {1, 2}:
                 for field, default in (('subtitle_languages', '[]'), ('subtitle_format', 'srt')):
                     connection.execute(f"ALTER TABLE downloads ADD COLUMN {field} TEXT NOT NULL DEFAULT '{default}'")
                 for field in ('subtitle_embedded', 'subtitle_auto_used'):
                     connection.execute(f'ALTER TABLE downloads ADD COLUMN {field} INTEGER NOT NULL DEFAULT 0')
-                connection.execute('PRAGMA user_version=3')
-                version = 3
-            if version != 3:
-                raise RuntimeError(f"Unsupported history database version: {version}")
+            for field in ('extractor', 'source_site', 'playlist_id', 'playlist_title', 'batch_id'):
+                connection.execute(f"ALTER TABLE downloads ADD COLUMN {field} TEXT NOT NULL DEFAULT ''")
+            connection.execute('CREATE TABLE history_extension (revision INTEGER NOT NULL)')
+            connection.execute('INSERT INTO history_extension VALUES (4)')
+            # The legacy core remains fully compatible: v0.4.2 uses named columns
+            # and ignores extensions. Keep it readable after an installation rollback.
+            connection.execute('PRAGMA user_version=1')
 
     @staticmethod
     def _migrate_media_fields(connection):
@@ -126,6 +132,15 @@ class HistoryRepository:
                                (record.media_mode, record.audio_codec, record.audio_bitrate, record.container, record.task_id))
             connection.execute('UPDATE downloads SET subtitle_languages=?, subtitle_format=?, subtitle_embedded=?, subtitle_auto_used=? WHERE task_id=?',
                                (json.dumps(record.subtitle_languages), record.subtitle_format, record.subtitle_embedded, record.subtitle_auto_used, record.task_id))
+            connection.execute('UPDATE downloads SET extractor=?, source_site=?, playlist_id=?, playlist_title=?, batch_id=? WHERE task_id=?',
+                               (record.extractor, record.source_site, record.playlist_id, record.playlist_title, record.batch_id, record.task_id))
+
+    def update_media_identity(self, task_id, media, option):
+        from urllib.parse import urlsplit
+        with self._connection() as connection:
+            connection.execute('UPDATE downloads SET title=?, extractor=?, source_site=?, quality_label=?, container=? WHERE task_id=?',
+                               (media.title, media.extractor, urlsplit(media.webpage_url or media.url).hostname or '',
+                                option.label, option.final_ext, task_id))
 
     def update_subtitle_result(self, task_id, *, embedded, automatic):
         with self._connection() as connection:
@@ -232,4 +247,6 @@ class HistoryRepository:
             audio_bitrate=row['audio_bitrate'], container=row['container'],
             subtitle_languages=tuple(json.loads(row['subtitle_languages'])), subtitle_format=row['subtitle_format'],
             subtitle_embedded=bool(row['subtitle_embedded']), subtitle_auto_used=bool(row['subtitle_auto_used']),
+            extractor=row['extractor'], source_site=row['source_site'], playlist_id=row['playlist_id'],
+            playlist_title=row['playlist_title'], batch_id=row['batch_id'],
         )

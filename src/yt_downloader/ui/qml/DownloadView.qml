@@ -91,7 +91,7 @@ Item {
                             UiText { text: "下载内容"; role: "Caption" }
                             UiCombo { objectName: "modeCombo"; Layout.fillWidth: true; accessibleName: "下载内容"; model: ["视频 + 音频", "仅视频", "仅音频"]; currentIndex: ["video_audio", "video_only", "audio_only"].indexOf(download.state.mediaMode); onActivated: download.selectMode(["video_audio", "video_only", "audio_only"][currentIndex]) }
                             UiText { Layout.fillWidth: true; visible: text.length > 0; text: download.state.modeHint; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                            UiCombo { objectName: "formatCombo"; visible: download.state.mediaMode !== "audio_only"; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
+                            UiCombo { objectName: "formatCombo"; visible: download.state.mediaMode !== "audio_only" && !download.state.playlist; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
                             UiCombo { objectName: "audioCodecCombo"; visible: download.state.mediaMode === "audio_only"; Layout.fillWidth: true; accessibleName: "音频格式"; model: ["原始音频（推荐）", "M4A", "MP3", "Opus", "FLAC"]; currentIndex: ["original", "m4a", "mp3", "opus", "flac"].indexOf(download.state.audioCodec); onActivated: download.selectAudio(["original", "m4a", "mp3", "opus", "flac"][currentIndex], download.state.audioQuality) }
                             UiCombo { visible: download.state.mediaMode === "audio_only"; enabled: download.state.audioCodec !== "original" && download.state.audioCodec !== "flac"; Layout.fillWidth: true; accessibleName: "音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; currentIndex: ["original", "320", "256", "192", "128"].indexOf(download.state.audioQuality); onActivated: download.selectAudio(download.state.audioCodec, ["original", "320", "256", "192", "128"][currentIndex]) }
                             UiSwitch { objectName: "subtitleEnabled"; text: "下载字幕"; checked: download.state.subtitleEnabled; onToggled: download.setSubtitleOption("enabled", checked) }
@@ -110,22 +110,69 @@ Item {
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleEmbed ? "嵌入失败时会提示并另存字幕，媒体仍会保留。" : "字幕将保存为独立文件。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                             }
-                            UiField { objectName: "filenameInput"; Layout.fillWidth: true; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
+                            UiField { objectName: "filenameInput"; visible: !download.state.playlist; Layout.fillWidth: true; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 8
                                 UiField { objectName: "directoryInput"; Layout.fillWidth: true; Accessible.name: "下载目录"; text: download.state.directory; onTextChanged: download.setField("directory", text) }
                                 UiButton { text: "浏览"; hint: "选择下载目录"; onClicked: download.browse_requested() }
                             }
+                            ColumnLayout {
+                                Layout.fillWidth: true; visible: download.state.playlist; spacing: 8
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    UiButton { text: "全选"; onClicked: download.selectAllEntries(true) }
+                                    UiButton { text: "取消全选"; onClicked: download.selectAllEntries(false) }
+                                    UiText { text: download.state.selectedCount + " / " + download.state.playlistCount; role: "Caption" }
+                                }
+                                ListView {
+                                    objectName: "playlistItems"
+                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 64, 300)
+                                    model: download.entries; clip: true; reuseItems: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.vertical: ScrollBar {}
+                                    delegate: RowLayout {
+                                        required property var item
+                                        width: ListView.view.width; height: 64; spacing: 8
+                                        Thumbnail { Layout.preferredWidth: 64; Layout.preferredHeight: 40; source: item.thumbnail; visible: parent.width > 380 }
+                                        UiSwitch { text: String(item.index + 1); enabled: !item.unavailable; checked: item.selected; onToggled: download.selectEntry(item.index, checked) }
+                                        UiText { Layout.fillWidth: true; text: item.title; elide: Text.ElideRight }
+                                        UiText { visible: item.unavailable; text: "不可用"; role: "Caption"; color: theme.state.muted }
+                                    }
+                                }
+                                UiText { Layout.fillWidth: true; text: "所选项目共用以上模式、字幕与 Cookie 设置；格式会逐项自动选择。"; wrapMode: Text.Wrap; role: "Caption"; color: theme.state.secondary }
+                            }
                             UiText { Layout.fillWidth: true; text: download.state.technical; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Item { Layout.fillWidth: true }
-                                UiButton { objectName: "downloadButton"; text: "开始下载"; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && download.state.formats.length > 0 && !download.state.busy; onClicked: download.requestDownload() }
+                                UiButton { objectName: "downloadButton"; text: download.state.playlist ? "下载已选项目" : "开始下载"; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && (download.state.playlist ? download.state.selectedCount > 0 : download.state.formats.length > 0) && !download.state.busy; onClicked: download.requestDownload() }
                             }
                         }
                     }
                     opacity: visible ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 240 } }
+                }
+                Repeater {
+                    model: download.batches
+                    delegate: Rectangle {
+                        required property var item
+                        width: tasks.width; height: batchBody.implicitHeight + 32
+                        radius: 12; color: theme.state.surface; border.color: theme.state.stroke
+                        ColumnLayout {
+                            id: batchBody
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 10
+                            UiText { Layout.fillWidth: true; text: "播放列表：" + item.title; role: "CardTitle"; elide: Text.ElideRight }
+                            UiText { Layout.fillWidth: true; text: item.completed_count + " 成功 · " + item.failed_count + " 失败 · " + item.cancelled_count + " 取消 · " + item.active_count + " 正在处理 · " + item.queued_count + " 等待"; role: "Caption"; wrapMode: Text.Wrap; color: theme.state.secondary }
+                            UiProgress { Layout.fillWidth: true; value: item.percent / 100 }
+                            Flow {
+                                Layout.fillWidth: true; spacing: 8
+                                UiButton { text: item.status === "paused" ? "继续" : "暂停新任务"; enabled: item.queued_count > 0; onClicked: download.batchAction(item.id, item.status === "paused" ? "resume" : "pause") }
+                                UiButton { text: "取消全部"; enabled: item.queued_count + item.active_count > 0; onClicked: download.batchAction(item.id, "cancel") }
+                                UiButton { text: "重试失败项"; enabled: item.failed_count > 0; onClicked: download.batchAction(item.id, "retry") }
+                                UiButton { text: item.expanded ? "收起子任务" : (item.failed_count > 0 ? "查看失败及子任务" : "展开子任务"); onClicked: download.batchAction(item.id, "expand") }
+                            }
+                        }
+                    }
                 }
                 RowLayout {
                     visible: download.tasks.count > 0
@@ -136,7 +183,7 @@ Item {
                 }
                 Item { width: 1; height: download.tasks.count > 0 ? 2 : 0 }
             }
-            delegate: TaskCard { width: tasks.width - 10 }
+            delegate: TaskCard { width: tasks.width - 10; visible: item.shown; height: item.shown ? implicitHeight : 0 }
             add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: shell.state.reduceMotion ? 0 : 240; easing.type: Easing.OutCubic } }
             remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: shell.state.reduceMotion ? 0 : 190 } }
             displaced: Transition { NumberAnimation { property: "y"; duration: shell.state.reduceMotion ? 0 : 240; easing.type: Easing.OutQuart } }
@@ -148,7 +195,7 @@ Item {
                     UiButton { anchors.centerIn: parent; icon.source: assetsBase + "icons/arrow_download_regular.svg"; icon.width: 28; icon.height: 28; appearance: "quiet"; selected: true; enabled: false; Accessible.ignored: true }
                 }
                 UiText { width: parent.width; text: "从一个链接开始"; role: "SectionTitle"; horizontalAlignment: Text.AlignHCenter }
-                UiText { width: parent.width; text: "粘贴支持的网站链接，解析单个视频后选择清晰度、文件名和保存位置。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+                UiText { width: parent.width; text: "粘贴支持的网站链接，解析视频或播放列表，选择下载内容与保存位置。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             }
         }
     }

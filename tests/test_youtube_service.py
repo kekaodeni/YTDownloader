@@ -61,7 +61,7 @@ def test_fetches_metadata_through_python_api_and_downloads_thumbnail() -> None:
     assert video.thumbnail_bytes == b"jpeg-data"
     assert video.formats[0].label == "1080p"
     assert FakeYdl.last_options["ignoreconfig"] is True
-    assert FakeYdl.last_options["noplaylist"] is True
+    assert FakeYdl.last_options["noplaylist"] is False
     assert FakeYdl.last_options["remote_components"] == []
     assert FakeYdl.last_options["js_runtimes"]["deno"]["path"].endswith("deno.exe")
     assert FakeYdl.last_options["socket_timeout"] == 10

@@ -31,7 +31,7 @@ class ControlledService:
 
 def test_queue_runs_only_one_download_at_a_time(qtbot, tmp_path: Path) -> None:
     service = ControlledService()
-    queue = DownloadQueueController(service)
+    queue = DownloadQueueController(service, max_concurrent=1)
     first = replace(_request(tmp_path), task_id="one")
     second = replace(_request(tmp_path), task_id="two")
     completed: list[str] = []
@@ -48,7 +48,7 @@ def test_queue_runs_only_one_download_at_a_time(qtbot, tmp_path: Path) -> None:
 
 def test_queue_reports_active_and_pending_task_positions(qtbot, tmp_path: Path) -> None:
     service = ControlledService()
-    queue = DownloadQueueController(service)
+    queue = DownloadQueueController(service, max_concurrent=1)
     first = replace(_request(tmp_path), task_id="active-position")
     second = replace(_request(tmp_path), task_id="pending-position")
 

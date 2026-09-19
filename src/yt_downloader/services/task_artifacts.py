@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import stat
 import time
+import threading
 from typing import Callable
 
 from yt_downloader.core.errors import CancellationCleanupReport
@@ -17,6 +18,7 @@ from yt_downloader.core.filename import ensure_unique_path
 
 
 logger = logging.getLogger(__name__)
+_COMMIT_LOCK = threading.Lock()
 
 
 def _is_reparse_point(path: Path) -> bool:
@@ -73,9 +75,20 @@ class TaskArtifactRegistry:
         candidate.relative_to(self.workspace.resolve())
         if destination.parent.resolve() != self.output_directory:
             raise OSError("Final destination is outside the selected output directory")
-        final_path = ensure_unique_path(destination)
-        candidate.replace(final_path)
-        return final_path
+        with _COMMIT_LOCK:
+            while True:
+                final_path = ensure_unique_path(destination)
+                try:
+                    if os.name == 'nt':
+                        # Windows rename refuses an existing target, including a
+                        # file created by another process after name selection.
+                        candidate.rename(final_path)
+                    else:
+                        os.link(candidate, final_path)
+                        candidate.unlink()
+                    return final_path
+                except FileExistsError:
+                    continue
 
     def cleanup(self) -> CancellationCleanupReport:
         if not self.workspace.exists() and not self.workspace.is_symlink():

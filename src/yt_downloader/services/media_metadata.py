@@ -3,7 +3,7 @@ import math
 from collections.abc import Mapping
 
 from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
-from yt_downloader.core.models import CodecPreference, PlaylistMetadata, ResolvedMedia, SubtitleTrack
+from yt_downloader.core.models import CodecPreference, PlaylistEntry, PlaylistMetadata, ResolvedMedia, SubtitleTrack
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
 
@@ -62,6 +62,16 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         thumbnail = next((_http_url(item.get('url')) for item in reversed(info['thumbnails'])
                           if isinstance(item, Mapping) and _http_url(item.get('url'))), None)
     webpage_url = _http_url(info.get('webpage_url')) or original_url
+    entries = []
+    if is_playlist:
+        for index, item in enumerate((info.get('entries') or [])[:1000], 1):
+            item = item if isinstance(item, Mapping) else {}
+            url = _http_url(item.get('webpage_url')) or _http_url(item.get('url')) or ''
+            entries.append(PlaylistEntry(str(item.get('id') or index), index,
+                          str(item.get('title') or '此项目暂时不可用'), url,
+                          str(item.get('ie_key') or item.get('extractor_key') or ''),
+                          _number(item.get('duration')), _http_url(item.get('thumbnail')) or '',
+                          not bool(url) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'}))
     return ResolvedMedia(
         # Replay the successful extractor input for downloads/history retries.
         # Canonical webpage_url can have different access requirements.
@@ -69,7 +79,8 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         title=str(info.get('title') or '未命名媒体'),
         channel=str(info.get('channel') or info.get('uploader') or '未知作者'),
         duration=duration, thumbnail_url=thumbnail, thumbnail_bytes=None, formats=formats,
-        audio_formats=audios, video_only_formats=videos,
+        audio_formats=audios, video_only_formats=videos, entries=tuple(entries),
+        entries_truncated=is_playlist and len(info.get("entries") or []) > 1000,
         extractor=extractor, extractor_key=extractor_key, original_url=original_url,
         webpage_url=webpage_url, media_type=media_type, uploader=str(info.get('uploader') or ''),
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,

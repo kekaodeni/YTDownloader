@@ -61,6 +61,9 @@ class SettingsService:
         concurrent_fragments = int(data.get("concurrent_fragments", 0))
         if concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("invalid fragment concurrency")
+        maximum = data.get('max_concurrent_downloads', 2)
+        if type(maximum) is not int or maximum not in {1, 2, 3, 4}:
+            raise ValueError('invalid download concurrency')
         try:
             codec_preference = CodecPreference(str(data.get("codec_preference") or "auto"))
         except ValueError as exc:
@@ -75,6 +78,7 @@ class SettingsService:
             proxy_mode=proxy_mode,
             custom_proxy_url=custom_proxy_url,
             concurrent_fragments=concurrent_fragments,
+            max_concurrent_downloads=maximum,
             codec_preference=codec_preference,
             auto_check_updates=bool(data.get("auto_check_updates", True)),
         ), source_schema
@@ -116,6 +120,8 @@ class SettingsService:
             raise ValueError("默认下载目录不能为空。")
         if settings.proxy_mode not in _PROXY_MODES:
             raise ValueError("代理模式无效。")
+        if type(settings.max_concurrent_downloads) is not int or settings.max_concurrent_downloads not in {1, 2, 3, 4}:
+            raise ValueError('同时下载任务数必须为 1–4。')
         if settings.concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("分片并发设置无效。")
         if settings.codec_preference not in set(CodecPreference):

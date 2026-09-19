@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yt_downloader.core.models import AppSettings, PlaylistMetadata, SubtitleTrack, CookieProfile
+from yt_downloader.core.models import AppSettings, PlaylistMetadata, PlaylistEntry, SubtitleTrack, CookieProfile, DownloadRequest, DownloadResult, TaskStatus
 from yt_downloader.ui.quick_window import MainWindow
 from verify_quick_ui import sample_video
 
@@ -80,10 +80,28 @@ def main():
             assert find('compatibilityHint').property('visible')
             assert find('downloadButton').property('enabled')
             snapshot(mode+'-experimental')
-            page.show_video(replace(source, media_type='playlist', formats=(), audio_formats=(), video_only_formats=(), playlist=PlaylistMetadata('collection', '集合')))
+            page.show_video(replace(source, media_type='playlist', formats=(), audio_formats=(), video_only_formats=(), playlist=PlaylistMetadata('collection', '集合'),
+                                    entries=tuple(PlaylistEntry(str(i), i+1, 'Playlist · 项目 ' + str(i), 'https://example.org/'+str(i)) for i in range(50))))
             yield 300
             assert not find('downloadButton').property('enabled')
+            find('taskList').positionViewAtBeginning()
+            yield 200
             snapshot(mode+'-playlist-summary')
+            page.selectAllEntries(True)
+            yield 200
+            assert find('downloadButton').property('enabled')
+            snapshot(mode+'-playlist-selected')
+            batch_id = mode + '-batch'
+            page.add_batch(batch_id, source, 2, 'fixture')
+            for suffix in ('ok', 'bad'):
+                page.add_task(DownloadRequest(batch_id+suffix, source, source.formats[0], Path('.'), suffix, batch_id=batch_id))
+            page.complete_task(DownloadResult(batch_id+'ok', Path('fixture.mp4'), 1, 'fixture'))
+            page.fail_task(batch_id+'bad', TaskStatus.FAILED)
+            page.batchAction(batch_id, 'expand')
+            page.update(ready=False)
+            find('taskList').positionViewAtBeginning()
+            yield 300
+            snapshot(mode+'-batch-errors')
             window._select_page(3)
             yield 400
             snapshot(mode+'-about')
@@ -97,7 +115,7 @@ def main():
             snapshot(mode+'-cookie-file')
             window.cookies.selectProfile(0)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_download_disabled', 'about', 'light_dark'])
+        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

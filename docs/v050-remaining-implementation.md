@@ -87,3 +87,46 @@ copy reports. User profile paths and Netscape rows are redacted. Light/dark Cook
 UI, source GUI smoke and startup health passed; QML warnings were empty. No real
 Cookie, browser database, token or private key was used or committed.
 Final full regression: **416 passed in 136.11 seconds**.
+
+
+## Phase 6 — Playlist and shared batch scheduling
+
+Playlist extraction now enumerates flat entries without downloading children.
+Selection is explicit, including channel-like collections; unavailable items
+remain placeholders. Enumeration is bounded at 1000 displayed entries with a
+visible truncation notice. Virtualized selection and deferred thumbnails avoid
+creating images for the entire list. Selected children reuse the existing worker
+and resolve their actual formats only after receiving a shared queue slot.
+Individual child downloads retain the single-item guard to prevent an extractor
+from expanding a selected child URL into an unselected playlist.
+
+All tasks share a persisted 1–4 limit (default 2), independently of fragment
+concurrency. Pausing stops new starts without interrupting FFmpeg. Cancellation
+and retries are per child or per batch; failed-only retry preserves successes.
+Modes, subtitle policy and the explicitly selected Cookie profile are frozen in
+each batch request. Count/progress UI, expandable children and actual output
+metadata are persisted without raw extractor dictionaries or Cookie contents.
+
+Observed RED tests exposed three concurrency defects: a global download lock,
+a single pending GUI progress slot, and same-title output replacement. Fixes use
+thread-local cancellation dispatch, per-task progress, and non-overwriting atomic
+output rename. Qt workers are joined before releasing their owned references.
+Eight simultaneous same-title commits now preserve eight distinct payloads.
+
+History migration backs up first, then changes all columns transactionally.
+Extension revision 4 adds extractor/site/playlist/batch fields. The legacy core
+PRAGMA user_version stays 1: immutable v0.4.2 repository code actually opens,
+reads and writes this extended database after simulated installation rollback.
+This supersedes Phase 3/4 development-only PRAGMA versions 2/3, which would have
+prevented the old application from opening history. Failed migrations preserve
+old rows and schema. Existing settings schema 4 accepts the optional concurrency
+field; no destructive user-data migration is required.
+
+Focused queue, selection, controller retry and preservation checks passed.
+Source GUI smoke and startup health returned app_version 0.4.2. Light/dark
+playlist selection and completed-with-errors screenshots were inspected; QML
+warnings were empty. Changed-source key/token/local-path scan and diff whitespace
+checks passed. These are source/fixture results; public playlist transfer and
+frozen updater acceptance remain Phase 8 gates, not claims of this phase.
+
+Final Phase 6 full regression: **431 passed in 138.02 seconds**.

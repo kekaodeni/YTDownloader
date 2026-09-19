@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timezone
+from dataclasses import replace
 import gc
 import logging
 from pathlib import Path
@@ -43,10 +44,14 @@ from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cooki
 
 logger = logging.getLogger(__name__)
 _YTDLP_RESOURCE_PATCH_LOCK = threading.RLock()
+_YTDLP_TASK_CONTEXT = threading.local()
+_YTDLP_PATCH_USERS = 0
+_YTDLP_ORIGINAL_POPEN = None
+_YTDLP_ORIGINAL_FRAGMENT = None
 
 
-def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext):
-    base = ytdlp_ffmpeg.Popen
+def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext, base=None):
+    base = base or ytdlp_ffmpeg.Popen
 
     class CancellablePopen(base):
         @classmethod
@@ -82,73 +87,58 @@ def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext
 
 
 class _InterruptibleYtdlpResources:
-    """Temporarily patch yt-dlp's FFmpeg process without rewriting exceptions.
-
-    ``contextlib.contextmanager`` assigns ``__traceback__`` while unwinding.
-    Domain errors are frozen dataclasses, so that assignment can replace the
-    original cancellation with a ``TypeError``.  A regular context manager
-    restores the process type and lets the original exception pass through.
-    """
+    """Share temporary dispatchers, while cancellation belongs to each task thread."""
 
     def __init__(self, cancel_event: threading.Event, context: ErrorContext) -> None:
-        self.cancel_event = cancel_event
-        self.context = context
-        self.original: type | None = None
-        self.original_fragment_download: Callable[..., Any] | None = None
+        self.task = (cancel_event, context)
+        self.previous = None
 
-    def __enter__(self) -> "_InterruptibleYtdlpResources":
-        _YTDLP_RESOURCE_PATCH_LOCK.acquire()
-        try:
-            self.original = ytdlp_ffmpeg.Popen
-            self.original_fragment_download = FragmentFD.download_and_append_fragments
-            ytdlp_ffmpeg.Popen = _cancellable_popen_type(self.cancel_event, self.context)
-            original_fragment_download = self.original_fragment_download
-            cancel_event = self.cancel_event
+    def __enter__(self):
+        global _YTDLP_PATCH_USERS, _YTDLP_ORIGINAL_POPEN, _YTDLP_ORIGINAL_FRAGMENT
+        with _YTDLP_RESOURCE_PATCH_LOCK:
+            if _YTDLP_PATCH_USERS == 0:
+                original = ytdlp_ffmpeg.Popen
+                original_fragment = FragmentFD.download_and_append_fragments
 
-            def cancellable_fragment_download(
-                downloader,
-                fragment_context,
-                *args,
-                **kwargs,
-            ):
-                try:
-                    return original_fragment_download(
-                        downloader,
-                        fragment_context,
-                        *args,
-                        **kwargs,
-                    )
-                except BaseException:
-                    if cancel_event.is_set():
-                        destination = fragment_context.get("dest_stream")
-                        if destination is not None and not getattr(destination, "closed", True):
-                            try:
-                                destination.close()
-                            except OSError as close_error:
-                                logger.warning(
-                                    "Unable to close task-owned fragment stream: %s",
-                                    close_error,
-                                )
-                    raise
+                class TaskPopen(original):
+                    @classmethod
+                    def run(cls, *args, **kwargs):
+                        task = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
+                        if task is None:
+                            return original.run(*args, **kwargs)
+                        return _cancellable_popen_type(*task, base=original).run(*args, **kwargs)
 
-            FragmentFD.download_and_append_fragments = cancellable_fragment_download
-        except BaseException:
-            if self.original is not None:
-                ytdlp_ffmpeg.Popen = self.original
-            if self.original_fragment_download is not None:
-                FragmentFD.download_and_append_fragments = self.original_fragment_download
-            _YTDLP_RESOURCE_PATCH_LOCK.release()
-            raise
+                def fragment_download(downloader, fragment_context, *args, **kwargs):
+                    task = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
+                    try:
+                        return original_fragment(downloader, fragment_context, *args, **kwargs)
+                    except BaseException:
+                        if task and task[0].is_set():
+                            destination = fragment_context.get('dest_stream')
+                            if destination is not None and not getattr(destination, 'closed', True):
+                                try:
+                                    destination.close()
+                                except OSError as error:
+                                    logger.warning('Unable to close task-owned fragment stream: %s', error)
+                        raise
+
+                _YTDLP_ORIGINAL_POPEN = original
+                _YTDLP_ORIGINAL_FRAGMENT = original_fragment
+                ytdlp_ffmpeg.Popen = TaskPopen
+                FragmentFD.download_and_append_fragments = fragment_download
+            _YTDLP_PATCH_USERS += 1
+            self.previous = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
+            _YTDLP_TASK_CONTEXT.task = self.task
         return self
 
-    def __exit__(self, exc_type, exc, traceback_object) -> bool:
-        try:
-            if self.original is not None:
-                ytdlp_ffmpeg.Popen = self.original
-            if self.original_fragment_download is not None:
-                FragmentFD.download_and_append_fragments = self.original_fragment_download
-        finally:
-            _YTDLP_RESOURCE_PATCH_LOCK.release()
+    def __exit__(self, exc_type, exc, traceback_object):
+        global _YTDLP_PATCH_USERS
+        with _YTDLP_RESOURCE_PATCH_LOCK:
+            _YTDLP_TASK_CONTEXT.task = self.previous
+            _YTDLP_PATCH_USERS -= 1
+            if _YTDLP_PATCH_USERS == 0:
+                ytdlp_ffmpeg.Popen = _YTDLP_ORIGINAL_POPEN
+                FragmentFD.download_and_append_fragments = _YTDLP_ORIGINAL_FRAGMENT
         return False
 
 
@@ -273,6 +263,18 @@ class DownloadService:
         progress_callback: Callable[[DownloadProgress], None],
         cancel_event: threading.Event,
     ) -> DownloadResult:
+        if request.resolve_before_download:
+            from yt_downloader.services.media_resolver import MediaResolver
+            progress_callback(DownloadProgress(request.task_id, TaskStatus.FETCHING_METADATA))
+            media = MediaResolver(deno_path=self.deno_path, require_deno=self.require_tools,
+                                  network_policy=self.network_policy, cookie_profile=request.cookie_profile).fetch_metadata(
+                                      request.video.url, cancel_event, include_thumbnail=False)
+            options = media.audio_formats if request.media_mode == 'audio_only' else media.video_only_formats if request.media_mode == 'video_only' else media.formats
+            if media.media_type == 'playlist' or not options:
+                raise AppError('formats_unavailable', '此项目没有所选模式可用的格式。', 'Batch child has no matching single-media format')
+            option = next((item for item in options if item.label == request.preferred_quality),
+                          next((item for item in options if item.is_recommended), options[0]))
+            request = replace(request, video=media, format=option, resolve_before_download=False)
         request = prepare_request(request)
         output_directory = request.output_directory.expanduser().resolve()
         context = ErrorContext(
@@ -489,6 +491,7 @@ class DownloadService:
                 datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
                 warnings=subtitles.warnings, subtitle_paths=tuple(subtitle_paths),
                 subtitle_embedded=subtitles.embedded, subtitle_auto_used=subtitles.auto_used,
+                resolved_media=request.video, resolved_format=request.format,
             )
         except OperationCancelled as exc:
             cancellation_context = exc.context or context
