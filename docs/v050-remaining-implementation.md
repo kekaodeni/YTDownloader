@@ -130,3 +130,48 @@ checks passed. These are source/fixture results; public playlist transfer and
 frozen updater acceptance remain Phase 8 gates, not claims of this phase.
 
 Final Phase 6 full regression: **431 passed in 138.02 seconds**.
+
+## Phase 7 — Frozen internal updater and startup recovery
+
+Frozen startup now inspects owned unfinished transactions before creating the
+normal controller, history repository or update service. A recovery-only window
+keeps failures copyable and prevents duplicate operations. The installed helper
+is independently authenticated against the source binding or signed target ZIP,
+copied outside the installation, and validates the transaction again before
+acknowledging handoff. The application exits only after that acknowledgement.
+Recovery preserves terminal evidence, clears only its own pending update, and
+relaunches the restored application. Normal startup-health behavior and timeouts
+are unchanged.
+
+Recovery records Windows candidate PID, executable and creation time, pins a
+process handle before termination, and refuses access-denied process waits.
+Interrupted preparation reaches a terminal rollback state. Health exceptions
+terminate the candidate before directory rollback. Recovered transactions cannot
+be offered for installation again. Legacy journals and root-layout backups remain
+readable; new internal packages contain no root updater.
+
+Focused fault tests cover every directory-switch stage, repeated recovery,
+tampered package/signature/helper/bindings, unsafe paths, PID reuse, inaccessible
+processes, recovery UI failures and preservation of real settings/SQLite files.
+Full regression: **452 passed in 157.11 seconds**. Source GUI/startup health,
+light/dark recovery views, and diff whitespace checks passed.
+
+Real frozen test-key/local-transport acceptance passed:
+
+- A: immutable v0.4.1 tag source and helper installed v0.4.2, with a real visible
+  GUI, original health receipt and COMMITTED journal. The observer initially held
+  the live journal open during Windows replacement; it now reads only after the
+  helper exits. No old product/parser/health logic was altered.
+- B: v0.4.2 staged its bridge helper and installed the internal v0.5.0 test tree.
+- C: v0.5.0 installed v0.5.1 without any root helper dependency.
+- D/E: direct internal-package extraction, frozen self-test, metadata helper,
+  GUI smoke and startup health passed. Invoking the internal helper without a
+  transaction left the installation and user-data fixtures unchanged.
+- Recovery interruption: external termination of the real helper at
+  CANDIDATE_INSTALLED, followed by normal frozen v0.5.1 startup, exercised the
+  recovery handoff and restored v0.5.0. The journal reached ROLLED_BACK, its GUI
+  reopened, settings/SQLite hashes matched, and no owned processes remained.
+
+These isolated binaries use temporary test trust and versioned source copies;
+they are not the Phase 8 RC or production-signed packages. The broader frozen
+failure matrix and exact final-RC binding remain Phase 8 gates.

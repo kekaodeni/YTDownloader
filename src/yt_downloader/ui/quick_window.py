@@ -25,6 +25,7 @@ PROJECT_URL = 'https://github.com/kekaodeni/YTDownloader'
 
 
 class MainWindow(ViewState):
+    recovery_details_requested = Signal()
     cancel_all_requested = Signal()
     cancel_update_requested = Signal()
     show_update_requested = Signal()
@@ -34,7 +35,7 @@ class MainWindow(ViewState):
     def __init__(self, settings, *, ytdlp_version, ffmpeg_description, theme=None, icons=None):
         super().__init__(None, page=0, reduceMotion=settings.reduce_motion, allowClose=False,
                          updateVisible=False, updateText='', version=__version__, projectError='',
-                         updateStatus='尚未检查', updateChecking=False, updateAction='检查更新', updateReview=False)
+                         recoveryVisible=False, recoveryBusy=False, recoveryText='', updateStatus='尚未检查', updateChecking=False, updateAction='检查更新', updateReview=False)
         self._busy = False
         self._update_busy = False
         self._closing_after_cancel = False
@@ -170,6 +171,8 @@ class MainWindow(ViewState):
 
     @Slot()
     def requestClose(self):
+        if self._state['recoveryBusy']:
+            return
         if not self._busy and not self._update_busy and not self._cover_busy():
             self.update(allowClose=True)
             QTimer.singleShot(0, self.root.close)

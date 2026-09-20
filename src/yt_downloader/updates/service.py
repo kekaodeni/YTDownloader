@@ -278,6 +278,9 @@ class UpdateService(QObject):
             transaction = (self.staging_root / f'update-{persisted.transaction_id}').resolve(strict=True)
             if transaction.parent != self.staging_root.resolve(strict=True):
                 raise ValueError('Stored update transaction escaped staging root')
+            journal = transaction/'update-transaction.json'
+            if journal.exists():
+                raise ValueError('An attempted installation must be recovered, not installed again')
             raw = (transaction / 'update-manifest.json').read_bytes()
             signature = (transaction / 'update-manifest.sig').read_bytes()
             base = f'https://github.com/kekaodeni/YTDownloader/releases/download/v{version}/'

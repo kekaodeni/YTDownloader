@@ -114,6 +114,13 @@ def main():
             yield 300
             snapshot(mode+'-cookie-file')
             window.cookies.selectProfile(0)
+            window.update(recoveryVisible=True, recoveryBusy=True, recoveryText='正在恢复上一次未完成的更新…')
+            yield 300
+            snapshot(mode+'-recovery-running')
+            window.update(recoveryBusy=False, recoveryText='更新恢复失败')
+            yield 300
+            snapshot(mode+'-recovery-failed')
+            window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
         report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')

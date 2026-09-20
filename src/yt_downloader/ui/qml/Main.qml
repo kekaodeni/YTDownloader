@@ -27,6 +27,7 @@ ApplicationWindow {
     FileDialog { id: cookiePicker; title: "选择 Netscape cookies.txt"; fileMode: FileDialog.OpenFile; nameFilters: ["Cookie 文件 (*.txt)", "所有文件 (*)"]; onAccepted: cookies.fileSelected(selectedFile.toString()) }
     Connections { target: cookies; function onPick_requested() { cookiePicker.open() } }
     RowLayout {
+        visible: !shell.state.recoveryVisible
         anchors.fill: parent; spacing: 0
         Rectangle {
             id: nav
@@ -93,6 +94,14 @@ ApplicationWindow {
                 PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 3; current: shell.state.page === 3; AboutView { anchors.fill: parent } }
             }
         }
+    }
+    ColumnLayout {
+        visible: shell.state.recoveryVisible
+        anchors.centerIn: parent; width: Math.min(parent.width - 64, 540); spacing: 24
+        UiText { Layout.fillWidth: true; text: shell.state.recoveryText; role: "SectionTitle"; wrapMode: Text.Wrap }
+        UiText { Layout.fillWidth: true; text: shell.state.recoveryBusy ? "验证更新事务后，应用将退出，由独立恢复程序恢复安装。" : "备份和诊断文件已保留。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap }
+        UiProgress { Layout.fillWidth: true; indeterminate: true; visible: shell.state.recoveryBusy }
+        UiButton { text: "查看详情"; visible: !shell.state.recoveryBusy; onClicked: shell.recovery_details_requested() }
     }
     Instantiator {
         model: dialogs.model

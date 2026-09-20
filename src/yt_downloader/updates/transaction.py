@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, replace, field
 from enum import Enum
 import json
 import os
@@ -47,6 +47,7 @@ class UpdateTransactionJournal:
     target_layout: str = 'legacy-root'
     manifest_sha256: str = ''
     package_sha256: str = ''
+    candidate_process: dict = field(default_factory=dict)
 
 
 @contextmanager
@@ -188,19 +189,23 @@ class TransactionalInstaller:
             journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_EXIT)
             if not self.wait_for_exit(original_pid, 30):
                 raise TimeoutError('Original application did not exit within 30 seconds')
+            process = None
             try:
                 self.replace_path(install, backup)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.ORIGINAL_BACKED_UP)
                 self.replace_path(candidate, install)
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.CANDIDATE_INSTALLED)
                 process = self.launch_health_check(install / 'YTDownloader.exe', transaction_id, health)
+                from yt_downloader.updates.processes import process_identity
+                journal = replace(journal, candidate_process=process_identity(getattr(process, 'pid', None)))
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.WAITING_FOR_HEALTH)
                 if not self.wait_for_health(health, process, 30, candidate_version, transaction_id):
-                    self.terminate_launched(process)
                     raise RuntimeError('New version did not provide startup health confirmation')
                 journal = self._advance(journal_path, journal, UpdateTransactionStage.COMMITTED)
                 return journal
             except BaseException as exc:
+                if process is not None:
+                    self.terminate_launched(process)
                 if backup.exists():
                     self._rollback(journal_path, journal, install, candidate, backup, exc)
                 raise
@@ -239,6 +244,7 @@ class TransactionalInstaller:
                 target_layout=str(raw.get('target_layout', 'legacy-root')),
                 manifest_sha256=str(raw.get('manifest_sha256', '')),
                 package_sha256=str(raw.get('package_sha256', '')),
+                candidate_process=raw.get('candidate_process', {}),
             )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError('Update transaction journal is invalid') from exc
@@ -259,8 +265,11 @@ class TransactionalInstaller:
             SafePackageExtractor.validate_tree(install)
             return journal
         if journal.stage in {UpdateTransactionStage.PREPARED, UpdateTransactionStage.WAITING_FOR_EXIT} and not backup.exists():
-            SafePackageExtractor.validate_tree(install)
-            return journal
+            SafePackageExtractor.validate_tree(install, expected_version=journal.source_version or None)
+            return self._advance(path, journal, UpdateTransactionStage.ROLLED_BACK,
+                                 error='Recovered interrupted preparation; original installation retained')
+        from yt_downloader.updates.processes import stop_recorded_process
+        stop_recorded_process(journal.candidate_process, install/'YTDownloader.exe')
         rolling = self._advance(path, journal, UpdateTransactionStage.ROLLING_BACK, error=journal.error or 'Recovered interrupted transaction')
         try:
             if backup.exists():
@@ -326,15 +335,15 @@ def wait_for_process_exit(pid: int, timeout_seconds: int) -> bool:
     if pid <= 0:
         return True
     if sys.platform == 'win32':
-        import ctypes
-        synchronize = 0x00100000
-        handle = ctypes.windll.kernel32.OpenProcess(synchronize, False, pid)
+        from yt_downloader.updates.processes import _kernel, _open
+        kernel = _kernel()
+        handle = _open(kernel, pid)
         if not handle:
             return True
         try:
-            return ctypes.windll.kernel32.WaitForSingleObject(handle, timeout_seconds * 1000) == 0
+            return kernel.WaitForSingleObject(handle, timeout_seconds * 1000) == 0
         finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
+            kernel.CloseHandle(handle)
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         try:

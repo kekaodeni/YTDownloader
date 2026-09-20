@@ -945,8 +945,28 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             logger.exception("Packaged self-test failed")
             return 2
+    recovery_succeeded = False
+    if getattr(sys, 'frozen', False) and not known.update_health_check:
+        from yt_downloader.updates.recovery import pending_recovery
+        from yt_downloader.ui.startup_recovery import run_recovery_startup
+        paths = AppPaths.discover()
+        try:
+            recovery_token = os.environ.pop('YT_DOWNLOADER_RECOVERY_RESULT', '')
+            if recovery_token:
+                from yt_downloader.updates.recovery import recovery_result
+                result = recovery_result(Path(sys.executable).parent, paths.data, recovery_token)
+                if result['status'] != 'ok':
+                    return run_recovery_startup(paths, None, error=RuntimeError(result.get('error', 'Recovery failed')))
+                recovery_succeeded = True
+            request = pending_recovery(Path(sys.executable).parent, paths.data)
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            return run_recovery_startup(paths, None, error=error)
+        if request is not None:
+            return run_recovery_startup(paths, request)
     app, controller = create_application([sys.argv[0], *qt_args])
     try:
+        if recovery_succeeded:
+            controller.window.update(updateVisible=True, updateText='更新恢复完成，已保留用户数据。')
         if known.metadata_process_self_test:
             return run_metadata_process_self_test(app)
         if known.theme:
