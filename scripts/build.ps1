@@ -121,7 +121,7 @@ $BuildInfo = [ordered]@{
     updater_protocol = if ($HelperLayout -eq 'internal-v1') { 2 } else { 1 }
     helper_layout = $HelperLayout
     updater_version = $Version
-    supported_update_protocols = if ($HelperLayout -eq 'internal-v1') { @(2) } else { @(1, 2) }
+    supported_update_protocols = @(if ($HelperLayout -eq 'internal-v1') { 2 } else { 1; 2 })
     tools = $ToolVersions
 }
 $BuildInfo | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Dist "BUILD-INFO.json") -Encoding UTF8

@@ -212,3 +212,11 @@ Anonymous public smoke observations (2026-09-20, locked yt-dlp 2026.08.19):
 The final RC ZIP, independent frozen checks, privacy scan, exact archive upgrade
 binding and broader frozen failure matrix must still pass before production
 signing readiness. Source/fixture evidence is not substituted for those gates.
+
+The first standard build was correctly stopped by ownership validation: the
+PowerShell metadata expression unwrapped a single protocol array into scalar
+`2`. A regression executes the actual metadata block in Windows PowerShell for
+both layouts (legacy `[1, 2]`, internal `[2]`). The internal case failed RED;
+wrapping the full conditional in an array expression passed GREEN without
+relaxing archive validation. No candidate ZIP was produced by the failed build.
+Regression after the build fix: **460 passed in 147.37 seconds**.
