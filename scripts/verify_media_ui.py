@@ -4,7 +4,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer
+from PySide6.QtCore import QObject, QPointF, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -35,11 +35,24 @@ def main():
     captures = []
     def find(name):
         item = window.root.findChild(QObject, name)
+        if item is None:
+            pending=[window.root.contentItem()]
+            while pending:
+                current=pending.pop()
+                if current.objectName()==name:
+                    item=current;break
+                pending.extend(current.childItems())
         assert item is not None, name
         return item
     def snapshot(name):
         assert window.grab().save(str(args.output/(name+'.png')))
         captures.append(name)
+    def reveal(name):
+        view=find('taskList');item=find(name)
+        top=item.mapToItem(view,QPointF(0,0)).y()
+        origin=float(view.property('originY'))
+        maximum=max(origin,origin+float(view.property('contentHeight'))-view.height())
+        view.setProperty('contentY',min(maximum,max(origin,float(view.property('contentY'))+top-24)))
     def steps():
         yield 400
         parsed = []
@@ -50,6 +63,19 @@ def main():
         field.forceActiveFocus()
         QTest.keyClick(window.root, Qt.Key.Key_Return)
         assert parsed == [source.url]
+        for index in range(4):
+            button=find('nav-'+str(index))
+            if not button.property('text'):
+                assert button.property('hint'), 'Compact navigation must retain its accessible label'
+                continue
+            pending=list(button.childItems())
+            labels=0
+            while pending:
+                label=pending.pop();pending.extend(label.childItems())
+                if label.metaObject().indexOfProperty('truncated') >= 0:
+                    labels+=1
+                    assert not label.property('truncated'), 'Navigation label is truncated at this DPI'
+            assert labels, 'Navigation text was not inspected'
         for mode in ('light', 'dark'):
             window.theme.set_mode(mode)
             window._select_page(0)
@@ -64,6 +90,14 @@ def main():
                 assert find('downloadButton').property('enabled')
                 assert find('formatCombo').property('visible') == (media_mode != 'audio_only')
                 snapshot(mode+'-'+media_mode)
+                reveal('modeCombo')
+                yield 200
+                snapshot(mode+'-'+media_mode+'-controls')
+                reveal('downloadButton')
+                yield 200
+                button=find('downloadButton');position=button.mapToItem(find('taskList'),QPointF(0,0))
+                assert 0 <= position.y() < find('taskList').height(), 'Download action is not scroll-reachable'
+                snapshot(mode+'-'+media_mode+'-action')
             page.show_video(replace(source, subtitles=(SubtitleTrack('zh-Hans', 'vtt', 'https://example.org/sub'),),
                                     automatic_captions=(SubtitleTrack('en', 'vtt', 'https://example.org/auto', is_auto=True),)))
             page.setSubtitleOption('enabled', True)
@@ -73,6 +107,8 @@ def main():
             page.setSubtitleOption('auto', True)
             page.selectSubtitle('en', True)
             yield 300
+            reveal('subtitleEnabled')
+            yield 200
             snapshot(mode+'-subtitles-auto')
             page.setSubtitleOption('enabled', False)
             page.show_video(replace(source, extractor='OtherExtractor', compatibility='EXPERIMENTAL'))
@@ -90,6 +126,8 @@ def main():
             page.selectAllEntries(True)
             yield 200
             assert find('downloadButton').property('enabled')
+            reveal('playlistItems')
+            yield 200
             snapshot(mode+'-playlist-selected')
             batch_id = mode + '-batch'
             page.add_batch(batch_id, source, 2, 'fixture')

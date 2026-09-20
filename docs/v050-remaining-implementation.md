@@ -175,3 +175,40 @@ Real frozen test-key/local-transport acceptance passed:
 These isolated binaries use temporary test trust and versioned source copies;
 they are not the Phase 8 RC or production-signed packages. The broader frozen
 failure matrix and exact final-RC binding remain Phase 8 gates.
+
+## Phase 8 — RC source preparation
+
+The source version is now 0.5.0. README and bilingual release-note drafts describe
+implemented modes, subtitles, explicit Cookie references, batches and internal
+updates, including their limitations. v0.4.2 remains the published stable download
+and the required GitHub Latest bridge. No tag, release, trust root or private key
+was changed.
+
+Public download smoke exposed a late extractor DRM error that was reduced to a
+generic download failure. Five RED cases now retain the existing conservative
+DRM/private/region/network/unsupported categories during downloads. Unknown
+failures retain the original generic category; no protected format is bypassed.
+Fractional-DPI inspection also reproduced clipped short navigation labels at
+125%; rounding and a small text margin fix the clipping without layout changes.
+The GUI harness checks actual label truncation and scroll-reachable actions.
+
+Final source regression before RC packaging: **458 passed in 143.58 seconds**.
+Light/dark checks passed at 100/125/150/200%, including scrolled mode, subtitle
+and playlist controls; compact navigation retains accessible labels.
+
+Anonymous public smoke observations (2026-09-20, locked yt-dlp 2026.08.19):
+
+- YouTube QRS8MkLhQmM: metadata, cover, video+audio (2,409,257 bytes) and silent
+  video (1,357,494 bytes) passed. Its independent audio request returned HTTP 403.
+  The earlier BaW_jenozKc fixture was unavailable; that attempt remains failed.
+- Bilibili BV13x41117TL: metadata and independent audio converted to MP3 passed
+  (8,867,128 bytes). No real account or Cookie was used.
+- Vimeo 76979871: page entry required authentication; the public player entry
+  returned metadata and cover. Selected stream downloads reported DRM and were
+  refused. Metadata PASS is not a claim that these downloads succeeded.
+- Public playlist PL6IaIsEjSbf96XFRuNccS_RuEXwNdsoEu: four typed entries, no
+  unavailable placeholders or truncation; no child downloads were triggered.
+
+The final RC ZIP, independent frozen checks, privacy scan, exact archive upgrade
+binding and broader frozen failure matrix must still pass before production
+signing readiness. Source/fixture evidence is not substituted for those gates.

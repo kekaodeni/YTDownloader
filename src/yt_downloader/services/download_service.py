@@ -173,9 +173,9 @@ class _DownloadLogger:
 
 def _download_error(message: str) -> tuple[str, str]:
     from yt_downloader.services.media_errors import classify_metadata_error
-    cookie_code, cookie_message = classify_metadata_error(Exception(message))
-    if cookie_code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
-        return cookie_code, cookie_message
+    category, user_message = classify_metadata_error(Exception(message))
+    if category != 'TEMPORARY_EXTRACTOR_ERROR':
+        return category, user_message
     lowered = message.lower()
     if "no space" in lowered or "disk full" in lowered:
         return "disk_full", "磁盘空间不足，无法完成下载。"

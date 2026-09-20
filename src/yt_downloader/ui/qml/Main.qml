@@ -66,7 +66,8 @@ ApplicationWindow {
                             appearance: "nav"; selected: shell.state.page === index
                             icon.source: assetsBase + "icons/" + modelData.icon + (selected ? "_filled.svg" : "_regular.svg")
                             leftPadding: window.compact ? 14 : 12
-                            rightPadding: window.compact ? 14 : Math.max(12, width - implicitContentWidth - 12)
+                            // Leave room for fractional-DPI text rasterization.
+                            rightPadding: window.compact ? 14 : Math.max(12, width - Math.ceil(implicitContentWidth) - 14)
                             background: Rectangle { radius: 9; color: parent.hovered && !parent.selected ? theme.state.subtle : "transparent"; border.width: parent.visualFocus ? 2 : 0; border.color: theme.state.accent }
                             onClicked: shell._select_page(index)
                         }

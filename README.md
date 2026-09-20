@@ -1,6 +1,8 @@
-# YT Downloader 0.4.2
+# YT Downloader 0.5.0
 
-YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面使用 PySide6 Qt Quick/QML 与统一的 Windows 11 语义样式；下载由 yt-dlp Python API 执行，合并、媒体校验和本地缩略图由随软件分发的 FFmpeg 完成。
+YT Downloader 是基于 yt-dlp、FFmpeg 与 PySide6 的 Windows 11 视频下载工具。界面使用 Qt Quick/QML；媒体解析、下载、格式转换和字幕处理使用随软件分发的锁定组件。
+
+当前 develop 为 **v0.5.0 候选版本，尚未发布**。正式稳定下载仍为 [v0.4.2](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.2)。本文介绍候选版本能力，不能作为正式发布验收已完成的证明。
 
 ![浅色下载界面](docs/images/download-light.png)
 
@@ -8,11 +10,15 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 
 ## 功能
 
-- 支持 `youtube.com/watch`、`youtu.be`、`shorts`、`live` 单视频地址；播放列表参数仅保留当前视频。
+- 接受合法 HTTP/HTTPS 媒体链接，由 yt-dlp extractor 判断支持情况。YouTube、Bilibili、Vimeo 有确定性兼容测试；其他站点显示实验性提示，不阻止下载。
 - 可取消、可超时的独立进程解析标题、频道、时长和可用画质；官方缩略图独立加载，不阻塞视频信息展示。
 - 用户只看到 `2160p 4K`、`1080p 60 FPS` 等稳定标签，不显示 yt-dlp format ID。
-- 自动组合兼容音频并用 FFmpeg 无损封装；下载完成后校验视频流和音频流。
-- 单活动任务队列；用户取消后等待 Worker、FFmpeg 和句柄全部结束，再安全清理该任务独占的临时文件，历史重试会从头开始。
+- 视频+音频、仅视频、仅音频三种模式；显示实际可用的格式。仅音频支持原始格式以及 M4A、MP3、Opus、FLAC，按需转换并校验输出流。
+- 手动字幕与显式选择的自动字幕，支持 SRT/VTT 和兼容容器内嵌。可选字幕失败会保留成功的视频并显示警告。
+- 播放列表必须明确选择子项，最多展示 1000 项并提示截断；不可用项保留占位。批次支持展开、暂停新任务、继续、取消和仅重试失败项。
+- 全局共享 1–4 个下载槽位，默认 2；用户取消后等待 Worker、FFmpeg 和句柄全部结束，再安全清理该任务独占的临时文件，失败任务重试会从头开始。
+- Cookie 默认关闭；仅在用户明确选择后读取浏览器来源或 Netscape Cookie 文件。配置只保存引用，不复制浏览器数据库，不写回 Cookie 文件，不提供账号密码输入。
+- About 提供手动检查更新和进度恢复入口；自动检查只显示横幅。下载验签后仍需用户确认安装并重启。
 - 下载卡始终同时显示进度条、百分比、实时速度，并显示大小、ETA 和当前阶段。
 - SQLite 历史记录，支持右键/键盘菜单、批量管理、打开文件、定位目录、复制链接、重试、设置视频内嵌封面和仅删除记录；重试只重新解析并预填选项，不会自动下载。
 - 支持为 MP4、M4V 和 MKV 无损写入 JPG/PNG 封面；WebM 和 MOV 可另存为 MKV 后写入封面，并保留字幕、章节和其他 attachment。非法或损坏的封面会回滚，不覆盖原文件。
@@ -23,15 +29,15 @@ YT Downloader 是一个面向 Windows 11 的 YouTube 单视频下载器。界面
 - 中文采用 Microsoft YaHei UI，英文与数字采用 Segoe UI，并明确配置多语言回退；右键菜单与整套界面共用主题、字体和控件状态。
 - 原子设置写入、SQLite schema migration、轮转日志、结构化中文错误和脱敏错误报告。
 
-本版本的用户可见功能、限制和发布说明见 [v0.4.2 GitHub Release](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.2)。
+候选版本说明见 [v0.5.0 发布说明草稿](docs/release-notes-v0.5.0.md)。
 
 ## 支持范围与法律提示
 
-仅支持公开的 YouTube 单视频。不支持播放列表、频道、搜索或账号/Cookie 登录。私享、年龄限制、地区限制等内容会显示明确错误。删除历史记录不会删除视频文件。
+站点、网络、地区和账户权限会影响可用性；不支持绕过 DRM、付费或访问权限。Cookie 仅使用用户已有授权会话。浏览器锁定、解密失败及站点要求登录会显示可复制的错误。删除历史记录不会删除媒体文件。
 
-v0.4.2 是从 v0.4.1 到新版内部更新器架构的桥接版本。v0.4.1 用户可通过应用内更新直接升级到 v0.4.2；普通新用户应下载当前最新稳定版本。
+v0.4.2 是长期 legacy updater bridge，GitHub Latest 保持指向它。v0.4.2+ 从 Releases 列表选择最高兼容稳定版；未来发布 v0.5.0 时须设置 `make_latest=false`。v0.5.0 使用 schema 2 / protocol 2，helper 位于内部目录；保留旧布局备份的回滚能力。
 
-本项目与 YouTube 无关联。下载内容前请确认您有权保存和使用该内容，并遵守所在地法律与服务条款。
+本项目与所支持的媒体网站无关联。下载内容前请确认您有权保存和使用该内容，并遵守所在地法律与服务条款。
 
 ## 环境
 
@@ -57,6 +63,7 @@ py -3.12 -m venv .venv
 settings.json
 history.db
 update-state.json
+cookie-profiles.json  # 可选来源引用，不包含 Cookie 内容
 logs\
 cache\thumbnails\
 cache\history-previews\
@@ -130,11 +137,11 @@ powershell -NoProfile -File .\scripts\restore-dev-environment.ps1
 
 ```text
 dist\YTDownloader\YTDownloader.exe
-dist\YTDownloader\YTDownloaderUpdater.exe
+dist\YTDownloader\_internal\updater\YTDownloaderUpdater.exe
 dist\YTDownloader\third_party_licenses\
 dist\YTDownloader\SHA256SUMS.json
-release\YTDownloader-0.4.2-win64.zip
-release\YTDownloader-0.4.2-win64.zip.sha256.txt
+release\YTDownloader-0.5.0-win64.zip
+release\YTDownloader-0.5.0-win64.zip.sha256.txt
 release\update-manifest.json
 release\update-manifest.sig
 ```
@@ -149,7 +156,7 @@ FFmpeg 使用启用了 GPL 组件的静态构建。分发目录包含 GPL/LGPL �
 src/yt_downloader/
   core/             不可变模型、URL、格式、文件名、状态机、错误
   services/         yt-dlp、下载、FFmpeg、设置、历史、错误报告
-  workers/          Qt 后台 Worker 与单任务队列
+  workers/          Qt 后台 Worker 与共享并发队列
   infrastructure/   路径、日志、运行时工具、Shell、系统信息
   ui/               Qt Quick 展示适配层、QML 页面与复用控件
   updates/          更新发现、验签、下载、staging 与能力门禁
@@ -162,8 +169,9 @@ licenses/            第三方许可与对应源码信息
 
 ## 已知限制
 
-- YouTube 会变化；发布后需要定期更新锁定的 yt-dlp/yt-dlp-ejs。
-- 不支持需要登录的内容。
+- 网站会变化；发布后需要定期验证锁定的 yt-dlp/yt-dlp-ejs。
+- Vimeo 页面入口可能要求登录；公开播放器链接可用性需由 extractor 实际判定。浏览器 Cookie 的真实账户效果受浏览器和系统加密策略影响，不能以 fixture 测试代替账户验收。
+- 播放列表选择上限为 1000；暂停不会中断已开始的下载或 FFmpeg。字幕内嵌受容器和媒体模式限制。
 - 4K 视频通常需要较大临时空间并在下载后合并。
 - 没有代码签名与安装器；Windows SmartScreen 可能提示未知发布者。
 - MP4/M4V/MKV 可无损写入内嵌封面；WebM/MOV 可另存 MKV 并写入封面，保留原文件，历史记录指向新文件。写入后验证封面字节、音视频流、章节和元数据。Explorer 是否采用封面由 Windows Shell 提供器和缓存决定，应用会分别报告媒体写入与 Explorer 验证结果。
