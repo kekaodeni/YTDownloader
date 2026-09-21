@@ -153,6 +153,8 @@ class ResolvedMedia:
     automatic_captions: tuple[SubtitleTrack, ...] = ()
     playlist: PlaylistMetadata | None = None
     compatibility: str = 'EXPERIMENTAL'
+    metadata_compatibility: str = 'EXPERIMENTAL'
+    download_compatibility: str = 'EXPERIMENTAL'
     audio_formats: tuple[FormatOption, ...] = ()
     video_only_formats: tuple[FormatOption, ...] = ()
     entries: tuple[PlaylistEntry, ...] = ()

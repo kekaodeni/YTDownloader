@@ -227,7 +227,13 @@ class DownloadPresenter(ViewState):
             labels.append(f'{option.label}（推荐）' if option.is_recommended else option.label)
             if (preferred_quality == 'recommended' and option.is_recommended) or option.label == preferred_quality:
                 selected = index
-        self.update(compatibilityHint='该网站由 yt-dlp 支持，但尚未经过 YTDownloader 完整验证。' if video.compatibility == 'EXPERIMENTAL' else '',
+        if video.metadata_compatibility == 'VERIFIED' and video.download_compatibility == 'EXPERIMENTAL':
+            compatibility_hint = '该网站的媒体解析已验证，但下载兼容性仍属实验性；不会绕过登录、地区或 DRM 限制。'
+        elif video.download_compatibility == 'EXPERIMENTAL':
+            compatibility_hint = '该网站由 yt-dlp 支持，但尚未经过 YTDownloader 完整验证。'
+        else:
+            compatibility_hint = ''
+        self.update(compatibilityHint=compatibility_hint,
                     mediaHint=('仅显示前 1000 项，请明确选择需要的项目。' if video.entries_truncated else '请选择需要的项目；不会自动下载整个列表或频道。') if video.media_type == 'playlist' else '', technical='')
         self.update(ready=True, title=video.title, meta=f'{video.channel}  ·  {format_duration(video.duration)}',
                     thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',

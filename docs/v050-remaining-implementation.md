@@ -205,7 +205,9 @@ Anonymous public smoke observations (2026-09-20, locked yt-dlp 2026.08.19):
   (8,867,128 bytes). No real account or Cookie was used.
 - Vimeo 76979871: page entry required authentication; the public player entry
   returned metadata and cover. Selected stream downloads reported DRM and were
-  refused. Metadata PASS is not a claim that these downloads succeeded.
+  refused. The final audit also observed native/application HTTP 401/403 and
+  login-required outcomes on additional public samples. Vimeo is therefore
+  `METADATA VERIFIED / DOWNLOAD EXPERIMENTAL`, not a verified download site.
 - Public playlist PL6IaIsEjSbf96XFRuNccS_RuEXwNdsoEu: four typed entries, no
   unavailable placeholders or truncation; no child downloads were triggered.
 

@@ -8,7 +8,8 @@ from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
 
 # Reference integrations, not an input allowlist. Network smoke is reported separately.
-VERIFIED_EXTRACTORS = frozenset({'youtube', 'bilibili', 'vimeo'})
+METADATA_VERIFIED_EXTRACTORS = frozenset({'youtube', 'bilibili', 'vimeo'})
+DOWNLOAD_VERIFIED_EXTRACTORS = frozenset({'youtube', 'bilibili'})
 
 
 def _http_url(value):
@@ -72,6 +73,8 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
                           str(item.get('ie_key') or item.get('extractor_key') or ''),
                           _number(item.get('duration')), _http_url(item.get('thumbnail')) or '',
                           not bool(url) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'}))
+    metadata_compatibility = 'VERIFIED' if extractor_key.casefold() in METADATA_VERIFIED_EXTRACTORS or extractor.casefold() in METADATA_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
+    download_compatibility = 'VERIFIED' if extractor_key.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS or extractor.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     return ResolvedMedia(
         # Replay the successful extractor input for downloads/history retries.
         # Canonical webpage_url can have different access requirements.
@@ -86,5 +89,7 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,
         description=str(info.get('description') or ''), subtitles=_tracks(info.get('subtitles')),
         automatic_captions=_tracks(info.get('automatic_captions'), True), playlist=playlist,
-        compatibility='VERIFIED' if extractor_key.casefold() in VERIFIED_EXTRACTORS or extractor.casefold() in VERIFIED_EXTRACTORS else 'EXPERIMENTAL',
+        compatibility=download_compatibility,
+        metadata_compatibility=metadata_compatibility,
+        download_compatibility=download_compatibility,
     )

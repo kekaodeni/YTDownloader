@@ -36,10 +36,13 @@ clipboard or error-report path.
 - `url` retains the successful original input; `webpage_url` records yt-dlp's
   canonical page independently. They must not be conflated: a public Vimeo
   player can succeed while the ordinary page requires login.
-- YouTube, BiliBili and Vimeo are reference (`VERIFIED`) integrations. Other
-  successful extractors are `EXPERIMENTAL`, with a lightweight hint that never
-  disables an otherwise valid download. This is not a website allowlist and
-  does not promise every URL/account/region on a reference site is accessible.
+- YouTube and BiliBili are `VERIFIED` download integrations. Vimeo is
+  `METADATA VERIFIED / DOWNLOAD EXPERIMENTAL`: parsing can be trusted for the
+  typed media model, while anonymous download availability remains subject to
+  upstream HTTP 401/403, login and DRM behavior. Other successful extractors
+  are `EXPERIMENTAL`, with a lightweight hint that never disables an otherwise
+  valid download. This is not a website allowlist and does not promise every
+  URL/account/region on a reference site is accessible.
 - Error codes: `UNSUPPORTED_URL`, `NETWORK_ERROR`, `AUTH_REQUIRED`,
   `COOKIE_REQUIRED`, `GEO_RESTRICTED`, `PRIVATE_MEDIA`, `DRM_UNSUPPORTED`,
   `TEMPORARY_EXTRACTOR_ERROR`. Typed causes and explicit evidence take priority;
@@ -71,12 +74,12 @@ policy, no user Cookie/login/netrc. No video/audio files were downloaded.
 | --- | --- | ---: | ---: | ---: | --- |
 | YouTube | `https://www.youtube.com/watch?v=aqz-KE-bpKQ` | 635 s | 8 | 135454 | PASS |
 | Bilibili | `https://www.bilibili.com/video/BV13x41117TL` | 554.117 s | 4 | 146227 | PASS |
-| Vimeo | `https://player.vimeo.com/video/76979871` | 62 s | 4 | 41730 | PASS |
+| Vimeo | `https://player.vimeo.com/video/76979871` | 62 s | 4 | 41730 | METADATA PASS / DOWNLOAD EXPERIMENTAL |
 
 All final samples returned a nonempty title and usable normalized formats.
 These results do not replace fixture tests or establish download acceptance.
 
-Vimeo limitations retained from earlier attempts:
+Vimeo limitations confirmed by the final anonymous download audit:
 
 - Normal pages `https://vimeo.com/56015672` and `https://vimeo.com/76979871`
   required login in this yt-dlp version and mapped to `COOKIE_REQUIRED`.
@@ -84,7 +87,10 @@ Vimeo limitations retained from earlier attempts:
   fingerprint block. A separate direct-network attempt timed out and correctly
   mapped to `NETWORK_ERROR`.
 - After the supported TLS dependency was installed, the final public player
-  sample passed. No HTTPS downgrade, cookie retrieval or login workaround was used.
+  sample passed metadata extraction, but an actual HLS format reported DRM
+  protection. Additional public player samples returned HTTP 401 and normal
+  public pages required login. Native yt-dlp and YTDownloader produced the same
+  outcomes; no HTTPS downgrade, cookie retrieval or login workaround was used.
 
 The dependency choice follows [yt-dlp's official impersonation documentation](https://github.com/yt-dlp/yt-dlp#impersonation)
 and the installed yt-dlp version's `pin-curl-cffi` metadata. The installed package

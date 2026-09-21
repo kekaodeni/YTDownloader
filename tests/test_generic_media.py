@@ -64,7 +64,9 @@ def test_generic_extractors_receive_url_and_map_typed_metadata(extractor, url):
     assert media.playlist.id == 'list' and media.playlist.index == 2
     assert '/' not in media.media_key
     assert pickle.loads(pickle.dumps(media)) == media
-    assert media.compatibility == ('EXPERIMENTAL' if extractor == 'OtherExtractor' else 'VERIFIED')
+    assert media.metadata_compatibility == ('EXPERIMENTAL' if extractor == 'OtherExtractor' else 'VERIFIED')
+    assert media.download_compatibility == ('VERIFIED' if extractor.casefold() in {'youtube', 'bilibili'} else 'EXPERIMENTAL')
+    assert media.compatibility == media.download_compatibility
 
 
 def test_unsupported_url_has_specific_error_not_generic_parse_failure():
@@ -84,8 +86,10 @@ def test_ui_accepts_other_sites_and_uses_cross_site_media_identity(quick_window)
     page.show_video(media)
     assert page.state['title'] == media.title and page.state['ready']
     assert not page.set_thumbnail(replace(media, extractor='Other').media_key, b'invalid')
-    assert page.state['compatibilityHint'] == ''
-    page.show_video(replace(media, compatibility='EXPERIMENTAL'))
+    assert '解析已验证' in page.state['compatibilityHint']
+    assert '下载兼容性仍属实验性' in page.state['compatibilityHint']
+    page.show_video(replace(media, compatibility='EXPERIMENTAL', metadata_compatibility='EXPERIMENTAL',
+                             download_compatibility='EXPERIMENTAL'))
     assert '尚未经过' in page.state['compatibilityHint']
 
 

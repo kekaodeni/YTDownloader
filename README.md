@@ -10,7 +10,7 @@ YT Downloader 是基于 yt-dlp、FFmpeg 与 PySide6 的 Windows 11 视频下载�
 
 ## 功能
 
-- 接受合法 HTTP/HTTPS 媒体链接，由 yt-dlp extractor 判断支持情况。YouTube、Bilibili、Vimeo 有确定性兼容测试；其他站点显示实验性提示，不阻止下载。
+- 接受合法 HTTP/HTTPS 媒体链接，由 yt-dlp extractor 判断支持情况。YouTube、Bilibili 的下载链路已验证；Vimeo 的媒体解析已验证，但下载仍属实验性；其他站点显示实验性提示且不阻止下载。
 - 可取消、可超时的独立进程解析标题、频道、时长和可用画质；官方缩略图独立加载，不阻塞视频信息展示。
 - 用户只看到 `2160p 4K`、`1080p 60 FPS` 等稳定标签，不显示 yt-dlp format ID。
 - 视频+音频、仅视频、仅音频三种模式；显示实际可用的格式。仅音频支持原始格式以及 M4A、MP3、Opus、FLAC，按需转换并校验输出流。
@@ -34,6 +34,8 @@ YT Downloader 是基于 yt-dlp、FFmpeg 与 PySide6 的 Windows 11 视频下载�
 ## 支持范围与法律提示
 
 站点、网络、地区和账户权限会影响可用性；不支持绕过 DRM、付费或访问权限。Cookie 仅使用用户已有授权会话。浏览器锁定、解密失败及站点要求登录会显示可复制的错误。删除历史记录不会删除媒体文件。
+
+兼容级别按能力区分：YouTube 与 Bilibili 为 VERIFIED 下载站点；Vimeo 为 METADATA VERIFIED / DOWNLOAD EXPERIMENTAL。Vimeo 解析成功后仍可尝试下载，但登录、地区、HTTP 401/403 或 DRM 限制会按实际错误分类显示。其他 yt-dlp extractor 保持 EXPERIMENTAL。
 
 v0.4.2 是长期 legacy updater bridge，GitHub Latest 保持指向它。v0.4.2+ 从 Releases 列表选择最高兼容稳定版；未来发布 v0.5.0 时须设置 `make_latest=false`。v0.5.0 使用 schema 2 / protocol 2，helper 位于内部目录；保留旧布局备份的回滚能力。
 

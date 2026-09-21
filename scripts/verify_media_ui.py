@@ -29,7 +29,8 @@ def main():
     source = replace(sample_video(), video_id='opaque/跨站-ID', extractor='Vimeo', extractor_key='Vimeo',
                      title='通用媒体解析 · Generic media', url='https://vimeo.com/76979871',
                      original_url='https://vimeo.com/76979871', webpage_url='https://vimeo.com/76979871',
-                     compatibility='VERIFIED')
+                     compatibility='EXPERIMENTAL', metadata_compatibility='VERIFIED',
+                     download_compatibility='EXPERIMENTAL')
     source = replace(source, video_only_formats=(replace(source.formats[0], acodec='none', audio_format_id=None, requires_merge=False),),
                      audio_formats=(replace(source.formats[0], vcodec='none', video_format_id='140', audio_format_id=None, audio_extension='m4a', requires_merge=False),))
     captures = []
@@ -82,7 +83,9 @@ def main():
             page.show_video(source)
             yield 400
             assert find('downloadButton').property('enabled')
-            assert not find('compatibilityHint').property('visible')
+            assert find('compatibilityHint').property('visible')
+            assert '解析已验证' in find('compatibilityHint').property('text')
+            assert '下载兼容性仍属实验性' in find('compatibilityHint').property('text')
             snapshot(mode+'-verified')
             for media_mode in ('video_only', 'audio_only'):
                 page.selectMode(media_mode)
