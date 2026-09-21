@@ -24,7 +24,7 @@ def cookie_options(profile):
     if profile.source_type == 'browser':
         if profile.browser not in BROWSERS:
             raise ValueError('不支持的浏览器 Cookie 来源。')
-        return {'cookiesfrombrowser': (profile.browser,)}
+        return {'cookiesfrombrowser': (profile.browser, profile.browser_profile) if profile.browser_profile else (profile.browser,)}
     if profile.source_type != 'file':
         raise ValueError('无效的 Cookie 来源。')
     path = Path(profile.cookie_file)

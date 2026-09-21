@@ -55,7 +55,8 @@ class SettingsPresenter(ViewState):
                            proxy_mode=str(v['proxy_mode']), custom_proxy_url=v['custom_proxy_url'].strip(),
                            concurrent_fragments=int(v['concurrent_fragments']),
                            max_concurrent_downloads=int(v['max_concurrent_downloads']),
-                           codec_preference=CodecPreference(v['codec_preference']), auto_check_updates=bool(v['auto_check_updates']))
+                           codec_preference=CodecPreference(v['codec_preference']), auto_check_updates=bool(v['auto_check_updates']),
+                           default_cookie_profile_id=v.get('default_cookie_profile_id'))
 
     @Slot()
     def save(self):

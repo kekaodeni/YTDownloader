@@ -49,6 +49,9 @@ class MainWindow(ViewState):
         self.history_page = HistoryPresenter(self.dialogs, self)
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
                                                ffmpeg_description=ffmpeg_description, parent=self)
+        self.cookies.editor_requested.connect(self._open_cookie_editor)
+        self.cookies.profiles_changed.connect(self._sync_cookie_state)
+        self.cookies.default_changed.connect(self._sync_cookie_state)
         self.download_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
             '选择下载目录', self.download_page.state['directory'], lambda value: self.download_page.setField('directory', value)))
         self.settings_page.browse_requested.connect(self._browse_setting)
@@ -73,6 +76,29 @@ class MainWindow(ViewState):
         # component tree is loaded; apply the fallback stack after that pass.
         QTimer.singleShot(80, self._apply_qml_typography)
         self.root.setIcon(QIcon(str(resource_path('assets', 'app.ico'))))
+
+    def _sync_cookie_state(self, _value=None):
+        self.download_page.set_cookie_state(self.cookies.profiles, self.cookies.default_profile)
+
+    def _open_cookie_editor(self, profile):
+        def save(values, session):
+            return self.cookies.saveEditor(values)
+        def test(session):
+            source = session.state['source']
+            browser = session.state['browser']
+            path = session.state['filePath']
+            if source == 'file':
+                from yt_downloader.services.cookie_service import cookie_options
+                from yt_downloader.core.models import CookieProfile
+                try:
+                    cookie_options(CookieProfile('test', 'test', 'file', cookie_file=path))
+                    session.update(message='Cookie 文件格式有效；保存后仅在解析时使用。')
+                except ValueError as error:
+                    session.update(message=str(error))
+            else:
+                session.update(message='将使用当前浏览器的登录状态；保存后在解析时读取。')
+        self.cookies._editor_session = self.dialogs.cookie_editor(
+            profile, save, test, lambda: self.cookies.pick_requested.emit())
 
     def _apply_qml_typography(self):
         if self._disposed:

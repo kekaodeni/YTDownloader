@@ -58,3 +58,44 @@ def test_cookie_delete_requires_confirmation_before_mutation(qapp):
     presenter.removeProfile()
     assert requests == [profile]
     assert presenter.profiles == (profile,)
+
+
+def test_cookie_default_and_download_override_follow_settings(qapp):
+    from yt_downloader.ui.quick_cookies import CookiePresenter
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    from yt_downloader.core.models import CookieProfile
+
+    cookies = CookiePresenter()
+    page = DownloadPresenter('', None)
+    edge = CookieProfile('edge', 'YouTube - Edge', 'browser', browser='edge', domain_hint='youtube.com')
+    file_profile = CookieProfile('file', 'YouTube - file', 'file', cookie_file='C:/cookies.txt', domain_hint='youtube.com')
+    cookies.set_profiles((edge, file_profile))
+    page.set_cookie_state(cookies.profiles, cookies.default_profile)
+    assert page.state['cookieLabel'] == '跟随默认：不使用 Cookie'
+    cookies.setDefaultProfile('edge')
+    page.set_cookie_state(cookies.profiles, cookies.default_profile)
+    assert page.state['cookieLabel'] == '跟随默认：YouTube - Edge'
+    page.selectCookieOverride('none')
+    cookies.setDefaultProfile('file')
+    page.set_cookie_state(cookies.profiles, cookies.default_profile)
+    assert page.state['cookieLabel'] == '不使用 Cookie'
+    page.selectCookieOverride('follow_default')
+    assert page.state['cookieLabel'] == '跟随默认：YouTube - file'
+
+
+def test_cookie_editor_switches_source_and_delete_default_falls_back(qapp):
+    from yt_downloader.ui.quick_cookies import CookiePresenter
+    from yt_downloader.core.models import CookieProfile
+
+    presenter = CookiePresenter()
+    browser = CookieProfile('one', 'Edge', 'browser', browser='edge')
+    presenter.set_profiles((browser,))
+    presenter.setDefaultProfile('one')
+    saved = []
+    presenter.save_requested.connect(saved.append)
+    presenter.editor_requested.connect(lambda profile: None)
+    presenter.saveEditor({'id': 'one', 'name': 'Renamed', 'source': 'browser', 'browser': 'firefox', 'domain': ''})
+    assert saved and saved[-1][0].name == 'Renamed'
+    assert presenter.state['defaultCookieProfileId'] == 'one'
+    presenter.apply_saved_profiles(())
+    assert presenter.state['defaultCookieProfileId'] is None

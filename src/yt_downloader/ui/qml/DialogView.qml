@@ -93,6 +93,24 @@ Dialog {
                     UiField { Layout.fillWidth: true; text: (popup.s.timestamp || 0).toFixed(1); enabled: popup.s.controlsEnabled || false; Accessible.name: "封面时间（秒）"; validator: DoubleValidator { bottom: 0; top: popup.s.duration || 0; decimals: 1; locale: "C" } onEditingFinished: if (acceptableInput) popup.session.setTimestamp(Number(text)) }
                 }
             }
+            ColumnLayout {
+                Layout.fillWidth: true; visible: popup.s.kind === "cookie"; spacing: 10
+                UiText { Layout.fillWidth: true; text: "配置名称只是这份登录状态配置的备注名称，例如“YouTube - Edge”。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { text: "Cookie 来源"; role: "Caption" }
+                UiCombo { objectName: "cookieSourceCombo"; Layout.fillWidth: true; model: ["从浏览器读取", "cookies.txt"]; currentIndex: popup.s.source === "file" ? 1 : 0; onActivated: popup.session.setSource(currentIndex === 1 ? "file" : "browser") }
+                UiText { text: "配置名称"; role: "Caption" }
+                UiField { objectName: "cookieName"; Layout.fillWidth: true; text: popup.s.name || ""; onTextChanged: popup.session.setField("name", text) }
+                UiText { text: "适用网站（可选）"; role: "Caption" }
+                UiField { objectName: "cookieDomain"; Layout.fillWidth: true; text: popup.s.domain || ""; onTextChanged: popup.session.setField("domain", text); placeholderText: "例如 youtube.com" }
+                UiCombo { objectName: "cookieBrowser"; visible: popup.s.source === "browser"; Layout.fillWidth: true; model: ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Chromium"]; property var values: ["chrome", "edge", "firefox", "brave", "opera", "chromium"]; currentIndex: Math.max(0, values.indexOf(popup.s.browser)); onActivated: popup.session.setField("browser", values[currentIndex]) }
+                UiField { objectName: "cookieBrowserProfile"; visible: popup.s.source === "browser"; Layout.fillWidth: true; text: popup.s.browserProfile || ""; placeholderText: "Default（可选）"; Accessible.name: "浏览器配置文件"; onTextChanged: popup.session.setField("browserProfile", text) }
+                RowLayout { Layout.fillWidth: true; visible: popup.s.source === "file"
+                    UiText { Layout.fillWidth: true; text: popup.s.fileLabel || "未选择文件"; role: "Caption"; elide: Text.ElideLeft }
+                    UiButton { objectName: "cookieBrowse"; text: "浏览"; onClicked: popup.session.browse() }
+                }
+                UiText { Layout.fillWidth: true; text: popup.s.source === "file" ? "Cookie 文件相当于登录凭据，请勿分享给他人。" : "先在浏览器中登录目标网站；Cookie 内容只在解析时读取。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { Layout.fillWidth: true; text: popup.s.message || ""; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+            }
         }
     }
     footer: Item {
@@ -111,6 +129,8 @@ Dialog {
             UiButton { objectName: "updateDownload"; text: popup.s.downloadText || "下载并安装"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canDownload || false); onClicked: popup.session.action("download") }
             UiButton { text: popup.s.cancelEnabled ? "取消下载" : "正在取消…"; enabled: popup.s.cancelEnabled || false; visible: popup.s.kind === "update" && (popup.s.canCancel || false); onClicked: popup.session.action("cancel") }
             UiButton { objectName: "updateInstall"; text: "立即安装并重启"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
+            UiButton { objectName: "cookieTest"; text: "测试配置"; visible: popup.s.kind === "cookie"; onClicked: popup.session.test() }
+            UiButton { objectName: "cookieSave"; text: "保存"; appearance: "primary"; visible: popup.s.kind === "cookie"; onClicked: popup.session.save() }
             UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : "关闭"; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
         }
     }

@@ -162,11 +162,12 @@ class AppController:
         from yt_downloader.services.cookie_service import CookieProfileStore
         self.cookie_store = CookieProfileStore(self.paths.data / 'cookie-profiles.json')
         try:
-            self.window.cookies.set_profiles(self.cookie_store.load())
+            self.window.cookies.set_profiles(self.cookie_store.load(), self.settings.default_cookie_profile_id)
         except (OSError, ValueError, TypeError):
             self.window.cookies.update(message='Cookie 配置无法读取，已保持不使用；原文件未修改。')
         self.window.cookies.save_requested.connect(self._save_cookie_profiles)
         self.window.cookies.delete_requested.connect(self._confirm_cookie_delete)
+        self.window.cookies.default_changed.connect(self._save_cookie_default)
         self.queue = DownloadQueueController(self.download_service, self.window, max_concurrent=self.settings.max_concurrent_downloads)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
@@ -271,22 +272,30 @@ class AppController:
             custom_proxy_url=self.settings.custom_proxy_url,
             codec_preference=self.settings.codec_preference,
             require_deno=True,
-            cookie_profile=self.window.cookies.selected_profile,
+            cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
         ))
 
     def _save_cookie_profiles(self, profiles):
         try:
             self.cookie_store.save(profiles)
-            self.window.cookies.set_profiles(profiles)
-            self.window.cookies.update(message='Cookie 配置已保存，请在下载页明确选择要使用的配置。')
+            self.window.cookies.apply_saved_profiles(profiles)
+            self.window.cookies.update(message='Cookie 配置已保存。')
         except (OSError, ValueError):
             self.window.cookies.update(message='Cookie 配置保存失败，原配置已保留。')
+
+    def _save_cookie_default(self, profile_id):
+        try:
+            self.settings = replace(self.settings, default_cookie_profile_id=profile_id)
+            self.settings_service.save(self.settings)
+            self.window.settings_page.update(default_cookie_profile_id=profile_id)
+        except (OSError, ValueError):
+            self.window.cookies.update(message='默认 Cookie 配置保存失败，原设置已保留。')
 
     def _confirm_cookie_delete(self, profile):
         remaining = tuple(item for item in self.window.cookies.profiles if item.id != profile.id)
         self.window.dialogs.confirm(
             '删除 Cookie 配置？',
-            f'将删除“{profile.name}”的本地配置，不会删除浏览器中的 Cookie。',
+            f'将删除“{profile.name}”的本地配置。不会删除浏览器中的 Cookie，也不会删除原始 cookies.txt 文件。',
             '删除',
             lambda accepted: self._save_cookie_profiles(remaining) if accepted else None,
         )
@@ -519,7 +528,7 @@ class AppController:
                                       subtitle_enabled=state['subtitleEnabled'], subtitle_auto=state['subtitleAuto'],
                                       subtitle_embed=state['subtitleEmbed'], subtitle_format=state['subtitleFormat'],
                                       subtitle_languages=tuple(state['subtitleLanguages']))
-            profile = self.window.cookies.selected_profile
+            profile = self.window.download_page.selected_cookie_profile(self.window.cookies)
             request = replace(request, cookie_profile=profile, cookie_profile_id=profile.id if profile else '')
             from yt_downloader.services.download_options import prepare_request
             effective = prepare_request(request)
@@ -562,7 +571,7 @@ class AppController:
         batch_id = uuid.uuid4().hex
         created = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
         page.add_batch(batch_id, media, len(entries), created)
-        profile = self.window.cookies.selected_profile
+        profile = self.window.download_page.selected_cookie_profile(self.window.cookies)
         # Deferred placeholders are presentation only. Actual formats are resolved
         # by the existing worker after acquiring a slot in the shared queue.
         placeholder = FormatOption('解析后自动选择', None, None, 'none', 'none', '', '', '', None, False, '')

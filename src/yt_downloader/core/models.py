@@ -253,6 +253,7 @@ class CookieProfile:
     domain_hint: str = ''
     created_at: str = ''
     updated_at: str = ''
+    browser_profile: str = ''
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +327,9 @@ class AppSettings:
     max_concurrent_downloads: int = 2
     codec_preference: CodecPreference = CodecPreference.AUTO
     auto_check_updates: bool = True
+    # The selected profile is a reference only.  Cookie contents are never
+    # persisted in settings (the profile store holds the same references).
+    default_cookie_profile_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

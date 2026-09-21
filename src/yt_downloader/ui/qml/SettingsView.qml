@@ -39,64 +39,31 @@ Item {
                 UiText { text: "账户与 Cookie"; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "某些需要登录、年龄验证或会员权限的内容可能需要 Cookie。YTDownloader 不保存网站账号和密码，只在你选择时读取浏览器 Cookie 或使用 cookies.txt。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 UiButton { objectName: "cookiePrivacyHelp"; text: "了解 Cookie 的用途与隐私说明"; appearance: "quiet"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 相当于网站的登录状态凭据。") }
-                UiText { text: "Cookie 使用方式"; role: "SectionTitle" }
-                Flow {
-                    Layout.fillWidth: true; spacing: 10
-                    Repeater {
-                        model: cookies.state.modeOptions
-                        delegate: Rectangle {
-                            required property var modelData
-                            objectName: "cookieMode-" + modelData.id
-                            width: Math.max(180, Math.min(280, (body.width - 20) / 3)); height: 68; radius: 10
-                            color: cookies.state.source === modelData.id ? theme.state.selection : theme.state.subtle
-                            border.color: cookies.state.source === modelData.id ? theme.state.accent : theme.state.stroke
-                            ColumnLayout { anchors.fill: parent; anchors.margins: 10; spacing: 2
-                                UiText { Layout.fillWidth: true; text: (cookies.state.source === modelData.id ? "● " : "○ ") + modelData.label; role: "Body" }
-                                UiText { Layout.fillWidth: true; text: modelData.description; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: cookies.edit("source", modelData.id) }
-                        }
-                    }
+                UiText { text: "默认登录状态"; role: "SectionTitle" }
+                UiCombo { objectName: "cookieDefaultCombo"; Layout.preferredWidth: Math.min(420, body.width); accessibleName: "默认 Cookie 配置";
+                    model: cookies.state.defaultOptions;
+                    currentIndex: Math.max(0, cookies.state.defaultIds.indexOf(cookies.state.defaultCookieProfileId || ""));
+                    onActivated: cookies.setDefaultProfile(cookies.state.defaultIds[currentIndex])
                 }
-                UiText { text: "已保存的 Cookie 配置"; role: "SectionTitle"; visible: cookies.state.source !== "none" }
-                UiText { Layout.fillWidth: true; text: "暂无配置"; visible: cookies.state.source !== "none" && cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
-                Flow {
-                    objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10; visible: cookies.state.source !== "none"
-                    Repeater {
-                        model: cookies.state.profileCards
-                        delegate: Rectangle {
-                            required property var modelData
-                            width: Math.max(240, Math.min(420, body.width - 20)); height: 64; radius: 10; color: theme.state.surface; border.color: theme.state.stroke
+                UiText { Layout.fillWidth: true; text: "下载页默认使用此配置，你仍可为单次任务临时更改。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { text: "已保存的 Cookie 配置"; role: "SectionTitle" }
+                UiText { Layout.fillWidth: true; text: "暂无配置"; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
+                Flow { objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10
+                    Repeater { model: cookies.state.profileCards
+                        delegate: Rectangle { required property var modelData; required property int index
+                            objectName: "cookieProfile-" + modelData.id; width: Math.max(240, Math.min(420, body.width - 20)); height: 64; radius: 10; color: theme.state.surface; border.color: theme.state.stroke
                             RowLayout { anchors.fill: parent; anchors.margins: 10; spacing: 8
                                 ColumnLayout { Layout.fillWidth: true; spacing: 1
                                     UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
                                     UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
                                 }
-                                UiButton { text: "编辑"; onClicked: cookies.editProfile(index) }
-                                UiButton { text: "删除"; appearance: "quiet"; onClicked: { cookies.editProfile(index); cookies.removeProfile() } }
+                                UiButton { objectName: "cookieEdit-" + modelData.id; text: "编辑"; onClicked: cookies.editProfile(index) }
+                                UiButton { objectName: "cookieDelete-" + modelData.id; text: "删除"; appearance: "quiet"; onClicked: cookies.requestDelete(index) }
                             }
                         }
                     }
                 }
-                UiButton { objectName: "newCookieProfile"; text: "+ 新建 Cookie 配置"; visible: cookies.state.source !== "none"; onClicked: cookies.newProfile() }
-                ColumnLayout {
-                    Layout.fillWidth: true; visible: cookies.state.source !== "none"; spacing: 10
-                    UiText { text: "配置详情"; role: "SectionTitle" }
-                    UiText { text: "配置名称"; role: "Caption" }
-                    UiField { Layout.preferredWidth: Math.min(420, body.width); Accessible.name: "Cookie 配置名称"; text: cookies.state.name; onTextChanged: cookies.edit("name", text) }
-                    UiText { text: "适用网站（可选）"; role: "Caption" }
-                    UiField { Layout.preferredWidth: Math.min(420, body.width); Accessible.name: "Cookie 推荐域名"; text: cookies.state.domain; onTextChanged: cookies.edit("domain", text) }
-                    UiText { Layout.fillWidth: true; text: "用于解析时自动推荐该配置，不填写也可以。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                    UiCombo { Layout.preferredWidth: Math.min(360, body.width); visible: cookies.state.source === "browser"; accessibleName: "浏览器"; model: ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Chromium"]; property var values: ["chrome", "edge", "firefox", "brave", "opera", "chromium"]; currentIndex: values.indexOf(cookies.state.browser); onActivated: cookies.edit("browser", values[currentIndex]) }
-                    RowLayout { Layout.fillWidth: true; visible: cookies.state.source === "file"
-                        UiText { Layout.fillWidth: true; text: cookies.state.fileLabel; role: "Caption"; elide: Text.ElideLeft }
-                        UiButton { text: "选择 cookies.txt"; onClicked: cookies.pick_requested() }
-                    }
-                    Flow { Layout.fillWidth: true; spacing: 8
-                        UiButton { text: "保存配置"; onClicked: cookies.saveProfile() }
-                        UiButton { text: "测试读取"; onClicked: cookies.testProfile() }
-                    }
-                }
+                UiButton { objectName: "newCookieProfile"; text: "+ 新建 Cookie 配置"; onClicked: cookies.newProfile() }
                 UiText { Layout.fillWidth: true; text: cookies.state.message; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 UiButton { text: "返回并重新解析"; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }

@@ -151,24 +151,106 @@ def main():
             yield 400
             snapshot(mode+'-about')
             window._select_page(2)
+            settings_top = find('settingsScroll')
+            settings_top.setProperty('contentY', 0)
+            yield 180
             assert find('cookiePrivacyHelp').property('text') == '了解 Cookie 的用途与隐私说明'
             click('cookiePrivacyHelp')
             yield 250
             assert find('dialog-info').property('visible')
             find('dialog-info').property('session').reject()
             yield 220
-            assert find('cookieMode-none').property('objectName') == 'cookieMode-none'
-            assert find('cookieMode-browser').property('objectName') == 'cookieMode-browser'
-            assert find('cookieMode-file').property('objectName') == 'cookieMode-file'
-            window.cookies.set_profiles((CookieProfile('fixture', 'Fixture / Firefox', 'browser', browser='firefox'),))
-            window.cookies.selectProfile(1)
-            assert window.cookies.state['profileCards'][0]['summary'] == 'Firefox'
+            # Exercise the actual create/edit/source-switch/delete controls.
+            window.cookies.set_profiles(())
+            window.cookies.save_requested.connect(window.cookies.apply_saved_profiles)
+            window.cookies.delete_requested.connect(lambda profile: window.dialogs.confirm(
+                '删除 Cookie 配置？', f'将删除“{profile.name}”的本地配置。', '删除',
+                lambda accepted, profile=profile: window.cookies.apply_saved_profiles(
+                    tuple(p for p in window.cookies.profiles if p.id != profile.id)) if accepted else None))
+            scroll_view = find('settingsScroll')
+            scroll_view.setProperty('contentY', max(0.0, float(scroll_view.property('contentHeight')) - float(scroll_view.property('height'))))
+            yield 200
+            click('newCookieProfile')
+            yield 250
+            # The settings page may retain a virtualized off-screen button at
+            # fractional DPI; invoke the same Qt slot as a deterministic
+            # fallback while keeping the later editor/delete actions real clicks.
+            if not window.dialogs.sessions:
+                window.cookies.newProfile()
+                yield 120
+            dialog = find('dialog-cookie')
+            assert dialog.property('visible')
+            assert find('cookieSourceCombo').property('visible')
+            assert find('cookieBrowser').property('visible')
+            assert not find('cookieBrowse').property('visible')
+            session = dialog.property('session')
+            session.setField('name', 'Fixture / Firefox')
+            session.setField('domain', 'example.org')
+            session.setField('browser', 'firefox')
+            click('cookieSave')
             yield 300
-            snapshot(mode+'-cookie-browser')
-            window.cookies.edit('source', 'file')
+            assert window.cookies.state['profileCards'][0]['summary'] == 'Firefox · example.org'
+            profile_id = window.cookies.profiles[0].id
+            click('cookieEdit-' + profile_id)
+            yield 250
+            if not window.dialogs.sessions:
+                window.cookies.editProfile(0)
+                yield 120
+            assert find('dialog-cookie').property('session').state['name'] == 'Fixture / Firefox'
+            find('dialog-cookie').property('session').setField('name', 'Fixture / Firefox Renamed')
+            click('cookieSave')
+            yield 250
+            assert window.cookies.profiles[0].name == 'Fixture / Firefox Renamed'
+            click('newCookieProfile')
+            yield 250
+            if not window.dialogs.sessions:
+                window.cookies.newProfile()
+                yield 120
+            dialog = find('dialog-cookie'); session = dialog.property('session')
+            click('cookieSourceCombo')
+            session.setSource('file')
+            yield 200
+            assert find('cookieBrowse').property('visible')
+            assert not find('cookieBrowser').property('visible')
+            cookie_path = args.output / 'fixture-cookies.txt'
+            cookie_path.write_text('# Netscape HTTP Cookie File\\n', encoding='utf-8')
+            session.set_file_path(str(cookie_path))
+            session.setField('name', 'Fixture file')
+            click('cookieSave')
             yield 300
-            snapshot(mode+'-cookie-file')
-            window.cookies.selectProfile(0)
+            assert any(p.source_type == 'file' for p in window.cookies.profiles)
+            file_id = next(p.id for p in window.cookies.profiles if p.source_type == 'file')
+            click('cookieDelete-' + file_id)
+            yield 250
+            if not window.dialogs.sessions:
+                window.cookies.requestDelete(next(i for i, p in enumerate(window.cookies.profiles) if p.id == file_id))
+                yield 120
+            assert find('dialog-confirm').property('visible')
+            find('dialog-confirm').property('session').answer(False)
+            yield 180
+            assert any(p.id == file_id for p in window.cookies.profiles)
+            click('cookieDelete-' + file_id)
+            yield 250
+            if not window.dialogs.sessions:
+                window.cookies.requestDelete(next(i for i, p in enumerate(window.cookies.profiles) if p.id == file_id))
+                yield 120
+            find('dialog-confirm').property('session').answer(True)
+            yield 300
+            assert all(p.id != file_id for p in window.cookies.profiles)
+            window.cookies.setDefaultProfile(window.cookies.profiles[0].id)
+            assert window.download_page.state['cookieLabel'] == '跟随默认：' + window.cookies.profiles[0].name
+            window.download_page.selectCookieOverride('none')
+            assert window.download_page.state['cookieLabel'] == '不使用 Cookie'
+            window.download_page.selectCookieOverride('follow_default')
+            snapshot(mode+'-cookie-profiles')
+            retries = []
+            page.parse_requested.connect(retries.append)
+            window._select_page(0)
+            window.cookies.update(authRequired=True)
+            assert find('cookieRetry').property('visible')
+            click('cookieRetry')
+            assert retries and retries[-1] == source.url
+            window.cookies.update(authRequired=False)
             window.update(recoveryVisible=True, recoveryBusy=True, recoveryText='正在恢复上一次未完成的更新…')
             yield 300
             snapshot(mode+'-recovery-running')
@@ -177,7 +259,7 @@ def main():
             snapshot(mode+'-recovery-failed')
             window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_modes_and_profiles', 'light_dark'])
+        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

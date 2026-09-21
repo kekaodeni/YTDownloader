@@ -67,7 +67,10 @@ class DownloadPresenter(ViewState):
                          subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
                          subtitleChoices=[], subtitleCanEmbed=False, subtitleHint='',
                          subtitleManualStatus='人工字幕：暂无', subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
-                         playlist=False, selectedCount=0, playlistCount=0)
+                         playlist=False, selectedCount=0, playlistCount=0,
+                         cookieOverride='follow_default', cookieOptions=['跟随默认：不使用 Cookie', '不使用 Cookie'],
+                         cookieOptionIds=['follow_default', 'none'],
+                         cookieLabel='跟随默认：不使用 Cookie')
         self.images = images
         self.video: VideoInfo | None = None
         from yt_downloader.services.ffmpeg_service import FfmpegService
@@ -84,6 +87,37 @@ class DownloadPresenter(ViewState):
         self._batch_expanded = set()
         self._entries = RowModel(self)
         self._selected_entries = set()
+        self._cookie_profiles = ()
+        self._cookie_default = None
+        self._last_parse_url = ''
+
+    def set_cookie_state(self, profiles, default_profile):
+        self._cookie_profiles = tuple(profiles)
+        self._cookie_default = default_profile
+        ids = ['follow_default', 'none', *(p.id for p in self._cookie_profiles)]
+        options = ['跟随默认：' + (default_profile.name if default_profile else '不使用 Cookie'),
+                   '不使用 Cookie', *(p.name for p in self._cookie_profiles)]
+        override = self._state.get('cookieOverride', 'follow_default')
+        if override not in set(ids):
+            override = 'follow_default'
+        self.update(cookieOptions=options, cookieOptionIds=ids, cookieOverride=override,
+                    cookieLabel=options[ids.index(override)])
+
+    def selected_cookie_profile(self, cookies):
+        override = self._state.get('cookieOverride', 'follow_default')
+        if override == 'none':
+            return None
+        if override == 'follow_default':
+            return getattr(cookies, 'default_profile', getattr(cookies, 'selected_profile', None))
+        return next((p for p in cookies.profiles if p.id == override), None)
+
+    @Slot(str)
+    def selectCookieOverride(self, value):
+        valid = set(self._state.get('cookieOptionIds', ()))
+        if value not in valid:
+            return
+        label = self._state['cookieOptions'][self._state['cookieOptionIds'].index(value)]
+        self.update(cookieOverride=value, cookieLabel=label)
 
     @Property(QObject, constant=True)
     def tasks(self):
@@ -198,6 +232,9 @@ class DownloadPresenter(ViewState):
             self.parse_cancel_requested.emit()
             return
         if self.parse_state is not ParseState.CANCELLING and self._state['url'].strip():
+            if self._state['url'].strip() != self._last_parse_url:
+                self._last_parse_url = self._state['url'].strip()
+                self.selectCookieOverride('follow_default')
             self.parse_requested.emit(self._state['url'].strip())
 
     def set_loading(self, loading):

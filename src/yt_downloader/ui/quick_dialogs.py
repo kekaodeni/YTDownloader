@@ -1,6 +1,8 @@
 """Asynchronous presentation sessions. No nested event loops or QML business code."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot, QUrl
 from PySide6.QtGui import QGuiApplication
 
@@ -53,6 +55,11 @@ class DialogBridge(ViewState):
     def info(self, title, message):
         session = DialogSession(self, kind='info', title=title, modal=True)
         session.update(message=message)
+        session.show()
+        return session
+
+    def cookie_editor(self, profile, callback, test_callback, pick_callback):
+        session = CookieEditorSession(self, profile, callback, test_callback, pick_callback)
         session.show()
         return session
 
@@ -123,6 +130,52 @@ class ConfirmSession(DialogSession):
     def openFolder(self):
         if self.folder_callback:
             self.folder_callback()
+
+
+class CookieEditorSession(DialogSession):
+    """Reference-only Cookie profile editor used by both settings actions."""
+    def __init__(self, bridge, profile, callback, test_callback, pick_callback):
+        super().__init__(bridge, kind='cookie', title='Cookie 配置', modal=True,
+                         profileId=profile.id if profile else '',
+                         name=profile.name if profile else '',
+                         domain=profile.domain_hint if profile else '',
+                         source=profile.source_type if profile else 'browser',
+                         browser=profile.browser if profile else 'chrome',
+                         browserProfile='', filePath=profile.cookie_file if profile else '',
+                         fileLabel=(Path(profile.cookie_file).name if profile and profile.cookie_file else '未选择文件'))
+        self.callback = callback
+        self.test_callback = test_callback
+        self.pick_callback = pick_callback
+
+    @Slot(str, str)
+    def setField(self, name, value):
+        if name in {'name', 'domain', 'source', 'browser', 'browserProfile'}:
+            self.update(**{name: value})
+
+    @Slot(str)
+    def setSource(self, source):
+        if source in {'browser', 'file'}:
+            self.update(source=source)
+
+    def set_file_path(self, path):
+        self.update(filePath=str(path), fileLabel=Path(path).name if path else '未选择文件')
+
+    @Slot()
+    def browse(self):
+        self.pick_callback()
+
+    @Slot()
+    def test(self):
+        self.test_callback(self)
+
+    @Slot()
+    def save(self):
+        values = {'id': self._state['profileId'], 'name': self._state['name'],
+                  'domain': self._state['domain'], 'source': self._state['source'],
+                  'browser': self._state['browser'], 'browser_profile': self._state['browserProfile'],
+                  'file_path': self._state['filePath']}
+        if self.callback(values, self):
+            self.close()
 
 
 class ErrorSession(DialogSession):

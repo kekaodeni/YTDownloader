@@ -81,6 +81,7 @@ class SettingsService:
             max_concurrent_downloads=maximum,
             codec_preference=codec_preference,
             auto_check_updates=bool(data.get("auto_check_updates", True)),
+            default_cookie_profile_id=(str(data['default_cookie_profile_id']) if data.get('default_cookie_profile_id') else None),
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:
