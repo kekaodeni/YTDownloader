@@ -48,6 +48,10 @@ def main():
     def snapshot(name):
         assert window.grab().save(str(args.output/(name+'.png')))
         captures.append(name)
+    def click(name):
+        item = find(name)
+        point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
+        QTest.mouseClick(window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
     def reveal(name):
         view=find('taskList');item=find(name)
         top=item.mapToItem(view,QPointF(0,0)).y()
@@ -147,8 +151,18 @@ def main():
             yield 400
             snapshot(mode+'-about')
             window._select_page(2)
+            assert find('cookiePrivacyHelp').property('text') == '了解 Cookie 的用途与隐私说明'
+            click('cookiePrivacyHelp')
+            yield 250
+            assert find('dialog-info').property('visible')
+            find('dialog-info').property('session').reject()
+            yield 220
+            assert find('cookieMode-none').property('objectName') == 'cookieMode-none'
+            assert find('cookieMode-browser').property('objectName') == 'cookieMode-browser'
+            assert find('cookieMode-file').property('objectName') == 'cookieMode-file'
             window.cookies.set_profiles((CookieProfile('fixture', 'Fixture / Firefox', 'browser', browser='firefox'),))
             window.cookies.selectProfile(1)
+            assert window.cookies.state['profileCards'][0]['summary'] == 'Firefox'
             yield 300
             snapshot(mode+'-cookie-browser')
             window.cookies.edit('source', 'file')
@@ -163,7 +177,7 @@ def main():
             snapshot(mode+'-recovery-failed')
             window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'light_dark'])
+        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_modes_and_profiles', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

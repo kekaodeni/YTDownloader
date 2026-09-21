@@ -166,6 +166,7 @@ class AppController:
         except (OSError, ValueError, TypeError):
             self.window.cookies.update(message='Cookie 配置无法读取，已保持不使用；原文件未修改。')
         self.window.cookies.save_requested.connect(self._save_cookie_profiles)
+        self.window.cookies.delete_requested.connect(self._confirm_cookie_delete)
         self.queue = DownloadQueueController(self.download_service, self.window, max_concurrent=self.settings.max_concurrent_downloads)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
@@ -280,6 +281,15 @@ class AppController:
             self.window.cookies.update(message='Cookie 配置已保存，请在下载页明确选择要使用的配置。')
         except (OSError, ValueError):
             self.window.cookies.update(message='Cookie 配置保存失败，原配置已保留。')
+
+    def _confirm_cookie_delete(self, profile):
+        remaining = tuple(item for item in self.window.cookies.profiles if item.id != profile.id)
+        self.window.dialogs.confirm(
+            '删除 Cookie 配置？',
+            f'将删除“{profile.name}”的本地配置，不会删除浏览器中的 Cookie。',
+            '删除',
+            lambda accepted: self._save_cookie_profiles(remaining) if accepted else None,
+        )
 
     def _metadata_result(self, token: RequestToken, video) -> None:
         if not self._metadata_gate.deliver(token, self._apply_metadata_result, video):

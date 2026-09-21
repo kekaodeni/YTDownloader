@@ -41,12 +41,13 @@ Item {
         }
         UiText { Layout.fillWidth: true; visible: download.state.clipboardHint.length > 0 && !download.state.busy; text: download.state.clipboardHint; role: "Caption"; color: theme.state.muted; elide: Text.ElideRight }
         RowLayout {
-            Layout.fillWidth: true
-            UiCombo { Layout.fillWidth: true; accessibleName: "解析与下载 Cookie 配置"; model: cookies.state.profiles; currentIndex: cookies.state.profileIndex; enabled: !download.state.busy; onActivated: cookies.selectProfile(currentIndex) }
-            UiButton { text: "Cookie 设置"; onClicked: shell.openCookieSettings() }
+            Layout.fillWidth: true; spacing: 8
+            UiText { text: "登录状态"; role: "Caption" }
+            UiText { Layout.fillWidth: true; text: "Cookie：" + (cookies.state.profileIndex > 0 ? cookies.state.profiles[cookies.state.profileIndex] : "不使用"); role: "Body"; elide: Text.ElideRight }
+            UiButton { text: "更改"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
             UiButton { text: "重新解析"; visible: cookies.state.authRequired; enabled: !download.state.busy; onClicked: download.requestParse() }
         }
-        UiText { Layout.fillWidth: true; visible: cookies.state.recommendation.length > 0; text: cookies.state.recommendation; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+        UiText { Layout.fillWidth: true; visible: cookies.state.recommendation.length > 0 || cookies.state.authRequired; text: cookies.state.authRequired ? "此内容需要登录状态；请选择一个 Cookie 配置后重试。" : cookies.state.recommendation; role: "Caption"; color: cookies.state.authRequired ? theme.state.accent : theme.state.secondary; wrapMode: Text.Wrap }
         ColumnLayout {
             Layout.fillWidth: true; visible: download.state.busy; spacing: 8
             UiProgress { Layout.fillWidth: true; indeterminate: true }
@@ -91,9 +92,16 @@ Item {
                             UiText { text: "下载内容"; role: "Caption" }
                             UiCombo { objectName: "modeCombo"; Layout.fillWidth: true; accessibleName: "下载内容"; model: ["视频 + 音频", "仅视频", "仅音频"]; currentIndex: ["video_audio", "video_only", "audio_only"].indexOf(download.state.mediaMode); onActivated: download.selectMode(["video_audio", "video_only", "audio_only"][currentIndex]) }
                             UiText { Layout.fillWidth: true; visible: text.length > 0; text: download.state.modeHint; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            UiText { text: download.state.mediaMode === "audio_only" ? "音频格式" : "画质"; role: "Caption" }
                             UiCombo { objectName: "formatCombo"; visible: download.state.mediaMode !== "audio_only" && !download.state.playlist; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
                             UiCombo { objectName: "audioCodecCombo"; visible: download.state.mediaMode === "audio_only"; Layout.fillWidth: true; accessibleName: "音频格式"; model: ["原始音频（推荐）", "M4A", "MP3", "Opus", "FLAC"]; currentIndex: ["original", "m4a", "mp3", "opus", "flac"].indexOf(download.state.audioCodec); onActivated: download.selectAudio(["original", "m4a", "mp3", "opus", "flac"][currentIndex], download.state.audioQuality) }
+                            UiText { text: "音频质量"; role: "Caption"; visible: download.state.mediaMode === "audio_only" }
                             UiCombo { visible: download.state.mediaMode === "audio_only"; enabled: download.state.audioCodec !== "original" && download.state.audioCodec !== "flac"; Layout.fillWidth: true; accessibleName: "音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; currentIndex: ["original", "320", "256", "192", "128"].indexOf(download.state.audioQuality); onActivated: download.selectAudio(download.state.audioCodec, ["original", "320", "256", "192", "128"][currentIndex]) }
+                            UiText { text: "字幕"; role: "Caption" }
+                            RowLayout { Layout.fillWidth: true; spacing: 12
+                                UiText { text: download.state.subtitleManualStatus; role: "Caption"; color: theme.state.secondary }
+                                UiText { text: download.state.subtitleAutoStatus; role: "Caption"; color: theme.state.secondary }
+                            }
                             UiSwitch { objectName: "subtitleEnabled"; text: "下载字幕"; checked: download.state.subtitleEnabled; onToggled: download.setSubtitleOption("enabled", checked) }
                             ColumnLayout {
                                 Layout.fillWidth: true; visible: download.state.subtitleEnabled; spacing: 8
@@ -105,14 +113,18 @@ Item {
                                     delegate: UiSwitch { required property var modelData; width: ListView.view.width; text: modelData.name; checked: modelData.selected; onToggled: download.selectSubtitle(modelData.code, checked) }
                                     ScrollBar.vertical: ScrollBar {}
                                 }
-                                UiCombo { Layout.fillWidth: true; accessibleName: "字幕格式"; model: ["SRT", "VTT"]; currentIndex: download.state.subtitleFormat === "srt" ? 0 : 1; onActivated: download.selectSubtitleFormat(currentIndex === 0 ? "srt" : "vtt") }
+                                UiText { text: "字幕格式"; role: "Caption" }
+                                UiCombo { Layout.preferredWidth: 280; accessibleName: "字幕格式"; model: ["SRT", "VTT"]; currentIndex: download.state.subtitleFormat === "srt" ? 0 : 1; onActivated: download.selectSubtitleFormat(currentIndex === 0 ? "srt" : "vtt") }
                                 UiSwitch { text: "嵌入视频"; checked: download.state.subtitleEmbed; enabled: download.state.subtitleCanEmbed || checked; onToggled: download.setSubtitleOption("embed", checked) }
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleEmbed ? "嵌入失败时会提示并另存字幕，媒体仍会保留。" : "字幕将保存为独立文件。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                                UiText { Layout.fillWidth: true; text: download.state.subtitleEmbedHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                             }
+                            UiText { text: "文件名"; role: "Caption"; visible: !download.state.playlist }
                             UiField { objectName: "filenameInput"; visible: !download.state.playlist; Layout.fillWidth: true; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 8
+                                UiText { text: "保存到"; role: "Caption" }
                                 UiField { objectName: "directoryInput"; Layout.fillWidth: true; Accessible.name: "下载目录"; text: download.state.directory; onTextChanged: download.setField("directory", text) }
                                 UiButton { text: "浏览"; hint: "选择下载目录"; onClicked: download.browse_requested() }
                             }

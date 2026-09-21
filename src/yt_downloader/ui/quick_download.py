@@ -66,6 +66,7 @@ class DownloadPresenter(ViewState):
                          modeHint='', subtitleEnabled=False, subtitleAuto=False,
                          subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
                          subtitleChoices=[], subtitleCanEmbed=False, subtitleHint='',
+                         subtitleManualStatus='人工字幕：暂无', subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
                          playlist=False, selectedCount=0, playlistCount=0)
         self.images = images
         self.video: VideoInfo | None = None
@@ -275,7 +276,9 @@ class DownloadPresenter(ViewState):
 
     def _subtitle_state(self):
         from yt_downloader.services.subtitle_service import language_name
-        tracks = (*self.video.subtitles, *(self.video.automatic_captions if self._state['subtitleAuto'] else ())) if self.video else ()
+        manual_tracks = self.video.subtitles if self.video else ()
+        auto_tracks = self.video.automatic_captions if self.video else ()
+        tracks = (*manual_tracks, *(auto_tracks if self._state['subtitleAuto'] else ()))
         codes = ('zh-Hans', 'zh-Hant', 'zh', 'en', 'ja', 'ko') if self._state['playlist'] else tuple(dict.fromkeys(track.language for track in tracks))
         selected = self._state['subtitleLanguages']
         choices = [dict(code=code, name=language_name(code), selected=code in selected) for code in codes]
@@ -283,10 +286,22 @@ class DownloadPresenter(ViewState):
         index = self._state['formatIndex']
         can_embed = bool(self.subtitle_ffmpeg_available and self._state['mediaMode'] != 'audio_only'
                          and ((0 <= index < len(options) and options[index].final_ext in {'mp4', 'mkv'}) or self._state['playlist']))
-        hint = '此模式无法嵌入字幕，请选择独立字幕文件。' if self._state['subtitleEmbed'] and not can_embed else ''
+        manual_status = f'人工字幕：可用（{len(manual_tracks)} 种）' if manual_tracks else '人工字幕：暂无'
+        auto_status = f'自动字幕：可用（{len(auto_tracks)} 种）' if auto_tracks else '自动字幕：暂无'
+        if self._state['mediaMode'] == 'audio_only':
+            embed_hint = '仅音频模式不支持嵌入字幕。'
+        elif not self.subtitle_ffmpeg_available:
+            embed_hint = '未找到 FFmpeg，无法嵌入字幕。'
+        elif not options or not (0 <= index < len(options)) or options[index].final_ext not in {'mp4', 'mkv'}:
+            embed_hint = '当前容器不支持字幕嵌入，请选择独立字幕文件。'
+        else:
+            embed_hint = ''
+        hint = embed_hint if self._state['subtitleEmbed'] and not can_embed else ''
         if self._state['subtitleEnabled'] and not codes:
             hint = '没有可用字幕，可尝试包含自动生成字幕。'
-        self.update(subtitleChoices=choices, subtitleCanEmbed=can_embed, subtitleHint=hint)
+        self.update(subtitleChoices=choices, subtitleCanEmbed=can_embed, subtitleHint=hint,
+                    subtitleManualStatus=manual_status, subtitleAutoStatus=auto_status,
+                    subtitleEmbedHint=embed_hint)
 
     @Slot(str, bool)
     def setSubtitleOption(self, name, enabled):

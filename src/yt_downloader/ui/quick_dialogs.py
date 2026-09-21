@@ -49,6 +49,13 @@ class DialogBridge(ViewState):
         session.show()
         return session
 
+    @Slot(str, str, result=QObject)
+    def info(self, title, message):
+        session = DialogSession(self, kind='info', title=title, modal=True)
+        session.update(message=message)
+        session.show()
+        return session
+
     def pick_directory(self, title, current, callback):
         self._serial += 1
         key = str(self._serial)

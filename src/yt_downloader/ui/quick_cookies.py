@@ -11,11 +11,17 @@ from yt_downloader.ui.quick_state import ViewState
 
 class CookiePresenter(ViewState):
     save_requested = Signal(object)
+    delete_requested = Signal(object)
     pick_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent, profiles=['不使用'], profileIndex=0, source='none', browser='chrome',
-                         name='', domain='', fileLabel='未选择文件', message='', authRequired=False, recommendation='')
+                         name='', domain='', fileLabel='未选择文件', message='', authRequired=False, recommendation='',
+                         modeOptions=[
+                             {'id': 'none', 'label': '不使用', 'description': '适合绝大多数公开内容'},
+                             {'id': 'browser', 'label': '从浏览器读取', 'description': '使用你已经登录的网站状态'},
+                             {'id': 'file', 'label': '使用 cookies.txt', 'description': '使用本地 Netscape Cookie 文件'},
+                         ], profileCards=[])
         self.profiles = ()
         self._file_path = ''
 
@@ -28,7 +34,21 @@ class CookiePresenter(ViewState):
         selected = self.selected_profile
         self.profiles = tuple(profiles)
         index = next((i + 1 for i, profile in enumerate(self.profiles) if selected and profile.id == selected.id), 0)
-        self.update(profiles=['不使用', *(profile.name for profile in self.profiles)], profileIndex=index)
+        cards = [self._profile_card(profile) for profile in self.profiles]
+        self.update(profiles=['不使用', *(profile.name for profile in self.profiles)], profileCards=cards, profileIndex=index)
+
+    @staticmethod
+    def _profile_card(profile):
+        if profile.source_type == 'browser':
+            source = profile.browser or '浏览器'
+            summary = source.capitalize()
+        else:
+            summary = 'cookies.txt'
+        if profile.domain_hint:
+            summary += f' · {profile.domain_hint}'
+        return {'id': profile.id, 'name': profile.name, 'summary': summary,
+                'source': profile.source_type, 'browser': profile.browser or '',
+                'domain': profile.domain_hint or '', 'fileLabel': Path(profile.cookie_file).name if profile.cookie_file else ''}
 
     @Slot(int)
     def selectProfile(self, index):
@@ -49,6 +69,28 @@ class CookiePresenter(ViewState):
         if name in {'source', 'browser', 'name', 'domain'}:
             self.update(**{name: value})
 
+    @Slot()
+    def newProfile(self):
+        self._file_path = ''
+        self.selectProfile(0)
+        self.update(source='browser', name='', domain='', browser='chrome', fileLabel='未选择文件', message='')
+
+    @Slot(int)
+    def editProfile(self, index):
+        self.selectProfile(index + 1 if 0 <= index < len(self.profiles) else 0)
+
+    @Slot()
+    def testProfile(self):
+        if self._state['source'] == 'file':
+            try:
+                cookie_options(CookieProfile('test', 'test', 'file', cookie_file=self._file_path))
+            except ValueError as error:
+                self.update(message=str(error))
+                return
+            self.update(message='Cookie 文件格式有效；保存后仅在解析时使用。')
+        elif self._state['source'] == 'browser':
+            self.update(message='将使用当前浏览器的登录状态；保存后在解析时读取。')
+
     @Slot(str)
     def fileSelected(self, url):
         self._file_path = QUrl(url).toLocalFile()
@@ -61,8 +103,10 @@ class CookiePresenter(ViewState):
             return
         now = datetime.now(timezone.utc).isoformat()
         old = self.selected_profile
+        source = self._state['source']
+        default_name = f"{self._state['domain'].strip() or '网站'} - {(self._state['browser'] or '浏览器').capitalize()}" if source == 'browser' else 'cookies.txt 配置'
         profile = CookieProfile(old.id if old else uuid.uuid4().hex,
-                                self._state['name'].strip() or 'Cookie 配置', self._state['source'],
+                                self._state['name'].strip() or default_name, source,
                                 self._state['browser'], self._file_path, self._state['domain'].strip().lower(),
                                 old.created_at if old else now, now)
         try:
@@ -77,7 +121,7 @@ class CookiePresenter(ViewState):
     def removeProfile(self):
         profile = self.selected_profile
         if profile:
-            self.save_requested.emit(tuple(item for item in self.profiles if item.id != profile.id))
+            self.delete_requested.emit(profile)
 
     def recommend(self, url):
         profile = recommended_profile(self.profiles, url)

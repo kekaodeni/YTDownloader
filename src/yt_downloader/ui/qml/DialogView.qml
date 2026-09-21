@@ -49,6 +49,7 @@ Dialog {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
             UiText { Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
+            UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: "请只使用你自己的 Cookie，不要把 cookies.txt 分享给他人。YTDownloader 不会将 Cookie 上传到 GitHub，也不会写入下载历史。"; wrapMode: Text.Wrap; color: theme.state.secondary }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12
                 UiButton { objectName: "errorDetails"; text: popup.detailsOpen ? "收起错误详情" : "错误详情"; appearance: "quiet"; onClicked: popup.detailsOpen = !popup.detailsOpen }

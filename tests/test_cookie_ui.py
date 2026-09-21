@@ -28,3 +28,33 @@ def test_cookie_required_keeps_url_and_exposes_retry(qapp):
     controller._apply_metadata_error(error)
     assert cookies.state['authRequired']
     assert errors == [error]  # technical details stay copyable
+
+
+def test_cookie_modes_and_saved_profiles_are_explicit(qapp):
+    from yt_downloader.ui.quick_cookies import CookiePresenter
+    from yt_downloader.core.models import CookieProfile
+
+    presenter = CookiePresenter()
+    assert [item['id'] for item in presenter.state['modeOptions']] == ['none', 'browser', 'file']
+    assert presenter.state['modeOptions'][1]['description']
+    profile = CookieProfile('one', 'YouTube / Firefox', 'browser', browser='firefox', domain_hint='youtube.com')
+    presenter.set_profiles((profile,))
+    assert presenter.state['profileCards'][0]['id'] == 'one'
+    assert presenter.state['profileCards'][0]['summary'] == 'Firefox · youtube.com'
+    presenter.selectProfile(1)
+    assert presenter.state['source'] == 'browser'
+
+
+def test_cookie_delete_requires_confirmation_before_mutation(qapp):
+    from yt_downloader.ui.quick_cookies import CookiePresenter
+    from yt_downloader.core.models import CookieProfile
+
+    presenter = CookiePresenter()
+    profile = CookieProfile('one', 'Fixture', 'browser', browser='edge')
+    presenter.set_profiles((profile,))
+    presenter.selectProfile(1)
+    requests = []
+    presenter.delete_requested.connect(requests.append)
+    presenter.removeProfile()
+    assert requests == [profile]
+    assert presenter.profiles == (profile,)

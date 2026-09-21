@@ -59,6 +59,22 @@ def test_subtitle_ui_preserves_explicit_embed_choice_on_incompatible_mode(qapp, 
     assert presenter.state['subtitleHint']
 
 
+def test_subtitle_ui_reports_manual_auto_availability_and_embed_reason(qapp, tmp_path):
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    from types import SimpleNamespace
+    presenter = DownloadPresenter(str(tmp_path), SimpleNamespace(add=lambda value: ''))
+    video = replace(_request(tmp_path).video,
+                    subtitles=(SubtitleTrack('en', 'vtt', 'https://example.org/manual'),),
+                    automatic_captions=(SubtitleTrack('ja', 'vtt', 'https://example.org/auto'),))
+    presenter.show_video(video)
+    assert presenter.state['subtitleManualStatus'].startswith('人工字幕：可用')
+    assert presenter.state['subtitleAutoStatus'].startswith('自动字幕：可用')
+    presenter.setSubtitleOption('enabled', True)
+    presenter.setSubtitleOption('embed', True)
+    presenter.selectMode('audio_only')
+    assert '仅音频' in presenter.state['subtitleEmbedHint']
+
+
 def test_subtitle_history_is_persisted_with_old_defaults(tmp_path):
     from test_history_repository import _record
     from yt_downloader.core.models import TaskStatus
