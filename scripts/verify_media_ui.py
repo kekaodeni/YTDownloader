@@ -16,6 +16,7 @@ from verify_quick_ui import sample_video
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--expected-dpr', type=float)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     app = QApplication([])
@@ -25,6 +26,9 @@ def main():
     window.root.raise_()
     window.root.requestActivate()
     window.root.resize(1000, 760)
+    if args.expected_dpr is not None and abs(window.root.devicePixelRatio() - args.expected_dpr) > .01:
+        window.dispose()
+        raise ValueError('Actual Qt device pixel ratio differs from the requested acceptance scale')
     page = window.download_page
     source = replace(sample_video(), video_id='opaque/跨站-ID', extractor='Vimeo', extractor_key='Vimeo',
                      title='通用媒体解析 · Generic media', url='https://vimeo.com/76979871',
@@ -91,6 +95,35 @@ def main():
             assert '解析已验证' in find('compatibilityHint').property('text')
             assert '下载兼容性仍属实验性' in find('compatibilityHint').property('text')
             snapshot(mode+'-verified')
+            # The default fixture has no caption tracks.  These controls must
+            # remain visibly unavailable instead of retaining a prior video's
+            # effective subtitle state.
+            reveal('subtitleEnabled')
+            assert not find('subtitleEnabled').property('enabled')
+            assert not find('subtitleAuto').property('enabled')
+            assert not find('subtitleFormat').property('enabled')
+            assert not find('subtitleEmbed').property('enabled')
+            assert page.state['subtitleHint'] == '该视频没有可用字幕。'
+            snapshot(mode+'-subtitles-none')
+            page.show_video(replace(source, video_id='auto-only', automatic_captions=(
+                SubtitleTrack('ja', 'vtt', 'https://example.org/auto', is_auto=True),)))
+            page.setSubtitleOption('enabled', True)
+            yield 250
+            assert page.state['subtitleCapability'] == 'AUTO_ONLY'
+            assert page.state['subtitleAuto']
+            assert page.state['subtitleLanguages'] == ['ja']
+            assert find('subtitleEnabled').property('enabled')
+            assert not find('subtitleAuto').property('enabled')
+            assert find('subtitleFormat').property('enabled')
+            snapshot(mode+'-subtitles-auto-only')
+            page.setSubtitleOption('enabled', False)
+            page.show_video(replace(source, video_id='manual-only', subtitles=(
+                SubtitleTrack('zh-Hans', 'vtt', 'https://example.org/sub'),)))
+            yield 250
+            assert page.state['subtitleCapability'] == 'MANUAL_ONLY'
+            assert find('subtitleEnabled').property('enabled')
+            assert not find('subtitleAuto').property('enabled')
+            snapshot(mode+'-subtitles-manual-only')
             for media_mode in ('video_only', 'audio_only'):
                 page.selectMode(media_mode)
                 yield 300
@@ -259,7 +292,7 @@ def main():
             snapshot(mode+'-recovery-failed')
             window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'light_dark'])
+        report = dict(device_pixel_ratio=window.root.devicePixelRatio(), screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'subtitle_none_disabled', 'subtitle_auto_only', 'subtitle_manual_only', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

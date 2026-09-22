@@ -65,8 +65,10 @@ class DownloadPresenter(ViewState):
                          mediaMode='video_audio', audioCodec='original', audioQuality='original',
                          modeHint='', subtitleEnabled=False, subtitleAuto=False,
                          subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
-                         subtitleChoices=[], subtitleCanEmbed=False, subtitleHint='',
-                         subtitleManualStatus='人工字幕：暂无', subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
+                         subtitleChoices=[], subtitleCapability='NONE', subtitleCanDownload=False,
+                         subtitleCanAuto=False, subtitleCanFormat=False, subtitleCanEmbed=False,
+                         subtitleHint='', subtitleAutoHint='', subtitleManualStatus='人工字幕：暂无',
+                         subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
                          playlist=False, selectedCount=0, playlistCount=0,
                          cookieOverride='follow_default', cookieOptions=['跟随默认：不使用 Cookie', '不使用 Cookie'],
                          cookieOptionIds=['follow_default', 'none'],
@@ -90,6 +92,7 @@ class DownloadPresenter(ViewState):
         self._cookie_profiles = ()
         self._cookie_default = None
         self._last_parse_url = ''
+        self._subtitle_preferences = {'enabled': False, 'auto': False, 'embed': False}
 
     def set_cookie_state(self, profiles, default_profile):
         self._cookie_profiles = tuple(profiles)
@@ -245,6 +248,7 @@ class DownloadPresenter(ViewState):
         if state is ParseState.RUNNING:
             self.video = None
             self.update(ready=False, thumbnail='')
+            self._subtitle_state(reset_selection=True)
         busy = state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}
         cancelling = state is ParseState.CANCELLING
         self.update(busy=busy, cancelling=cancelling,
@@ -281,6 +285,7 @@ class DownloadPresenter(ViewState):
         self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
         if self._state['mediaMode'] == 'video_audio':
             self.selectFormat(selected)
+        self._subtitle_state(reset_selection=True)
 
     @property
     def available_formats(self):
@@ -311,21 +316,40 @@ class DownloadPresenter(ViewState):
         self.selectFormat(0)
         self._subtitle_state()
 
-    def _subtitle_state(self):
+    def _subtitle_state(self, *, reset_selection=False):
+        """Project subtitle preferences onto the current media's real capability."""
         from yt_downloader.services.subtitle_service import language_name
         manual_tracks = self.video.subtitles if self.video else ()
         auto_tracks = self.video.automatic_captions if self.video else ()
-        tracks = (*manual_tracks, *(auto_tracks if self._state['subtitleAuto'] else ()))
-        codes = ('zh-Hans', 'zh-Hant', 'zh', 'en', 'ja', 'ko') if self._state['playlist'] else tuple(dict.fromkeys(track.language for track in tracks))
-        selected = self._state['subtitleLanguages']
-        choices = [dict(code=code, name=language_name(code), selected=code in selected) for code in codes]
+        has_manual, has_auto = bool(manual_tracks), bool(auto_tracks)
+        capability = ('MANUAL_AND_AUTO' if has_manual and has_auto else 'MANUAL_ONLY' if has_manual
+                      else 'AUTO_ONLY' if has_auto else 'NONE')
+        can_download = capability != 'NONE' and not self._state['playlist']
+        enabled = bool(self._subtitle_preferences['enabled'] and can_download)
+        auto = bool(enabled and has_auto and (not has_manual or self._subtitle_preferences['auto']))
+        tracks = (*manual_tracks, *(auto_tracks if auto else ()))
+        available_codes = tuple(dict.fromkeys(track.language for track in tracks))
+        selected = [] if reset_selection else [code for code in self._state['subtitleLanguages'] if code in available_codes]
+        if enabled and not selected:
+            selected = list(available_codes)
+        enabled = bool(enabled and selected)
+        if not enabled:
+            auto = False
+            selected = []
+            available_codes = ()
+        choices = [dict(code=code, name=language_name(code), selected=code in selected) for code in available_codes]
         options = self.available_formats
         index = self._state['formatIndex']
-        can_embed = bool(self.subtitle_ffmpeg_available and self._state['mediaMode'] != 'audio_only'
+        can_embed = bool(enabled and self.subtitle_ffmpeg_available and self._state['mediaMode'] != 'audio_only'
                          and ((0 <= index < len(options) and options[index].final_ext in {'mp4', 'mkv'}) or self._state['playlist']))
+        embed = bool(self._subtitle_preferences['embed'] and can_embed)
         manual_status = f'人工字幕：可用（{len(manual_tracks)} 种）' if manual_tracks else '人工字幕：暂无'
         auto_status = f'自动字幕：可用（{len(auto_tracks)} 种）' if auto_tracks else '自动字幕：暂无'
-        if self._state['mediaMode'] == 'audio_only':
+        if capability == 'NONE':
+            embed_hint = '没有可用字幕。'
+        elif not enabled:
+            embed_hint = '请先选择要下载的字幕。'
+        elif self._state['mediaMode'] == 'audio_only':
             embed_hint = '仅音频模式不支持嵌入字幕。'
         elif not self.subtitle_ffmpeg_available:
             embed_hint = '未找到 FFmpeg，无法嵌入字幕。'
@@ -333,33 +357,39 @@ class DownloadPresenter(ViewState):
             embed_hint = '当前容器不支持字幕嵌入，请选择独立字幕文件。'
         else:
             embed_hint = ''
-        hint = embed_hint if self._state['subtitleEmbed'] and not can_embed else ''
-        if self._state['subtitleEnabled'] and not codes:
-            hint = '没有可用字幕，可尝试包含自动生成字幕。'
-        self.update(subtitleChoices=choices, subtitleCanEmbed=can_embed, subtitleHint=hint,
-                    subtitleManualStatus=manual_status, subtitleAutoStatus=auto_status,
-                    subtitleEmbedHint=embed_hint)
+        hint = '该视频没有可用字幕。' if capability == 'NONE' else ''
+        auto_hint = '该视频没有自动生成字幕。' if has_manual and not has_auto else ''
+        self.update(subtitleEnabled=enabled, subtitleAuto=auto, subtitleEmbed=embed,
+                    subtitleLanguages=selected, subtitleChoices=choices, subtitleCapability=capability,
+                    subtitleCanDownload=can_download, subtitleCanAuto=bool(enabled and has_manual and has_auto),
+                    subtitleCanFormat=enabled, subtitleCanEmbed=can_embed, subtitleHint=hint,
+                    subtitleAutoHint=auto_hint, subtitleManualStatus=manual_status,
+                    subtitleAutoStatus=auto_status, subtitleEmbedHint=embed_hint)
 
     @Slot(str, bool)
     def setSubtitleOption(self, name, enabled):
-        key = {'enabled': 'subtitleEnabled', 'auto': 'subtitleAuto', 'embed': 'subtitleEmbed'}.get(name)
-        if key:
-            self.update(**{key: enabled})
+        if name in self._subtitle_preferences:
+            self._subtitle_preferences[name] = enabled
             self._subtitle_state()
 
     @Slot(str, bool)
     def selectSubtitle(self, code, enabled):
+        if not self._state['subtitleEnabled'] or code not in {item['code'] for item in self._state['subtitleChoices']}:
+            return
         codes = list(self._state['subtitleLanguages'])
         if enabled and code not in codes:
             codes.append(code)
         if not enabled and code in codes:
             codes.remove(code)
+        if not codes:
+            self._subtitle_preferences['enabled'] = False
+            self._subtitle_preferences['embed'] = False
         self.update(subtitleLanguages=codes)
         self._subtitle_state()
 
     @Slot(str)
     def selectSubtitleFormat(self, value):
-        if value in {'srt', 'vtt'}:
+        if self._state['subtitleCanFormat'] and value in {'srt', 'vtt'}:
             self.update(subtitleFormat=value)
 
     @Slot(str, str)

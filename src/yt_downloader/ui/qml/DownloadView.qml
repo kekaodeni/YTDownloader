@@ -103,22 +103,24 @@ Item {
                                 UiText { text: download.state.subtitleManualStatus; role: "Caption"; color: theme.state.secondary }
                                 UiText { text: download.state.subtitleAutoStatus; role: "Caption"; color: theme.state.secondary }
                             }
-                            UiSwitch { objectName: "subtitleEnabled"; text: "下载字幕"; checked: download.state.subtitleEnabled; onToggled: download.setSubtitleOption("enabled", checked) }
+                            UiSwitch { objectName: "subtitleEnabled"; text: "下载字幕"; enabled: download.state.subtitleCanDownload; checked: download.state.subtitleEnabled; onToggled: download.setSubtitleOption("enabled", checked) }
                             ColumnLayout {
-                                Layout.fillWidth: true; visible: download.state.subtitleEnabled; spacing: 8
-                                UiSwitch { text: "包含自动生成字幕"; checked: download.state.subtitleAuto; onToggled: download.setSubtitleOption("auto", checked) }
+                                Layout.fillWidth: true; spacing: 8
+                                UiSwitch { objectName: "subtitleAuto"; visible: download.state.subtitleCapability !== "AUTO_ONLY"; text: "包含自动生成字幕"; enabled: download.state.subtitleCanAuto; checked: download.state.subtitleAuto; onToggled: download.setSubtitleOption("auto", checked) }
+                                UiText { visible: download.state.subtitleCapability === "AUTO_ONLY" && download.state.subtitleEnabled; text: "将下载自动生成字幕"; role: "Caption"; color: theme.state.secondary }
+                                UiText { Layout.fillWidth: true; text: download.state.subtitleAutoHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                 ListView {
-                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 38, 190)
+                                    Layout.fillWidth: true; Layout.preferredHeight: visible ? Math.min(count * 38, 190) : 0; visible: download.state.subtitleEnabled
                                     clip: true; reuseItems: true; boundsBehavior: Flickable.StopAtBounds
                                     model: download.state.subtitleChoices
                                     delegate: UiSwitch { required property var modelData; width: ListView.view.width; text: modelData.name; checked: modelData.selected; onToggled: download.selectSubtitle(modelData.code, checked) }
                                     ScrollBar.vertical: ScrollBar {}
                                 }
                                 UiText { text: "字幕格式"; role: "Caption" }
-                                UiCombo { Layout.preferredWidth: 280; accessibleName: "字幕格式"; model: ["SRT", "VTT"]; currentIndex: download.state.subtitleFormat === "srt" ? 0 : 1; onActivated: download.selectSubtitleFormat(currentIndex === 0 ? "srt" : "vtt") }
-                                UiSwitch { text: "嵌入视频"; checked: download.state.subtitleEmbed; enabled: download.state.subtitleCanEmbed || checked; onToggled: download.setSubtitleOption("embed", checked) }
-                                UiText { Layout.fillWidth: true; text: download.state.subtitleEmbed ? "嵌入失败时会提示并另存字幕，媒体仍会保留。" : "字幕将保存为独立文件。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                                UiText { Layout.fillWidth: true; text: download.state.subtitleEmbedHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                                UiCombo { objectName: "subtitleFormat"; enabled: download.state.subtitleCanFormat; Layout.preferredWidth: 280; accessibleName: "字幕格式"; model: ["SRT", "VTT"]; currentIndex: download.state.subtitleFormat === "srt" ? 0 : 1; onActivated: download.selectSubtitleFormat(currentIndex === 0 ? "srt" : "vtt") }
+                                UiSwitch { objectName: "subtitleEmbed"; text: "嵌入视频"; checked: download.state.subtitleEmbed; enabled: download.state.subtitleCanEmbed; onToggled: download.setSubtitleOption("embed", checked) }
+                                UiText { Layout.fillWidth: true; visible: download.state.subtitleEnabled; text: download.state.subtitleEmbed ? "嵌入失败时会提示并另存字幕，媒体仍会保留。" : "字幕将保存为独立文件。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                                UiText { Layout.fillWidth: true; text: download.state.subtitleEmbedHint; visible: text.length > 0 && download.state.subtitleCapability !== "NONE"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleHint; visible: text.length > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                             }
                             UiText { text: "文件名"; role: "Caption"; visible: !download.state.playlist }

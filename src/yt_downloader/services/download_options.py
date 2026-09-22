@@ -5,6 +5,7 @@ from yt_downloader.core.models import MediaMode
 
 def prepare_request(request):
     """Derive the actual output and progress contract before any IO."""
+    request = _effective_subtitle_request(request)
     mode = MediaMode(request.media_mode)
     if request.subtitle_format not in {'srt', 'vtt'}:
         raise ValueError('不支持的字幕格式')
@@ -36,6 +37,25 @@ def prepare_request(request):
                          estimated_size=option.audio_size, video_size=option.audio_size,
                          audio_size=None, audio_extension=source_ext)
     return replace(request, media_mode=mode, format=option)
+
+
+def _effective_subtitle_request(request):
+    """Drop subtitle work that the resolved media cannot actually perform."""
+    if not request.subtitle_enabled:
+        return replace(request, subtitle_auto=False, subtitle_embed=False, subtitle_languages=())
+    manual = tuple(request.video.subtitles)
+    automatic = tuple(request.video.automatic_captions)
+    if not manual and not automatic:
+        return replace(request, subtitle_enabled=False, subtitle_auto=False,
+                       subtitle_embed=False, subtitle_languages=())
+    auto = bool(request.subtitle_auto or (automatic and not manual))
+    tracks = (*manual, *(automatic if auto else ()))
+    available = {track.language for track in tracks}
+    languages = tuple(dict.fromkeys(code for code in request.subtitle_languages if code in available))
+    if not languages:
+        return replace(request, subtitle_enabled=False, subtitle_auto=False,
+                       subtitle_embed=False, subtitle_languages=())
+    return replace(request, subtitle_auto=auto, subtitle_languages=languages)
 
 
 def media_options(request):
