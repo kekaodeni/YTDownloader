@@ -48,6 +48,7 @@ def normalize_formats(
     duration: float | None = None,
     codec_preference: CodecPreference = CodecPreference.AUTO,
     resolver: YtDlpFormatResolver | None = None,
+    extractor_key: str = "",
 ) -> list[FormatOption]:
     formats = [dict(item) for item in raw_formats]
     videos = [
@@ -58,7 +59,7 @@ def normalize_formats(
     # vcodec=none but leave acodec unknown. yt-dlp can still select it.
     audios = [item for item in formats if item.get("vcodec") == "none" and item.get("acodec") != "none"]
 
-    grouped: dict[tuple[int | None, int | None, int], list[dict[str, Any]]] = {}
+    grouped: dict[tuple[int | None, int | None, int, int | None], list[dict[str, Any]]] = {}
     for item in videos:
         height = int(item["height"]) if isinstance(item.get("height"), (int, float)) else None
         width = int(item["width"]) if isinstance(item.get("width"), (int, float)) else None
@@ -67,12 +68,19 @@ def normalize_formats(
             continue
         fps = float(item["fps"]) if isinstance(item.get("fps"), (int, float)) else None
         fps_bucket = round(fps) if fps is not None and fps >= 50 else 30 if fps else 0
+        # Bilibili marks all 1080P60 encodings as quality 116, while the
+        # extractor reports per-encoding measured rates such as 58.82/62.5.
+        # Keep real fps and all native IDs; only this site's display tier is
+        # grouped by its explicit quality marker.
+        site_quality = int(item["quality"]) if extractor_key.casefold() == "bilibili" and isinstance(item.get("quality"), (int, float)) else None
+        if height == 1080 and site_quality == 116:
+            fps_bucket = 60
         orientation_width = width if height is None or (width is not None and height > width) else None
-        grouped.setdefault((height, orientation_width, fps_bucket), []).append(item)
+        grouped.setdefault((height, orientation_width, fps_bucket, site_quality), []).append(item)
 
     options: list[FormatOption] = []
     resolver = resolver or YtDlpFormatResolver()
-    for (height, _orientation_width, _fps_bucket), candidates in grouped.items():
+    for (height, _orientation_width, _fps_bucket, site_quality), candidates in grouped.items():
         resolved = resolver.resolve(candidates, audios, codec_preference)
         if resolved is None:
             continue
@@ -111,7 +119,7 @@ def normalize_formats(
             else (audio.get("acodec") or "unknown" if audio else "none")
         )
         options.append(FormatOption(
-            label=_quality_label(width, height, fps),
+            label=_quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps),
             height=height,
             fps=fps,
             vcodec=str(video.get("vcodec") or "unknown"),
@@ -125,6 +133,7 @@ def normalize_formats(
             audio_format_id=audio_id,
             video_extension=video_ext,
             audio_extension=audio_ext,
+            candidate_video_format_ids=tuple(str(item['format_id']) for item in candidates if item.get('format_id')),
             width=width,
             size_is_estimate=size_is_estimate,
             video_size=video_size,

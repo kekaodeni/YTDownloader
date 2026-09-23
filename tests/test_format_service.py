@@ -6,6 +6,35 @@ import yt_dlp
 
 from yt_downloader.core.formats import normalize_formats
 from yt_downloader.core.models import CodecPreference, FormatOption
+from yt_downloader.services.media_metadata import resolve_metadata
+
+
+def test_bilibili_1080p60_quality_groups_encoder_measurements_without_loss():
+    # Redacted exact-video metadata: quality 116 is the site's 1080P60 tier.
+    # The three measured FPS values are encoder-specific, not three UI tiers.
+    formats = [
+        {"format_id": "30280", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "quality": 0},
+        {"format_id": "30116", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 62.5, "quality": 116, "vcodec": "avc1.640032", "acodec": "none"},
+        {"format_id": "100028", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 60.15, "quality": 116, "vcodec": "av01.0.12M.08", "acodec": "none"},
+        {"format_id": "30106", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 58.82, "quality": 116, "vcodec": "hev1.1.6.L120", "acodec": "none"},
+        {"format_id": "30080", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 29.41, "quality": 80, "vcodec": "avc1.640028", "acodec": "none"},
+    ]
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats}, "https://www.bilibili.com/video/BV1SL411q7xR/")
+    assert [option.label for option in media.formats] == ["1080p 60 FPS", "1080p"]
+    assert set(media.formats[0].candidate_video_format_ids) == {"30116", "100028", "30106"}
+    assert media.formats[0].video_format_id in media.formats[0].candidate_video_format_ids
+    assert media.formats[0].audio_format_id == "30280"
+
+
+def test_other_sites_do_not_merge_genuine_59_and_62_fps_tiers():
+    formats = [{"format_id": str(fps), "ext": "mp4", "width": 1920, "height": 1080,
+                "fps": fps, "vcodec": "avc1", "acodec": "mp4a"} for fps in (59, 62)]
+    media = resolve_metadata({"extractor_key": "Generic", "formats": formats}, "https://example.org/video")
+    assert {item.label for item in media.formats} == {"1080p 59 FPS", "1080p 62 FPS"}
 
 
 def test_x_hls_audio_with_unspecified_codec_is_retained_for_native_selection() -> None:

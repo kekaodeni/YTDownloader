@@ -111,6 +111,7 @@ class FormatOption:
     size_kind: SizeKind = SizeKind.UNKNOWN
     video_extension: str = ''
     audio_extension: str = ''
+    candidate_video_format_ids: tuple[str, ...] = ()
 
     @property
     def display_height(self) -> int | None:
