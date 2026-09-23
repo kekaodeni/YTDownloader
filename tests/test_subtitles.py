@@ -96,9 +96,9 @@ def test_subtitle_none_controls_are_disabled_in_the_real_qml_page(quick_window, 
     page = quick_window.download_page
     page.show_video(_request(tmp_path).video)
     assert not find_item(quick_window, 'subtitleEnabled').isEnabled()
-    assert not find_item(quick_window, 'subtitleAuto').isEnabled()
-    assert not find_item(quick_window, 'subtitleFormat').isEnabled()
-    assert not find_item(quick_window, 'subtitleEmbed').isEnabled()
+    assert not find_item(quick_window, 'subtitleAuto').isVisible()
+    assert not find_item(quick_window, 'subtitleFormat').isVisible()
+    assert not find_item(quick_window, 'subtitleEmbed').isVisible()
 
 
 def test_download_service_never_runs_subtitle_processing_without_media_tracks(tmp_path, monkeypatch):
