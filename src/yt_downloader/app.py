@@ -158,16 +158,16 @@ class AppController:
             ffmpeg_description=ffmpeg_description,
             theme=self.theme,
         )
+        self.window.download_page.update(cookieEnabled=self.settings.use_cookies)
         self.window.history_page.configure_thumbnails(self.ffmpeg, self.paths.cache / "history-previews")
         from yt_downloader.services.cookie_service import CookieProfileStore
         self.cookie_store = CookieProfileStore(self.paths.data / 'cookie-profiles.json')
         try:
-            self.window.cookies.set_profiles(self.cookie_store.load(), self.settings.default_cookie_profile_id)
+            self.window.cookies.set_profiles(self.cookie_store.load())
         except (OSError, ValueError, TypeError):
             self.window.cookies.update(message='Cookie 配置无法读取，已保持不使用；原文件未修改。')
         self.window.cookies.save_requested.connect(self._save_cookie_profiles)
         self.window.cookies.delete_requested.connect(self._confirm_cookie_delete)
-        self.window.cookies.default_changed.connect(self._save_cookie_default)
         self.queue = DownloadQueueController(self.download_service, self.window, max_concurrent=self.settings.max_concurrent_downloads)
         self.metadata_process = MetadataProcessController(self.window)
         self._thumbnail_cancel: threading.Event | None = None
@@ -209,6 +209,7 @@ class AppController:
 
     def _wire(self) -> None:
         download = self.window.download_page
+        download.cookie_enabled_changed.connect(self._save_cookie_use)
         download.parse_requested.connect(self.fetch_metadata)
         download.parse_cancel_requested.connect(self.metadata_process.cancel)
         download.download_requested.connect(self.enqueue_download)
@@ -264,7 +265,6 @@ class AppController:
 
     def fetch_metadata(self, url: str) -> None:
         self._cancel_thumbnail()
-        self.window.cookies.recommend(url)
         token = self._metadata_gate.begin(url.strip())
         self.metadata_process.start(token, url, MetadataProcessConfig(
             deno_path=str(self.deno_path or ""),
@@ -281,15 +281,17 @@ class AppController:
             self.window.cookies.apply_saved_profiles(profiles)
             self.window.cookies.update(message='Cookie 配置已保存。')
         except (OSError, ValueError):
-            self.window.cookies.update(message='Cookie 配置保存失败，原配置已保留。')
+            self.window.cookies.mark_save_failed()
 
-    def _save_cookie_default(self, profile_id):
+    def _save_cookie_use(self, enabled):
         try:
-            self.settings = replace(self.settings, default_cookie_profile_id=profile_id)
-            self.settings_service.save(self.settings)
-            self.window.settings_page.update(default_cookie_profile_id=profile_id)
+            changed = replace(self.settings, use_cookies=bool(enabled))
+            self.settings_service.save(changed)
+            self.settings = changed
+            self.window.settings_page.update(use_cookies=bool(enabled))
         except (OSError, ValueError):
-            self.window.cookies.update(message='默认 Cookie 配置保存失败，原设置已保留。')
+            self.window.download_page.update(cookieEnabled=self.settings.use_cookies)
+            self.window.cookies.update(message='Cookie 使用偏好保存失败，原设置已保留。')
 
     def _confirm_cookie_delete(self, profile):
         remaining = tuple(item for item in self.window.cookies.profiles if item.id != profile.id)
@@ -789,7 +791,7 @@ class AppController:
         self._pending_retry = record
         self.window._select_page(0)
         self.window.download_page.set_url(record.url)
-        self.fetch_metadata(record.url)
+        self.window.download_page.requestParse()
 
     def _retry_task(self, task_id: str) -> None:
         page = self.window.download_page
@@ -808,7 +810,7 @@ class AppController:
         self.window._select_page(0)
         page.set_url(request.video.url)
         self.window.scroll_download_to_top()
-        self.fetch_metadata(request.video.url)
+        page.requestParse()
 
     def _delete_history_record(self, record: HistoryRecord) -> None:
         if record.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:

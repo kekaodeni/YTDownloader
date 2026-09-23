@@ -37,15 +37,8 @@ Item {
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
                 UiText { text: "账户与 Cookie"; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: "某些需要登录、年龄验证或会员权限的内容可能需要 Cookie。YTDownloader 不保存网站账号和密码，只在你选择时读取浏览器 Cookie 或使用 cookies.txt。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { objectName: "cookiePrivacyHelp"; text: "了解 Cookie 的用途与隐私说明"; appearance: "quiet"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 相当于网站的登录状态凭据。") }
-                UiText { text: "默认登录状态"; role: "SectionTitle" }
-                UiCombo { objectName: "cookieDefaultCombo"; Layout.preferredWidth: Math.min(420, body.width); accessibleName: "默认 Cookie 配置";
-                    model: cookies.state.defaultOptions;
-                    currentIndex: Math.max(0, cookies.state.defaultIds.indexOf(cookies.state.defaultCookieProfileId || ""));
-                    onActivated: cookies.setDefaultProfile(cookies.state.defaultIds[currentIndex])
-                }
-                UiText { Layout.fillWidth: true; text: "下载页默认使用此配置，你仍可为单次任务临时更改。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { Layout.fillWidth: true; text: "需要登录的网站可保存浏览器或 cookies.txt 的来源。下载页开启“使用 Cookie”时，按链接所在网站匹配配置。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiButton { objectName: "cookiePrivacyHelp"; text: "了解 Cookie 的用途与隐私说明 →"; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "quiet"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 可代表网站登录状态，属于敏感凭据。浏览器来源由 yt-dlp 在解析或下载时读取；cookies.txt 文件仍保留在你选择的位置。请只配置自己有权访问的网站，不要分享 Cookie 文件。关闭下载页的“使用 Cookie”后，本次任务匿名访问。") }
                 UiText { text: "已保存的 Cookie 配置"; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "暂无配置"; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
                 Flow { objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10

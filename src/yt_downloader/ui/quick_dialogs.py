@@ -141,7 +141,7 @@ class CookieEditorSession(DialogSession):
                          domain=profile.domain_hint if profile else '',
                          source=profile.source_type if profile else 'browser',
                          browser=profile.browser if profile else 'chrome',
-                         browserProfile='', filePath=profile.cookie_file if profile else '',
+                         browserProfile=profile.browser_profile if profile else '', filePath=profile.cookie_file if profile else '',
                          fileLabel=(Path(profile.cookie_file).name if profile and profile.cookie_file else '未选择文件'))
         self.callback = callback
         self.test_callback = test_callback

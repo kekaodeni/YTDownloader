@@ -133,7 +133,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(quick_window, 
     with qtbot.waitSignal(page.save_requested, timeout=1500) as signal:
         page.edit('download_directory', str(tmp_path/'新的目录'))
     saved = signal.args[0]
-    assert saved.schema_version == 4
+    assert saved.schema_version == 5
     assert saved.download_directory == str(tmp_path/'新的目录')
     assert page.state['saveText'] == '正在保存…'
     page.mark_saved(saved)

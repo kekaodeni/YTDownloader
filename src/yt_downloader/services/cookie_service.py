@@ -1,5 +1,5 @@
 """Explicit, reference-only Cookie profiles; never stores credential contents."""
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 import os
 from pathlib import Path
@@ -53,9 +53,46 @@ def cookie_options(profile):
 
 
 def recommended_profile(profiles, url):
-    host = (urlsplit(url).hostname or '').casefold()
-    return next((profile for profile in profiles if profile.domain_hint and
-                 (host == profile.domain_hint.casefold() or host.endswith('.' + profile.domain_hint.casefold()))), None)
+    return route_cookie_profile(profiles, url).profile
+
+
+@dataclass(frozen=True, slots=True)
+class CookieRoute:
+    profile: CookieProfile | None
+    status: str  # matched, missing, conflict
+
+
+def _site_host(host: str) -> str:
+    host = host.casefold().removeprefix('www.')
+    aliases = {
+        'x.com': ('x.com', 'twitter.com', 't.co'),
+        'bilibili.com': ('bilibili.com', 'b23.tv'),
+        'youtube.com': ('youtube.com', 'youtu.be'),
+    }
+    for site, domains in aliases.items():
+        if any(host == domain or host.endswith('.' + domain) for domain in domains):
+            return site
+    return host
+
+
+def route_cookie_profile(profiles, url) -> CookieRoute:
+    """Choose one site-matched reference; never guess among equal matches."""
+    host = _site_host(urlsplit(url).hostname or '')
+    if not host:
+        return CookieRoute(None, 'missing')
+    ranked = []
+    for profile in profiles:
+        domain = profile.domain_hint.casefold().strip().lstrip('.')
+        if not domain or '/' in domain or ':' in domain:
+            continue
+        site = _site_host(domain)
+        if host == site or host.endswith('.' + site):
+            ranked.append((len(site), profile))
+    if not ranked:
+        return CookieRoute(None, 'missing')
+    best = max(score for score, _ in ranked)
+    matches = [profile for score, profile in ranked if score == best]
+    return CookieRoute(matches[0], 'matched') if len(matches) == 1 else CookieRoute(None, 'conflict')
 
 
 class CookieProfileStore:

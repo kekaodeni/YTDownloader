@@ -95,20 +95,20 @@ Dialog {
             }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "cookie"; spacing: 10
-                UiText { Layout.fillWidth: true; text: "配置名称只是这份登录状态配置的备注名称，例如“YouTube - Edge”。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { Layout.fillWidth: true; text: "配置名称仅供你识别，例如 B站 Firefox；网站匹配不依赖名称。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 UiText { text: "Cookie 来源"; role: "Caption" }
                 UiCombo { objectName: "cookieSourceCombo"; Layout.fillWidth: true; model: ["从浏览器读取", "cookies.txt"]; currentIndex: popup.s.source === "file" ? 1 : 0; onActivated: popup.session.setSource(currentIndex === 1 ? "file" : "browser") }
                 UiText { text: "配置名称"; role: "Caption" }
                 UiField { objectName: "cookieName"; Layout.fillWidth: true; text: popup.s.name || ""; onTextChanged: popup.session.setField("name", text) }
-                UiText { text: "适用网站（可选）"; role: "Caption" }
-                UiField { objectName: "cookieDomain"; Layout.fillWidth: true; text: popup.s.domain || ""; onTextChanged: popup.session.setField("domain", text); placeholderText: "例如 youtube.com" }
+                UiText { text: "适用网站域名"; role: "Caption" }
+                UiField { objectName: "cookieDomain"; Layout.fillWidth: true; text: popup.s.domain || ""; onTextChanged: popup.session.setField("domain", text); placeholderText: "例如 bilibili.com 或 x.com，无需完整视频链接" }
                 UiCombo { objectName: "cookieBrowser"; visible: popup.s.source === "browser"; Layout.fillWidth: true; model: ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Chromium"]; property var values: ["chrome", "edge", "firefox", "brave", "opera", "chromium"]; currentIndex: Math.max(0, values.indexOf(popup.s.browser)); onActivated: popup.session.setField("browser", values[currentIndex]) }
                 UiField { objectName: "cookieBrowserProfile"; visible: popup.s.source === "browser"; Layout.fillWidth: true; text: popup.s.browserProfile || ""; placeholderText: "Default（可选）"; Accessible.name: "浏览器配置文件"; onTextChanged: popup.session.setField("browserProfile", text) }
                 RowLayout { Layout.fillWidth: true; visible: popup.s.source === "file"
                     UiText { Layout.fillWidth: true; text: popup.s.fileLabel || "未选择文件"; role: "Caption"; elide: Text.ElideLeft }
                     UiButton { objectName: "cookieBrowse"; text: "浏览"; onClicked: popup.session.browse() }
                 }
-                UiText { Layout.fillWidth: true; text: popup.s.source === "file" ? "Cookie 文件相当于登录凭据，请勿分享给他人。" : "先在浏览器中登录目标网站；Cookie 内容只在解析时读取。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { Layout.fillWidth: true; text: popup.s.source === "file" ? "选择 Netscape 格式的 cookies.txt；文件相当于登录凭据，请勿分享。" : "请先在选定浏览器登录目标网站；yt-dlp 会在解析和下载时读取该登录状态。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 UiText { Layout.fillWidth: true; text: popup.s.message || ""; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
             }
         }

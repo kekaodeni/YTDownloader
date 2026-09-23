@@ -49,14 +49,14 @@ class SettingsPresenter(ViewState):
 
     def current_settings(self):
         v = self._state
-        return AppSettings(schema_version=4, download_directory=v['download_directory'].strip(),
+        return AppSettings(schema_version=5, download_directory=v['download_directory'].strip(),
                            default_quality=str(v['default_quality']), theme=str(v['theme']),
                            reduce_motion=bool(v['reduce_motion']), ffmpeg_directory=v['ffmpeg_directory'].strip(),
                            proxy_mode=str(v['proxy_mode']), custom_proxy_url=v['custom_proxy_url'].strip(),
                            concurrent_fragments=int(v['concurrent_fragments']),
                            max_concurrent_downloads=int(v['max_concurrent_downloads']),
                            codec_preference=CodecPreference(v['codec_preference']), auto_check_updates=bool(v['auto_check_updates']),
-                           default_cookie_profile_id=v.get('default_cookie_profile_id'))
+                           use_cookies=bool(v['use_cookies']))
 
     @Slot()
     def save(self):

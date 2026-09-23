@@ -56,6 +56,7 @@ class DownloadPresenter(ViewState):
     remove_requested = Signal(str)
     retry_requested = Signal(str)
     browse_requested = Signal()
+    cookie_enabled_changed = Signal(bool)
 
     def __init__(self, directory: str, images, parent=None):
         super().__init__(parent, url='', filename='', directory=directory, ready=False,
@@ -70,9 +71,7 @@ class DownloadPresenter(ViewState):
                          subtitleHint='', subtitleAutoHint='', subtitleManualStatus='人工字幕：暂无',
                          subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
                          playlist=False, selectedCount=0, playlistCount=0,
-                         cookieOverride='follow_default', cookieOptions=['跟随默认：不使用 Cookie', '不使用 Cookie'],
-                         cookieOptionIds=['follow_default', 'none'],
-                         cookieLabel='跟随默认：不使用 Cookie')
+                         cookieEnabled=False, cookieHint='')
         self.images = images
         self.video: VideoInfo | None = None
         from yt_downloader.services.ffmpeg_service import FfmpegService
@@ -90,37 +89,51 @@ class DownloadPresenter(ViewState):
         self._entries = RowModel(self)
         self._selected_entries = set()
         self._cookie_profiles = ()
-        self._cookie_default = None
-        self._last_parse_url = ''
+        self._active_cookie_profile = None
         self._subtitle_preferences = {'enabled': False, 'auto': False, 'embed': False}
 
-    def set_cookie_state(self, profiles, default_profile):
+    def set_cookie_state(self, profiles, _legacy_default=None):
+        changed = tuple(profiles) != self._cookie_profiles
         self._cookie_profiles = tuple(profiles)
-        self._cookie_default = default_profile
-        ids = ['follow_default', 'none', *(p.id for p in self._cookie_profiles)]
-        options = ['跟随默认：' + (default_profile.name if default_profile else '不使用 Cookie'),
-                   '不使用 Cookie', *(p.name for p in self._cookie_profiles)]
-        override = self._state.get('cookieOverride', 'follow_default')
-        if override not in set(ids):
-            override = 'follow_default'
-        self.update(cookieOptions=options, cookieOptionIds=ids, cookieOverride=override,
-                    cookieLabel=options[ids.index(override)])
+        if changed and self.video is not None:
+            self._invalidate_media()
+        self._refresh_cookie_hint()
 
     def selected_cookie_profile(self, cookies):
-        override = self._state.get('cookieOverride', 'follow_default')
-        if override == 'none':
+        if not self._state['cookieEnabled']:
             return None
-        if override == 'follow_default':
-            return getattr(cookies, 'default_profile', getattr(cookies, 'selected_profile', None))
-        return next((p for p in cookies.profiles if p.id == override), None)
+        if self.video is not None or self.parse_state in {ParseState.RUNNING, ParseState.SLOW}:
+            return self._active_cookie_profile
+        return self._cookie_route().profile
 
-    @Slot(str)
-    def selectCookieOverride(self, value):
-        valid = set(self._state.get('cookieOptionIds', ()))
-        if value not in valid:
+    def _cookie_route(self):
+        from yt_downloader.services.cookie_service import route_cookie_profile
+        return route_cookie_profile(self._cookie_profiles, self._state['url'])
+
+    def _refresh_cookie_hint(self):
+        if not self._state['cookieEnabled'] or not self._state['url'].strip():
+            hint = ''
+        else:
+            route = self._cookie_route()
+            hint = ('此网站有多份同等匹配的 Cookie 配置，请在设置中整理后重试。' if route.status == 'conflict'
+                    else '此网站未保存 Cookie 配置；可先匿名解析，或在设置中添加。' if route.status == 'missing' else '')
+        self.update(cookieHint=hint)
+
+    def _invalidate_media(self):
+        self.video = None
+        self._active_cookie_profile = None
+        self.update(ready=False, title='', formats=[])
+        self._subtitle_state(reset_selection=True)
+
+    @Slot(bool)
+    def setCookieEnabled(self, enabled):
+        enabled = bool(enabled)
+        if self._state['cookieEnabled'] == enabled:
             return
-        label = self._state['cookieOptions'][self._state['cookieOptionIds'].index(value)]
-        self.update(cookieOverride=value, cookieLabel=label)
+        self.update(cookieEnabled=enabled)
+        self._invalidate_media()
+        self._refresh_cookie_hint()
+        self.cookie_enabled_changed.emit(enabled)
 
     @Property(QObject, constant=True)
     def tasks(self):
@@ -223,10 +236,14 @@ class DownloadPresenter(ViewState):
             return
         if name == 'directory':
             self._directory_overridden = True
+        if name == 'url':
+            self._invalidate_media()
         self.update(**{name: value})
+        if name == 'url':
+            self._refresh_cookie_hint()
 
     def set_url(self, value):
-        self.update(url=value)
+        self.setField('url', value)
 
     @Slot()
     def requestParse(self):
@@ -235,9 +252,10 @@ class DownloadPresenter(ViewState):
             self.parse_cancel_requested.emit()
             return
         if self.parse_state is not ParseState.CANCELLING and self._state['url'].strip():
-            if self._state['url'].strip() != self._last_parse_url:
-                self._last_parse_url = self._state['url'].strip()
-                self.selectCookieOverride('follow_default')
+            if self._state['cookieEnabled'] and self._cookie_route().status == 'conflict':
+                self._refresh_cookie_hint()
+                return
+            self._active_cookie_profile = self._cookie_route().profile if self._state['cookieEnabled'] else None
             self.parse_requested.emit(self._state['url'].strip())
 
     def set_loading(self, loading):

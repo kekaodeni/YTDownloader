@@ -317,7 +317,7 @@ class HistoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 4
+    schema_version: int = 5
     download_directory: str = ""
     default_quality: str = "recommended"
     theme: str = "system"
@@ -329,9 +329,7 @@ class AppSettings:
     max_concurrent_downloads: int = 2
     codec_preference: CodecPreference = CodecPreference.AUTO
     auto_check_updates: bool = True
-    # The selected profile is a reference only.  Cookie contents are never
-    # persisted in settings (the profile store holds the same references).
-    default_cookie_profile_id: str | None = None
+    use_cookies: bool = False
 
 
 @dataclass(frozen=True, slots=True)

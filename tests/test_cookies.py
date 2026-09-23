@@ -40,6 +40,19 @@ def test_cookie_store_persists_references_and_recommends_exact_domain(tmp_path):
     assert recommended_profile(store.load(), 'https://example.org.evil.test') is None
 
 
+def test_site_cookie_routing_handles_aliases_and_conflicts_without_cross_site_leak():
+    from yt_downloader.services.cookie_service import route_cookie_profile, CookieProfile
+    x = CookieProfile('x', 'X', 'browser', browser='firefox', domain_hint='twitter.com')
+    bili = CookieProfile('b', 'Bili', 'browser', browser='firefox', domain_hint='bilibili.com')
+    profiles = (x, bili)
+    assert route_cookie_profile(profiles, 'https://x.com/post/1').profile == x
+    assert route_cookie_profile(profiles, 'https://b23.tv/a').profile == bili
+    assert route_cookie_profile(profiles, 'https://x.com.evil.example/a').profile is None
+    assert route_cookie_profile(profiles, 'https://vimeo.com/a').status == 'missing'
+    duplicate = CookieProfile('x2', 'Other X', 'browser', browser='edge', domain_hint='x.com')
+    assert route_cookie_profile((*profiles, duplicate), 'https://x.com/post/1').status == 'conflict'
+
+
 def test_cookie_file_is_never_written_by_yt_dlp(tmp_path):
     from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL
     path = tmp_path / 'cookies.txt'

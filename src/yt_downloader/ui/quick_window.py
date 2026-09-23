@@ -51,7 +51,6 @@ class MainWindow(ViewState):
                                                ffmpeg_description=ffmpeg_description, parent=self)
         self.cookies.editor_requested.connect(self._open_cookie_editor)
         self.cookies.profiles_changed.connect(self._sync_cookie_state)
-        self.cookies.default_changed.connect(self._sync_cookie_state)
         self.download_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
             '选择下载目录', self.download_page.state['directory'], lambda value: self.download_page.setField('directory', value)))
         self.settings_page.browse_requested.connect(self._browse_setting)
@@ -78,11 +77,14 @@ class MainWindow(ViewState):
         self.root.setIcon(QIcon(str(resource_path('assets', 'app.ico'))))
 
     def _sync_cookie_state(self, _value=None):
-        self.download_page.set_cookie_state(self.cookies.profiles, self.cookies.default_profile)
+        self.download_page.set_cookie_state(self.cookies.profiles)
 
     def _open_cookie_editor(self, profile):
         def save(values, session):
-            return self.cookies.saveEditor(values)
+            saved = self.cookies.saveEditor(values)
+            if not saved:
+                session.update(message=self.cookies.state['message'])
+            return saved
         def test(session):
             source = session.state['source']
             browser = session.state['browser']
@@ -92,11 +94,11 @@ class MainWindow(ViewState):
                 from yt_downloader.core.models import CookieProfile
                 try:
                     cookie_options(CookieProfile('test', 'test', 'file', cookie_file=path))
-                    session.update(message='Cookie 文件格式有效；保存后仅在解析时使用。')
+                    session.update(message='Cookie 文件格式有效；开启后可用于解析和下载。')
                 except ValueError as error:
                     session.update(message=str(error))
             else:
-                session.update(message='将使用当前浏览器的登录状态；保存后在解析时读取。')
+                session.update(message='将使用当前浏览器的登录状态；开启后在解析和下载时读取。')
         self.cookies._editor_session = self.dialogs.cookie_editor(
             profile, save, test, lambda: self.cookies.pick_requested.emit())
 

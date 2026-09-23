@@ -43,12 +43,12 @@ Item {
         RowLayout {
             Layout.fillWidth: true; spacing: 8
             UiText { text: "登录状态"; role: "Caption" }
-            UiText { Layout.fillWidth: true; text: "Cookie：" + download.state.cookieLabel; role: "Body"; elide: Text.ElideRight }
-            UiCombo { objectName: "cookieOverrideCombo"; Layout.preferredWidth: Math.min(300, root.width - 220); accessibleName: "本次下载 Cookie"; model: download.state.cookieOptions; currentIndex: Math.max(0, download.state.cookieOptionIds.indexOf(download.state.cookieOverride)); onActivated: download.selectCookieOverride(download.state.cookieOptionIds[currentIndex]) }
-            UiButton { text: "更改"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
+            Item { Layout.fillWidth: true }
+            UiSwitch { objectName: "useCookieSwitch"; text: "使用 Cookie"; enabled: !download.state.busy; checked: download.state.cookieEnabled; onToggled: download.setCookieEnabled(checked) }
+            UiButton { text: "管理 Cookie"; appearance: "quiet"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
             UiButton { objectName: "cookieRetry"; text: "重新解析"; visible: cookies.state.authRequired; enabled: !download.state.busy; onClicked: download.requestParse() }
         }
-        UiText { Layout.fillWidth: true; visible: cookies.state.recommendation.length > 0 || cookies.state.authRequired; text: cookies.state.authRequired ? "此内容需要登录状态；请选择一个 Cookie 配置后重试。" : cookies.state.recommendation; role: "Caption"; color: cookies.state.authRequired ? theme.state.accent : theme.state.secondary; wrapMode: Text.Wrap }
+        UiText { Layout.fillWidth: true; visible: download.state.cookieHint.length > 0 || cookies.state.authRequired; text: cookies.state.authRequired ? "此内容需要登录状态；请开启 Cookie 并检查对应网站配置。" : download.state.cookieHint; role: "Caption"; color: cookies.state.authRequired ? theme.state.accent : theme.state.secondary; wrapMode: Text.Wrap }
         ColumnLayout {
             Layout.fillWidth: true; visible: download.state.busy; spacing: 8
             UiProgress { Layout.fillWidth: true; indeterminate: true }

@@ -60,7 +60,7 @@ def test_cookie_delete_requires_confirmation_before_mutation(qapp):
     assert presenter.profiles == (profile,)
 
 
-def test_cookie_default_and_download_override_follow_settings(qapp):
+def test_cookie_switch_routes_by_site_and_off_is_anonymous(qapp):
     from yt_downloader.ui.quick_cookies import CookiePresenter
     from yt_downloader.ui.quick_download import DownloadPresenter
     from yt_downloader.core.models import CookieProfile
@@ -68,34 +68,78 @@ def test_cookie_default_and_download_override_follow_settings(qapp):
     cookies = CookiePresenter()
     page = DownloadPresenter('', None)
     edge = CookieProfile('edge', 'YouTube - Edge', 'browser', browser='edge', domain_hint='youtube.com')
-    file_profile = CookieProfile('file', 'YouTube - file', 'file', cookie_file='C:/cookies.txt', domain_hint='youtube.com')
-    cookies.set_profiles((edge, file_profile))
-    page.set_cookie_state(cookies.profiles, cookies.default_profile)
-    assert page.state['cookieLabel'] == '跟随默认：不使用 Cookie'
-    cookies.setDefaultProfile('edge')
-    page.set_cookie_state(cookies.profiles, cookies.default_profile)
-    assert page.state['cookieLabel'] == '跟随默认：YouTube - Edge'
-    page.selectCookieOverride('none')
-    cookies.setDefaultProfile('file')
-    page.set_cookie_state(cookies.profiles, cookies.default_profile)
-    assert page.state['cookieLabel'] == '不使用 Cookie'
-    page.selectCookieOverride('follow_default')
-    assert page.state['cookieLabel'] == '跟随默认：YouTube - file'
+    x = CookieProfile('x', 'X / Firefox', 'browser', browser='firefox', domain_hint='twitter.com')
+    cookies.set_profiles((edge, x))
+    page.set_cookie_state(cookies.profiles)
+    page.set_url('https://youtu.be/fixture')
+    assert page.selected_cookie_profile(cookies) is None
+    page.setCookieEnabled(True)
+    assert page.selected_cookie_profile(cookies) == edge
+    page.set_url('https://x.com/fixture/status/1')
+    assert page.selected_cookie_profile(cookies) == x
+    page.setCookieEnabled(False)
+    assert page.selected_cookie_profile(cookies) is None
 
 
-def test_cookie_editor_switches_source_and_delete_default_falls_back(qapp):
+def test_cookie_editor_preserves_browser_profile_and_delete_is_scoped(qapp):
     from yt_downloader.ui.quick_cookies import CookiePresenter
     from yt_downloader.core.models import CookieProfile
 
     presenter = CookiePresenter()
-    browser = CookieProfile('one', 'Edge', 'browser', browser='edge')
+    browser = CookieProfile('one', 'Edge', 'browser', browser='edge', domain_hint='example.org', browser_profile='Default')
     presenter.set_profiles((browser,))
-    presenter.setDefaultProfile('one')
     saved = []
     presenter.save_requested.connect(saved.append)
     presenter.editor_requested.connect(lambda profile: None)
-    presenter.saveEditor({'id': 'one', 'name': 'Renamed', 'source': 'browser', 'browser': 'firefox', 'domain': ''})
+    presenter.saveEditor({'id': 'one', 'name': 'Renamed', 'source': 'browser', 'browser': 'firefox',
+                          'browser_profile': 'Profile 1', 'domain': 'example.org'})
     assert saved and saved[-1][0].name == 'Renamed'
-    assert presenter.state['defaultCookieProfileId'] == 'one'
+    assert saved[-1][0].browser_profile == 'Profile 1'
     presenter.apply_saved_profiles(())
-    assert presenter.state['defaultCookieProfileId'] is None
+    assert presenter.profiles == ()
+
+
+def test_cookie_conflict_blocks_parse_without_guessing(qapp):
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    from yt_downloader.core.models import CookieProfile
+    page = DownloadPresenter('', None)
+    page.set_cookie_state((CookieProfile('a', 'One', 'browser', browser='firefox', domain_hint='x.com'),
+                           CookieProfile('b', 'Two', 'browser', browser='edge', domain_hint='twitter.com')))
+    page.set_url('https://x.com/post/1')
+    page.setCookieEnabled(True)
+    requests = []
+    page.parse_requested.connect(requests.append)
+    page.requestParse()
+    assert requests == []
+    assert '多份' in page.state['cookieHint']
+
+
+def test_cookie_profile_change_invalidates_parsed_media_and_task_snapshot(qapp, tmp_path):
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    from yt_downloader.core.models import CookieProfile
+    from test_download_service import _request
+    page = DownloadPresenter(str(tmp_path), None)
+    original = CookieProfile('x', 'X', 'browser', browser='firefox', domain_hint='x.com')
+    replacement = CookieProfile('b', 'Bili', 'browser', browser='edge', domain_hint='bilibili.com')
+    page.set_cookie_state((original,))
+    page.set_url('https://x.com/post/1')
+    page.setCookieEnabled(True)
+    page.requestParse()
+    assert page.selected_cookie_profile(None) == original
+    page.show_video(_request(tmp_path).video)
+    assert page.state['ready'] is True
+    page.set_cookie_state((replacement,))
+    assert page.state['ready'] is False
+    assert page.selected_cookie_profile(None) is None
+
+
+def test_cookie_editor_save_failure_keeps_original_profile(qapp):
+    from yt_downloader.ui.quick_cookies import CookiePresenter
+    from yt_downloader.core.models import CookieProfile
+    presenter = CookiePresenter()
+    original = CookieProfile('one', 'Original', 'browser', browser='firefox', domain_hint='x.com')
+    presenter.set_profiles((original,))
+    presenter.save_requested.connect(lambda _profiles: presenter.mark_save_failed())
+    assert presenter.saveEditor({'id': 'one', 'name': 'Changed', 'source': 'browser',
+                                 'browser': 'firefox', 'domain': 'x.com'}) is False
+    assert presenter.profiles == (original,)
