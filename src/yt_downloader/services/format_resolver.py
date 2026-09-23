@@ -78,7 +78,7 @@ class YtDlpFormatResolver:
                 item for item in requested
                 if item is not video
                 and item.get("vcodec") == "none"
-                and item.get("acodec") not in {None, "none"}
+                and item.get("acodec") != "none"
             ),
             None,
         )

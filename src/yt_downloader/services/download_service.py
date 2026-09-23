@@ -288,7 +288,7 @@ class DownloadService:
         if self.require_tools:
             if not self.deno_path or not self.deno_path.is_file():
                 raise AppError("deno_missing", "缺少内置 Deno，无法开始下载。", "Deno not found", context)
-            if (request.format.requires_merge or request.audio_codec != 'original') and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
+            if (request.format.requires_merge or request.use_native_format or request.audio_codec != 'original') and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
                 raise AppError("ffmpeg_missing", "缺少 FFmpeg，无法合并视频与音频。", "FFmpeg not found", context)
 
         self._validate_output_directory(output_directory, request.format.estimated_size)
@@ -437,10 +437,14 @@ class DownloadService:
                 raise OperationCancelled(context)
             if exit_code:
                 raise DownloadError(f"yt-dlp returned exit code {exit_code}")
-            if not final_path.is_file():
+            if request.use_native_format or not final_path.is_file():
                 final_path = artifacts.find_completed_file(request.format.final_ext) or final_path
             if not final_path.is_file():
                 raise OSError(f"Expected output was not created: {final_path}")
+            if request.use_native_format:
+                # The native selector may choose a different container from
+                # the UI's illustrative quality. Keep the real extension.
+                destination = ensure_unique_path(output_directory / f"{safe_stem}{final_path.suffix}")
 
             validator = self.media_validator
             if validator is None and self.ffmpeg_path:

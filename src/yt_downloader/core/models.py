@@ -241,6 +241,7 @@ class DownloadRequest:
     playlist_title: str = ''
     resolve_before_download: bool = False
     preferred_quality: str = 'recommended'
+    use_native_format: bool = False
 
 
 @dataclass(frozen=True, slots=True)

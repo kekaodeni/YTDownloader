@@ -527,7 +527,8 @@ class AppController:
                                       audio_quality=state['audioQuality'],
                                       subtitle_enabled=state['subtitleEnabled'], subtitle_auto=state['subtitleAuto'],
                                       subtitle_embed=state['subtitleEmbed'], subtitle_format=state['subtitleFormat'],
-                                      subtitle_languages=tuple(state['subtitleLanguages']))
+                                      subtitle_languages=tuple(state['subtitleLanguages']),
+                                      use_native_format=state['mediaMode'] == 'video_audio' and state['qualityAuto'])
             profile = self.window.download_page.selected_cookie_profile(self.window.cookies)
             request = replace(request, cookie_profile=profile, cookie_profile_id=profile.id if profile else '')
             from yt_downloader.services.download_options import prepare_request

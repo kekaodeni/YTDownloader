@@ -3,8 +3,17 @@ from dataclasses import replace
 from test_download_service import _request, FakeYDL
 from yt_downloader.services.download_service import DownloadService
 from yt_downloader.services.media_metadata import resolve_metadata
+from yt_downloader.services.download_options import media_options
 import threading
 import pytest
+
+
+def test_recommended_video_audio_uses_native_ytdlp_selection(tmp_path):
+    request = replace(_request(tmp_path), use_native_format=True)
+    assert media_options(request) == {}
+    DownloadService(ydl_factory=FakeYDL, require_tools=False,
+                    media_validator=lambda path: True).download(request, lambda event: None, threading.Event())
+    assert 'format' not in FakeYDL.last_options
 
 
 def test_video_only_download_selects_no_audio(tmp_path):
@@ -60,6 +69,11 @@ def test_mode_switching_changes_available_choices(qapp, tmp_path):
     assert presenter.available_formats == media.audio_formats
     presenter.selectMode('video_audio')
     assert presenter.available_formats == media.formats
+    assert presenter.state['qualityAuto'] is True
+    presenter.setQualityAuto(False)
+    assert presenter.state['qualityAuto'] is False
+    presenter.setQualityAuto(True)
+    assert presenter.state['qualityAuto'] is True
 
 
 def test_history_migration_preserves_old_record_and_audio_settings(tmp_path):

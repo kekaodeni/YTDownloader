@@ -8,6 +8,21 @@ from yt_downloader.core.formats import normalize_formats
 from yt_downloader.core.models import CodecPreference, FormatOption
 
 
+def test_x_hls_audio_with_unspecified_codec_is_retained_for_native_selection() -> None:
+    # Redacted fields from the exact public X sample. yt-dlp itself selects
+    # the audio rendition even though the extractor leaves acodec unset.
+    formats = [
+        {"format_id": "hls-audio-128000-Audio", "ext": "mp4", "vcodec": "none",
+         "acodec": None, "format_note": "Audio", "protocol": "m3u8_native", "tbr": 128},
+        {"format_id": "hls-1662", "ext": "mp4", "width": 720, "height": 1280,
+         "vcodec": "avc1.640020", "acodec": "none", "protocol": "m3u8_native", "tbr": 1662},
+    ]
+    option = normalize_formats(formats)[0]
+    assert option.format_selector == "hls-1662+hls-audio-128000-Audio"
+    assert option.audio_format_id == "hls-audio-128000-Audio"
+    assert option.acodec != "none"
+
+
 @pytest.mark.parametrize("preference", [CodecPreference.AUTO, CodecPreference.VP9])
 def test_vp9_webm_selection_and_size_match_native_ytdlp(preference) -> None:
     # Public metadata captured without media/signed URLs or request headers.

@@ -54,7 +54,9 @@ def normalize_formats(
         item for item in formats
         if item.get("vcodec") not in {None, "none"}
     ]
-    audios = [item for item in formats if item.get("vcodec") == "none" and item.get("acodec") not in {None, "none"}]
+    # Some extractors (including X HLS) identify an audio rendition with
+    # vcodec=none but leave acodec unknown. yt-dlp can still select it.
+    audios = [item for item in formats if item.get("vcodec") == "none" and item.get("acodec") != "none"]
 
     grouped: dict[tuple[int | None, int | None, int], list[dict[str, Any]]] = {}
     for item in videos:
@@ -106,7 +108,7 @@ def normalize_formats(
             size_is_estimate = video_size_is_estimate
         acodec = str(
             video.get("acodec") if has_audio
-            else (audio.get("acodec") if audio else "none")
+            else (audio.get("acodec") or "unknown" if audio else "none")
         )
         options.append(FormatOption(
             label=_quality_label(width, height, fps),
@@ -165,13 +167,13 @@ def normalize_formats(
 def normalize_audio_formats(raw_formats):
     options = []
     for item in sorted(raw_formats, key=lambda value: float(value.get('abr') or value.get('tbr') or 0), reverse=True):
-        if item.get('vcodec') != 'none' or item.get('acodec') in {None, 'none'} or not item.get('format_id'):
+        if item.get('vcodec') != 'none' or item.get('acodec') == 'none' or not item.get('format_id'):
             continue
         ext = str(item.get('ext') or 'm4a')
         size, estimate = _size(item)
         bitrate = item.get('abr')
         label = ext.upper() + (f' · {round(bitrate)} kbps' if isinstance(bitrate, (int, float)) else ' · Original')
-        options.append(FormatOption(label, None, None, 'none', str(item['acodec']), ext.upper(),
+        options.append(FormatOption(label, None, None, 'none', str(item.get('acodec') or 'unknown'), ext.upper(),
                                     ext, str(item['format_id']), size, False, str(item['format_id']),
                                     audio_extension=ext, video_size=size, audio_size=size,
                                     size_is_estimate=estimate, video_protocol=str(item.get('protocol') or '')))

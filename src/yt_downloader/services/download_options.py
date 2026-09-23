@@ -72,4 +72,8 @@ def media_options(request):
         if not request.format.audio_format_id and request.format.acodec != 'none':
             raise ValueError('该格式包含声音，请选择独立视频流。')
         return {'format': request.format.video_format_id}
+    if request.use_native_format:
+        # Let this installed yt-dlp choose and merge its own video/audio pair.
+        # A displayed quality option is not a verified native format selector.
+        return {}
     return {'format': request.format.format_selector, 'merge_output_format': request.format.final_ext}

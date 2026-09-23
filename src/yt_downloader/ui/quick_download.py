@@ -61,7 +61,7 @@ class DownloadPresenter(ViewState):
         super().__init__(parent, url='', filename='', directory=directory, ready=False,
                          busy=False, cancelling=False, parseText='解析', parseHint='',
                          clipboardHint='', title='', meta='', thumbnail='', formats=[],
-                         formatIndex=0, technical='', compatibilityHint='', mediaHint='',
+                         formatIndex=0, qualityAuto=True, technical='', compatibilityHint='', mediaHint='',
                          mediaMode='video_audio', audioCodec='original', audioQuality='original',
                          modeHint='', subtitleEnabled=False, subtitleAuto=False,
                          subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
@@ -285,6 +285,7 @@ class DownloadPresenter(ViewState):
         self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
         if self._state['mediaMode'] == 'video_audio':
             self.selectFormat(selected)
+        self.update(qualityAuto=preferred_quality == 'recommended' and self._state['mediaMode'] == 'video_audio')
         self._subtitle_state(reset_selection=True)
 
     @property
@@ -314,7 +315,14 @@ class DownloadPresenter(ViewState):
             hint = '此媒体没有该模式可用的独立流，请选择其他下载模式。'
         self.update(formats=[option.label for option in options], formatIndex=0, modeHint=hint, technical='')
         self.selectFormat(0)
+        self.update(qualityAuto=mode == 'video_audio')
         self._subtitle_state()
+
+    @Slot(bool)
+    def setQualityAuto(self, enabled):
+        if self._state['mediaMode'] != 'video_audio':
+            return
+        self.update(qualityAuto=bool(enabled))
 
     def _subtitle_state(self, *, reset_selection=False):
         """Project subtitle preferences onto the current media's real capability."""
@@ -416,7 +424,7 @@ class DownloadPresenter(ViewState):
         option = self.available_formats[index]
         size = format_bytes(option.estimated_size)
         size_text = '大小未知' if option.estimated_size is None else f'估算 {size}' if option.size_is_estimate else f'大小 {size}'
-        self.update(formatIndex=index, technical=f'{option.technical_summary}  ·  {size_text}')
+        self.update(formatIndex=index, qualityAuto=False, technical=f'{option.technical_summary}  ·  {size_text}')
         self._subtitle_state()
 
     def set_default_directory(self, directory):
