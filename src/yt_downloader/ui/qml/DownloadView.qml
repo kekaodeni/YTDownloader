@@ -45,7 +45,7 @@ Item {
             UiText { text: "登录状态"; role: "Caption" }
             Item { Layout.fillWidth: true }
             UiSwitch { objectName: "useCookieSwitch"; text: "使用 Cookie"; enabled: !download.state.busy; checked: download.state.cookieEnabled; onToggled: download.setCookieEnabled(checked) }
-            UiButton { text: "管理 Cookie"; appearance: "quiet"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
+            UiButton { objectName: "cookieManagementButton"; text: "管理 Cookie"; appearance: "normal"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
             UiButton { objectName: "cookieRetry"; text: "重新解析"; visible: cookies.state.authRequired; enabled: !download.state.busy; onClicked: download.requestParse() }
         }
         UiText { Layout.fillWidth: true; visible: download.state.cookieHint.length > 0 || cookies.state.authRequired; text: cookies.state.authRequired ? "此内容需要登录状态；请开启 Cookie 并检查对应网站配置。" : download.state.cookieHint; role: "Caption"; color: cookies.state.authRequired ? theme.state.accent : theme.state.secondary; wrapMode: Text.Wrap }
@@ -94,8 +94,8 @@ Item {
                             UiCombo { objectName: "modeCombo"; Layout.fillWidth: true; accessibleName: "下载内容"; model: ["视频 + 音频", "仅视频", "仅音频"]; currentIndex: ["video_audio", "video_only", "audio_only"].indexOf(download.state.mediaMode); onActivated: download.selectMode(["video_audio", "video_only", "audio_only"][currentIndex]) }
                             UiText { Layout.fillWidth: true; visible: text.length > 0; text: download.state.modeHint; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                             UiText { text: download.state.mediaMode === "audio_only" ? "音频格式" : "画质"; role: "Caption" }
-                            UiSwitch { objectName: "nativeFormatSwitch"; visible: download.state.mediaMode === "video_audio" && !download.state.playlist; text: "由 yt-dlp 自动选择音视频（推荐）"; checked: download.state.qualityAuto; onToggled: download.setQualityAuto(checked) }
-                            UiCombo { objectName: "formatCombo"; visible: download.state.mediaMode !== "audio_only" && !download.state.playlist; enabled: download.state.mediaMode !== "video_audio" || !download.state.qualityAuto; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
+                            UiText { objectName: "formatSelectionHint"; Layout.fillWidth: true; visible: download.state.mediaMode !== "audio_only" && !download.state.playlist; text: download.state.qualityAuto ? "默认遵循 yt-dlp 自动选择；选择画质后使用所选档位。" : "已指定下载画质。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            UiCombo { objectName: "formatCombo"; visible: download.state.mediaMode !== "audio_only" && !download.state.playlist; Layout.fillWidth: true; accessibleName: "下载清晰度"; model: download.state.formats; currentIndex: download.state.formatIndex; onActivated: download.selectFormat(currentIndex) }
                             UiCombo { objectName: "audioCodecCombo"; visible: download.state.mediaMode === "audio_only"; Layout.fillWidth: true; accessibleName: "音频格式"; model: ["原始音频（推荐）", "M4A", "MP3", "Opus", "FLAC"]; currentIndex: ["original", "m4a", "mp3", "opus", "flac"].indexOf(download.state.audioCodec); onActivated: download.selectAudio(["original", "m4a", "mp3", "opus", "flac"][currentIndex], download.state.audioQuality) }
                             UiText { text: "音频质量"; role: "Caption"; visible: download.state.mediaMode === "audio_only" }
                             UiCombo { visible: download.state.mediaMode === "audio_only"; enabled: download.state.audioCodec !== "original" && download.state.audioCodec !== "flac"; Layout.fillWidth: true; accessibleName: "音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; currentIndex: ["original", "320", "256", "192", "128"].indexOf(download.state.audioQuality); onActivated: download.selectAudio(download.state.audioCodec, ["original", "320", "256", "192", "128"][currentIndex]) }
@@ -123,13 +123,19 @@ Item {
                                 UiText { Layout.fillWidth: true; visible: download.state.subtitleEnabled; text: download.state.subtitleEmbed ? "嵌入失败时会提示并另存字幕，媒体仍会保留。" : "字幕将保存为独立文件。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                 UiText { Layout.fillWidth: true; text: download.state.subtitleEmbedHint; visible: text.length > 0 && download.state.subtitleCapability !== "NONE"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                             }
-                            UiText { text: "文件名"; role: "Caption"; visible: !download.state.playlist }
-                            UiField { objectName: "filenameInput"; visible: !download.state.playlist; Layout.fillWidth: true; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
-                            RowLayout {
-                                Layout.fillWidth: true; spacing: 8
-                                UiText { text: "保存到"; role: "Caption" }
-                                UiField { objectName: "directoryInput"; Layout.fillWidth: true; Accessible.name: "下载目录"; text: download.state.directory; onTextChanged: download.setField("directory", text) }
-                                UiButton { text: "浏览"; hint: "选择下载目录"; onClicked: download.browse_requested() }
+                            SettingField {
+                                objectName: "filenameField"
+                                Layout.fillWidth: true; visible: !download.state.playlist; label: "文件名"
+                                UiField { objectName: "filenameInput"; Layout.fillWidth: true; implicitHeight: 40; Accessible.name: "输出文件名"; placeholderText: "文件名"; text: download.state.filename; onTextChanged: download.setField("filename", text) }
+                            }
+                            SettingField {
+                                objectName: "directoryField"
+                                Layout.fillWidth: true; visible: !download.state.playlist; label: "保存位置"
+                                RowLayout {
+                                    Layout.fillWidth: true; spacing: 8
+                                    UiField { objectName: "directoryInput"; Layout.fillWidth: true; implicitHeight: 40; Accessible.name: "下载目录"; text: download.state.directory; onTextChanged: download.setField("directory", text) }
+                                    UiButton { text: "浏览"; hint: "选择下载目录"; onClicked: download.browse_requested() }
+                                }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true; visible: download.state.playlist; spacing: 8

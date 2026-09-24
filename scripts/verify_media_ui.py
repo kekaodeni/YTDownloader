@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, QPointF, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yt_downloader.core.models import AppSettings, PlaylistMetadata, PlaylistEntry, SubtitleTrack, CookieProfile, DownloadRequest, DownloadResult, TaskStatus
+from yt_downloader.core.models import AppSettings, PlaylistMetadata, PlaylistEntry, SubtitleTrack, CookieProfile, DownloadRequest, DownloadResult, HistoryRecord, TaskStatus
 from yt_downloader.ui.quick_window import MainWindow
 from verify_quick_ui import sample_video
 
@@ -91,6 +91,14 @@ def main():
             page.show_video(source)
             yield 400
             assert find('downloadButton').property('enabled')
+            assert find('formatCombo').property('enabled')
+            assert page.state['qualityAuto'] is True
+            assert 'yt-dlp' in find('formatSelectionHint').property('text')
+            assert find('cookieManagementButton').property('appearance') == 'normal'
+            filename = find('filenameInput'); directory = find('directoryInput')
+            origin = window.root.contentItem()
+            assert abs(filename.mapToItem(origin, QPointF(0, 0)).x() - directory.mapToItem(origin, QPointF(0, 0)).x()) < 1
+            assert filename.height() <= 42 and directory.height() <= 42
             assert find('compatibilityHint').property('visible')
             assert '解析已验证' in find('compatibilityHint').property('text')
             assert '下载兼容性仍属实验性' in find('compatibilityHint').property('text')
@@ -187,7 +195,7 @@ def main():
             settings_top = find('settingsScroll')
             settings_top.setProperty('contentY', 0)
             yield 180
-            assert find('cookiePrivacyHelp').property('text') == '了解 Cookie 的用途与隐私说明'
+            assert find('cookiePrivacyHelp').property('text') == '查看 Cookie 用途与隐私说明'
             click('cookiePrivacyHelp')
             yield 250
             assert find('dialog-info').property('visible')
@@ -249,10 +257,14 @@ def main():
             cookie_path.write_text('# Netscape HTTP Cookie File\\n', encoding='utf-8')
             session.set_file_path(str(cookie_path))
             session.setField('name', 'Fixture file')
+            session.setField('domain', 'example.org')
             click('cookieSave')
             yield 300
             assert any(p.source_type == 'file' for p in window.cookies.profiles)
             file_id = next(p.id for p in window.cookies.profiles if p.source_type == 'file')
+            assert find('cookiePrivacyHelp').property('appearance') == 'normal'
+            assert find('cookieEdit-' + file_id).property('appearance') == 'normal'
+            assert find('cookieDelete-' + file_id).property('appearance') == 'danger'
             click('cookieDelete-' + file_id)
             yield 250
             if not window.dialogs.sessions:
@@ -270,14 +282,55 @@ def main():
             find('dialog-confirm').property('session').answer(True)
             yield 300
             assert all(p.id != file_id for p in window.cookies.profiles)
-            window.cookies.setDefaultProfile(window.cookies.profiles[0].id)
-            assert window.download_page.state['cookieLabel'] == '跟随默认：' + window.cookies.profiles[0].name
-            window.download_page.selectCookieOverride('none')
-            assert window.download_page.state['cookieLabel'] == '不使用 Cookie'
-            window.download_page.selectCookieOverride('follow_default')
+            # The current model has no separate "default profile" selector;
+            # verify the supported domain routing behavior directly.
+            window.download_page.setField('url', 'https://example.org/video')
+            window.download_page.setCookieEnabled(True)
+            assert window.download_page.selected_cookie_profile(window.cookies).id == window.cookies.profiles[0].id
             snapshot(mode+'-cookie-profiles')
+
+            # Exercise management toolbar placement and the confirm-delete exit path.
+            history = window.history_page
+            history_records = [
+                HistoryRecord(f'ui-{mode}-{index}', 'fixture', 'https://example.org/video',
+                              f'UI 验收历史记录 {index}', args.output / f'video-{index}.mp4',
+                              '1080p', 1_000_000, None, TaskStatus.COMPLETED, 'fixture')
+                for index in range(2)
+            ]
+            history.set_records(history_records)
+            def delete_confirmed(ids):
+                deleted = set(ids)
+                history.set_records([record for record in history_records if record.task_id not in deleted])
+                history.batch_delete_succeeded(len(deleted), 0)
+            history.delete_many_requested.connect(delete_confirmed)
+            window._select_page(1)
+            yield 300
+            click('historyManageToggle')
+            yield 200
+            toolbar = [find(name) for name in ('historySelectAll', 'historySelectNone',
+                                               'historyDeleteSelected', 'historyClear',
+                                               'historyManageToggle')]
+            assert all(button.property('visible') for button in toolbar)
+            centers = [button.y() + button.height() / 2 for button in toolbar]
+            assert max(centers) - min(centers) < 1
+            indicator = find('historyCheckboxIndicator-ui-' + mode + '-0')
+            assert indicator.width() <= 18 and indicator.height() <= 18
+            snapshot(mode+'-history-manage')
+            click('historySelectAll')
+            click('historyDeleteSelected')
+            yield 220
+            assert find('dialog-confirm').property('visible')
+            find('dialog-confirm').property('session').answer(True)
+            yield 250
+            assert not history.state['managing'] and history.state['checkedCount'] == 0
+            assert history.model.count == 0
+            history.delete_many_requested.disconnect(delete_confirmed)
+            window._select_page(2)
+            settings_top.setProperty('contentY', max(0.0, float(settings_top.property('contentHeight')) - float(settings_top.property('height'))))
+            yield 180
             retries = []
             page.parse_requested.connect(retries.append)
+            page.setField('url', source.url)
             window._select_page(0)
             window.cookies.update(authRequired=True)
             assert find('cookieRetry').property('visible')
@@ -292,7 +345,7 @@ def main():
             snapshot(mode+'-recovery-failed')
             window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(device_pixel_ratio=window.root.devicePixelRatio(), screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'subtitle_none_disabled', 'subtitle_auto_only', 'subtitle_manual_only', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'light_dark'])
+        report = dict(device_pixel_ratio=window.root.devicePixelRatio(), screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'subtitle_none_disabled', 'subtitle_auto_only', 'subtitle_manual_only', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'history_management_and_confirmed_delete_exit', 'download_field_alignment_and_native_default', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

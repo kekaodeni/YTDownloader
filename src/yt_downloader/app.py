@@ -834,7 +834,7 @@ class AppController:
         try:
             result = self.history.delete_many(task_ids)
             self.refresh_history()
-            self.window.history_page.show_management_result(
+            self.window.history_page.batch_delete_succeeded(
                 result.deleted_count, result.retained_count
             )
         except Exception as exc:

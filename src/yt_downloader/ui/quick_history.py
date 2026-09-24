@@ -158,3 +158,8 @@ class HistoryPresenter(ViewState):
 
     def show_management_result(self, deleted_count, retained_count):
         self.update(managementText=f'已删除 {deleted_count} 项；保留 {retained_count} 项不可删除记录' if retained_count else f'已删除 {deleted_count} 项')
+
+    def batch_delete_succeeded(self, deleted_count, retained_count):
+        """Leave selection mode only after the repository confirms deletion."""
+        self.show_management_result(deleted_count, retained_count)
+        self.manage(False)

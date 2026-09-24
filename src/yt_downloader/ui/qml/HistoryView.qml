@@ -6,10 +6,14 @@ Item {
     objectName: "historyPage"
     ColumnLayout {
         anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32; spacing: 18
-        RowLayout { Layout.fillWidth: true
+        RowLayout { objectName: "historyHeader"; Layout.fillWidth: true; spacing: 6
             UiText { text: "历史记录"; role: "PageTitle" }
             Item { Layout.fillWidth: true }
-            UiButton { text: history.state.managing ? "完成" : "管理"; onClicked: history.manage(!history.state.managing) }
+            UiButton { objectName: "historySelectAll"; visible: history.state.managing; text: "全选"; onClicked: history.selectAll(true) }
+            UiButton { objectName: "historySelectNone"; visible: history.state.managing; text: "取消全选"; enabled: history.state.checkedCount > 0; onClicked: history.selectAll(false) }
+            UiButton { objectName: "historyDeleteSelected"; visible: history.state.managing; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
+            UiButton { objectName: "historyClear"; visible: history.state.managing; text: "清空历史"; onClicked: history.clearTerminal() }
+            UiButton { objectName: "historyManageToggle"; text: history.state.managing ? "完成" : "管理"; appearance: history.state.managing ? "primary" : "normal"; onClicked: history.manage(!history.state.managing) }
         }
         UiText { Layout.fillWidth: true; text: "通过本软件下载的内容，都在这里。"; role: "Secondary"; color: theme.state.secondary }
         ListView {
@@ -58,7 +62,37 @@ Item {
                     }
                 }
                 RowLayout { id: row; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12; spacing: 14
-                    CheckBox { visible: history.state.managing; enabled: item.deletable; checked: item.checked; Accessible.name: "选择 " + item.title; onClicked: history.toggle(item.id) }
+                    CheckBox {
+                        id: selectCheck
+                        objectName: "historySelect-" + item.id
+                        visible: history.state.managing
+                        enabled: item.deletable
+                        checked: item.checked
+                        implicitWidth: 24; implicitHeight: 24
+                        Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                        Layout.alignment: Qt.AlignVCenter
+                        padding: 0
+                        Accessible.name: "选择 " + item.title
+                        onClicked: history.toggle(item.id)
+                        indicator: Rectangle {
+                            objectName: "historyCheckboxIndicator-" + item.id
+                            x: (selectCheck.width - width) / 2
+                            y: (selectCheck.height - height) / 2
+                            width: 18; height: 18; radius: 5
+                            color: !selectCheck.enabled ? theme.state.subtle : selectCheck.checked ? theme.state.accent : selectCheck.hovered ? theme.state.subtle : theme.state.surface
+                            border.width: selectCheck.visualFocus ? 2 : 1
+                            border.color: selectCheck.visualFocus ? theme.state.accent : selectCheck.checked ? theme.state.accent : theme.state.stroke
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                visible: selectCheck.checked
+                                color: theme.state.onAccent
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                            }
+                        }
+                        contentItem: Item { }
+                    }
                     Item {
                         Layout.preferredWidth: root.width < 620 ? 72 : 112
                         Layout.preferredHeight: root.width < 620 ? 76 : 88
@@ -87,12 +121,6 @@ Item {
         }
         ColumnLayout { Layout.fillWidth: true; visible: history.state.managing; spacing: 8
             UiText { text: history.state.managementText; role: "Caption"; color: theme.state.secondary }
-            Flow { Layout.fillWidth: true; spacing: 8
-                UiButton { text: "全选"; onClicked: history.selectAll(true) }
-                UiButton { text: "取消全选"; enabled: history.state.checkedCount > 0; onClicked: history.selectAll(false) }
-                UiButton { text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
-                UiButton { text: "清空历史"; appearance: "quiet"; onClicked: history.clearTerminal() }
-            }
         }
         Flow { Layout.fillWidth: true; spacing: 8
             UiButton { text: "打开文件"; enabled: history.state.fileExists; onClicked: history.action("open") }

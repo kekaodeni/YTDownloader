@@ -53,6 +53,28 @@ def test_management_selects_only_terminal_records(quick_window,tmp_path,qtbot):
         quick_window.dialogs.sessions[-1].answer(True)
     assert signal.args == [('done','failed')]
 
+def test_confirmed_batch_delete_exits_management_after_repository_success(quick_window,tmp_path,qtbot):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path,'done',TaskStatus.COMPLETED), _record(tmp_path,'failed',TaskStatus.FAILED)])
+    page.manage(True); page.selectAll(True)
+    with qtbot.waitSignal(page.delete_many_requested) as signal:
+        page.deleteChecked()
+        quick_window.dialogs.sessions[-1].answer(True)
+    assert signal.args == [('done','failed')]
+    assert page.state['managing'] is True
+    page.batch_delete_succeeded(2, 0)
+    assert page.state['managing'] is False
+    assert page.state['checkedCount'] == 0
+
+def test_cancelled_batch_delete_keeps_management_selection(quick_window,tmp_path,qtbot):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path,'done',TaskStatus.COMPLETED)])
+    page.manage(True); page.selectAll(True)
+    page.deleteChecked()
+    quick_window.dialogs.sessions[-1].answer(False)
+    assert page.state['managing'] is True
+    assert page.state['checkedCount'] == 1
+
 def test_management_keyboard_shortcuts_toggle_select_all_delete(quick_window,tmp_path,qapp,qtbot):
     page = prepare(quick_window,tmp_path,qapp)
     page.manage(True); page.select('first')

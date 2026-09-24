@@ -38,7 +38,7 @@ Item {
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
                 UiText { text: "账户与 Cookie"; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "需要登录的网站可保存浏览器或 cookies.txt 的来源。下载页开启“使用 Cookie”时，按链接所在网站匹配配置。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { objectName: "cookiePrivacyHelp"; text: "了解 Cookie 的用途与隐私说明 →"; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "quiet"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 可代表网站登录状态，属于敏感凭据。浏览器来源由 yt-dlp 在解析或下载时读取；cookies.txt 文件仍保留在你选择的位置。请只配置自己有权访问的网站，不要分享 Cookie 文件。关闭下载页的“使用 Cookie”后，本次任务匿名访问。") }
+                UiButton { objectName: "cookiePrivacyHelp"; text: "查看 Cookie 用途与隐私说明"; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "normal"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 可代表网站登录状态，属于敏感凭据。浏览器来源由 yt-dlp 在解析或下载时读取；cookies.txt 文件仍保留在你选择的位置。请只配置自己有权访问的网站，不要分享 Cookie 文件。关闭下载页的“使用 Cookie”后，本次任务匿名访问。") }
                 UiText { text: "已保存的 Cookie 配置"; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "暂无配置"; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
                 Flow { objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10
@@ -51,7 +51,7 @@ Item {
                                     UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
                                 }
                                 UiButton { objectName: "cookieEdit-" + modelData.id; text: "编辑"; onClicked: cookies.editProfile(index) }
-                                UiButton { objectName: "cookieDelete-" + modelData.id; text: "删除"; appearance: "quiet"; onClicked: cookies.requestDelete(index) }
+                                UiButton { objectName: "cookieDelete-" + modelData.id; text: "删除"; appearance: "danger"; onClicked: cookies.requestDelete(index) }
                             }
                         }
                     }
