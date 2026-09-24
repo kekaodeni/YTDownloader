@@ -43,11 +43,17 @@ class TaskArtifactRegistry:
         self.temporary_root = self.output_directory / ".ytdownloader-tmp"
         self.workspace = self.temporary_root / f"task-{token}"
 
-    def prepare(self) -> None:
+    def prepare(self, *, resume_existing: bool = False) -> None:
         self.temporary_root.mkdir(parents=True, exist_ok=True)
         resolved_root = self.temporary_root.resolve()
         if resolved_root.parent != self.output_directory or _is_reparse_point(self.temporary_root):
             raise OSError("Task temporary root is outside the selected output directory")
+        if resume_existing:
+            if not self.workspace.is_dir() or _is_reparse_point(self.workspace):
+                raise OSError("Paused task workspace is missing or unsafe")
+            if self.workspace.resolve().parent != resolved_root:
+                raise OSError("Paused task workspace escaped its owner")
+            return
         self.workspace.mkdir()
 
     def download_path(self, extension: str) -> Path:

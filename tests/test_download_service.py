@@ -11,7 +11,7 @@ import pytest
 from yt_dlp.downloader.fragment import FragmentFD
 from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 
-from yt_downloader.core.errors import ErrorContext, OperationCancelled
+from yt_downloader.core.errors import ErrorContext, OperationCancelled, OperationPaused
 from yt_downloader.core.models import (
     DownloadRequest,
     FormatOption,
@@ -91,6 +91,45 @@ class FakeYDL:
         post({"status": "finished", "postprocessor": "Merger"})
         Path(self.options["final_path"]).write_bytes(b"downloaded")
         return 0
+
+
+def test_paused_ytdlp_partial_resumes_in_same_owned_workspace(tmp_path):
+    class Control:
+        paused = False
+        def is_set(self):
+            return self.paused
+        def is_paused(self):
+            return self.paused
+        def is_cancelled(self):
+            return False
+
+    class ResumeYDL(FakeYDL):
+        control = Control()
+        def download(self, _urls):
+            final = Path(self.options['final_path'])
+            partial = final.with_suffix(final.suffix + '.part')
+            if not partial.exists():
+                partial.write_bytes(b'owned partial')
+                self.control.paused = True
+                self.options['progress_hooks'][0]({'status': 'downloading', 'downloaded_bytes': 13,
+                                                   'total_bytes': 100, 'info_dict': {'format_id': '137'}})
+                raise AssertionError('Pause must interrupt the provider')
+            assert partial.read_bytes() == b'owned partial'
+            final.write_bytes(partial.read_bytes() + b' resumed')
+            partial.unlink()
+            return 0
+
+    service = DownloadService(ydl_factory=ResumeYDL, require_tools=False,
+                              media_validator=lambda _path: True)
+    request = _request(tmp_path)
+    with pytest.raises(OperationPaused):
+        service.download(request, lambda _event: None, ResumeYDL.control)
+    from yt_downloader.services.task_artifacts import TaskArtifactRegistry
+    partial = TaskArtifactRegistry(tmp_path, request.task_id).download_path('mp4').with_suffix('.mp4.part')
+    assert partial.read_bytes() == b'owned partial'
+    result = service.download(replace(request, resume_partial=True), lambda _event: None, Control())
+    assert result.file_path.read_bytes() == b'owned partial resumed'
+    assert not partial.exists()
 
 
 class FakeYDLWithMixedTotalSources(FakeYDL):

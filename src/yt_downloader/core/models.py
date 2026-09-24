@@ -17,6 +17,9 @@ class TaskStatus(StrEnum):
     DOWNLOADING_AUDIO = "DOWNLOADING_AUDIO"
     MERGING = "MERGING"
     POST_PROCESSING = "POST_PROCESSING"
+    PAUSING = "PAUSING"
+    PAUSED = "PAUSED"
+    RESUMING = "RESUMING"
     CANCELLING = "CANCELLING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -78,6 +81,9 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
     TaskStatus.DOWNLOADING_AUDIO: "正在下载音频",
     TaskStatus.MERGING: "正在合并视频与音频",
     TaskStatus.POST_PROCESSING: "正在处理文件",
+    TaskStatus.PAUSING: "正在暂停…",
+    TaskStatus.PAUSED: "已暂停",
+    TaskStatus.RESUMING: "正在继续…",
     TaskStatus.CANCELLING: "正在取消…",
     TaskStatus.COMPLETED: "下载完成",
     TaskStatus.FAILED: "下载失败",
@@ -243,6 +249,7 @@ class DownloadRequest:
     resolve_before_download: bool = False
     preferred_quality: str = 'recommended'
     use_native_format: bool = False
+    resume_partial: bool = False
 
 
 @dataclass(frozen=True, slots=True)

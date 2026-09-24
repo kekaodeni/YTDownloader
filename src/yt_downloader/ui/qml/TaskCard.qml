@@ -40,7 +40,8 @@ Rectangle {
             }
             Flow {
                 Layout.fillWidth: true; spacing: 8
-                UiButton { text: root.item.cancelText; appearance: "quiet"; visible: root.item.cancel; enabled: root.item.cancelEnabled; onClicked: download.taskAction(root.item.id, "cancel") }
+                UiButton { objectName: "taskPause-" + root.item.id; text: root.item.pauseText; appearance: "normal"; visible: root.item.pauseVisible; enabled: root.item.pauseEnabled || root.item.resumeEnabled; onClicked: download.taskAction(root.item.id, root.item.resumeEnabled ? "resume" : "pause") }
+                UiButton { objectName: "taskCancel-" + root.item.id; text: root.item.cancelText; appearance: "normal"; visible: root.item.cancel; enabled: root.item.cancelEnabled; onClicked: download.taskAction(root.item.id, "cancel") }
                 UiButton { text: "重试"; visible: root.item.retry; enabled: !download.state.busy; onClicked: download.taskAction(root.item.id, "retry") }
                 UiButton { text: "打开文件"; visible: root.item.open; onClicked: download.taskAction(root.item.id, "open") }
                 UiButton { text: "打开文件夹"; visible: root.item.folder; onClicked: download.taskAction(root.item.id, "folder") }

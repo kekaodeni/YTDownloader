@@ -13,6 +13,70 @@ from yt_downloader.core.models import DownloadProgress, DownloadResult, TaskStat
 from yt_downloader.workers.download_queue import DownloadQueueController
 
 
+class PausingService:
+    def __init__(self, partial):
+        self.partial = partial
+        self.started = threading.Event()
+        self.calls = []
+
+    def download(self, request, callback, control):
+        self.calls.append(request)
+        if not request.resume_partial:
+            self.partial.parent.mkdir(parents=True, exist_ok=True)
+            self.partial.write_bytes(b'partial fixture')
+            callback(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 25, 25, 100))
+            self.started.set()
+            assert control.wait(2)
+            if control.is_paused() and not control.is_cancelled():
+                from yt_downloader.core.errors import OperationPaused
+                raise OperationPaused()
+            raise OperationCancelled()
+        assert self.partial.read_bytes() == b'partial fixture'
+        return DownloadResult(request.task_id, request.output_directory / 'done.mp4', 4, 'now')
+
+
+def test_pause_resume_preserves_owned_partial_and_cookie_snapshot(qtbot, tmp_path):
+    from yt_downloader.core.models import CookieProfile
+    from yt_downloader.services.task_artifacts import TaskArtifactRegistry
+    request = replace(_request(tmp_path), task_id='pause-resume',
+                      cookie_profile=CookieProfile('x', 'X', 'browser', browser='firefox', domain_hint='x.com'))
+    partial = TaskArtifactRegistry(tmp_path, request.task_id).workspace / 'download.mp4.part'
+    service = PausingService(partial)
+    queue = DownloadQueueController(service, max_concurrent=1)
+    paused, completed = [], []
+    queue.paused.connect(paused.append)
+    queue.completed.connect(lambda result: completed.append(result.task_id))
+    queue.enqueue(request)
+    qtbot.waitUntil(service.started.is_set, timeout=3000)
+    qtbot.waitUntil(lambda: queue.pause_task(request.task_id), timeout=3000)
+    qtbot.waitUntil(lambda: paused == [request.task_id], timeout=3000)
+    assert partial.read_bytes() == b'partial fixture'
+    assert queue.task_position(request.task_id) == 'paused'
+    assert queue.resume_task(request.task_id)
+    qtbot.waitUntil(lambda: completed == [request.task_id] and not queue.is_busy, timeout=3000)
+    assert [item.resume_partial for item in service.calls] == [False, True]
+    assert service.calls[1].cookie_profile == request.cookie_profile
+
+
+def test_cancel_paused_task_cleans_only_owned_workspace(qtbot, tmp_path):
+    from yt_downloader.services.task_artifacts import TaskArtifactRegistry
+    request = replace(_request(tmp_path), task_id='pause-cancel')
+    partial = TaskArtifactRegistry(tmp_path, request.task_id).workspace / 'download.mp4.part'
+    unrelated = tmp_path / 'keep.txt'
+    unrelated.write_text('keep', encoding='utf-8')
+    queue = DownloadQueueController(PausingService(partial))
+    paused, cancelled = [], []
+    queue.paused.connect(paused.append)
+    queue.cancelled.connect(lambda _task, report: cancelled.append(report))
+    queue.enqueue(request)
+    qtbot.waitUntil(lambda: queue.pause_task(request.task_id), timeout=3000)
+    qtbot.waitUntil(lambda: paused == [request.task_id], timeout=3000)
+    assert queue.cancel(request.task_id)
+    assert cancelled[0].succeeded
+    assert not partial.exists()
+    assert unrelated.read_text(encoding='utf-8') == 'keep'
+
+
 class ControlledService:
     def __init__(self) -> None:
         self.calls: list[str] = []

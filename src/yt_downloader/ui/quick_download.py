@@ -25,18 +25,23 @@ class TaskPresentation:
     def progress(self, progress: DownloadProgress):
         self.status = progress.status
         stopping = progress.status in {TaskStatus.CANCELLING, TaskStatus.CANCELLED, TaskStatus.FAILED}
+        held = progress.status in {TaskStatus.PAUSING, TaskStatus.PAUSED, TaskStatus.RESUMING}
+        downloading = progress.status in {TaskStatus.DOWNLOADING_VIDEO, TaskStatus.DOWNLOADING_AUDIO}
         values = dict(self.values)
         values.update(status=progress.status.value, statusText=STATUS_TEXT[progress.status],
-                      indeterminate=not stopping and progress.percent is None,
-                      speed='—' if stopping else format_speed(progress.speed),
-                      eta='剩余 —' if stopping else f'剩余 {format_eta(progress.eta)}',
+                      indeterminate=not stopping and not held and progress.percent is None,
+                      speed='—' if stopping or held else format_speed(progress.speed),
+                      eta='剩余 —' if stopping or held else f'剩余 {format_eta(progress.eta)}',
                       retry=progress.status is TaskStatus.FAILED,
-                      stopping=stopping)
-        if not stopping and progress.percent is not None:
+                      stopping=stopping or held,
+                      pauseVisible=downloading or held or progress.status in {TaskStatus.MERGING, TaskStatus.POST_PROCESSING},
+                      pauseEnabled=downloading, resumeEnabled=progress.status is TaskStatus.PAUSED,
+                      pauseText='继续' if progress.status is TaskStatus.PAUSED else '正在暂停…' if progress.status is TaskStatus.PAUSING else '正在继续…' if progress.status is TaskStatus.RESUMING else '暂停')
+        if not stopping and not held and progress.percent is not None:
             self.last_percent = round(progress.percent)
         values['percent'] = self.last_percent or 0
-        values['percentText'] = f'{self.last_percent}%' if self.last_percent is not None and (stopping or progress.percent is not None) else '—%'
-        if not stopping or progress.downloaded_bytes is not None or progress.total_bytes is not None:
+        values['percentText'] = f'{self.last_percent}%' if self.last_percent is not None and (stopping or held or progress.percent is not None) else '—%'
+        if (not stopping and not held) or progress.downloaded_bytes is not None or progress.total_bytes is not None:
             total = format_bytes(progress.total_bytes)
             if progress.total_is_estimate and progress.total_bytes is not None:
                 total = f'估算 {total}'
@@ -51,6 +56,8 @@ class DownloadPresenter(ViewState):
     parse_cancel_requested = Signal()
     download_requested = Signal(object, object, str, str)
     cancel_requested = Signal(str)
+    pause_requested = Signal(str)
+    resume_requested = Signal(str)
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
     remove_requested = Signal(str)
@@ -492,6 +499,15 @@ class DownloadPresenter(ViewState):
             card.values.update(cancelEnabled=False, cancelText='正在取消…')
             self._tasks.put(dict(card.values))
 
+    def pausing_task(self, task_id):
+        self.update_task(DownloadProgress(task_id, TaskStatus.PAUSING))
+
+    def paused_task(self, task_id):
+        self.update_task(DownloadProgress(task_id, TaskStatus.PAUSED))
+
+    def resuming_task(self, task_id):
+        self.update_task(DownloadProgress(task_id, TaskStatus.RESUMING))
+
     def complete_task(self, result):
         card = self.cards.get(result.task_id)
         if card:
@@ -552,6 +568,10 @@ class DownloadPresenter(ViewState):
             return
         if action == 'remove':
             self.remove_requested.emit(task_id)
+        elif action == 'pause' and card.values['pauseEnabled']:
+            self.pause_requested.emit(task_id)
+        elif action == 'resume' and card.values['resumeEnabled']:
+            self.resume_requested.emit(task_id)
         elif action == 'cancel' and card.values['cancel'] and card.values['cancelEnabled']:
             self.cancel_requested.emit(task_id)
         elif action == 'retry' and card.values['retry'] and not self._state['busy']:

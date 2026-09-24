@@ -21,7 +21,7 @@ from yt_dlp.downloader.fragment import FragmentFD
 from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 from yt_dlp.utils import DownloadError
 
-from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
+from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled, OperationPaused
 from yt_downloader.core.filename import ensure_unique_path, sanitize_filename
 from yt_downloader.core.models import (
     DownloadProgress,
@@ -299,7 +299,7 @@ class DownloadService:
         )
         destination = ensure_unique_path(output_directory / f"{safe_stem}.{request.format.final_ext}")
         artifacts = TaskArtifactRegistry(output_directory, request.task_id)
-        artifacts.prepare()
+        artifacts.prepare(resume_existing=request.resume_partial)
         final_path = artifacts.download_path(request.format.final_ext)
         output_template = artifacts.output_template
         ydl_logger = _DownloadLogger()
@@ -433,6 +433,8 @@ class DownloadService:
             with _interruptible_ytdlp_resources(cancel_event, context):
                 with self.ydl_factory(options) as ydl:
                     exit_code = ydl.download([request.video.url])
+            if getattr(cancel_event, 'is_paused', lambda: False)() and not getattr(cancel_event, 'is_cancelled', lambda: False)():
+                raise OperationPaused(context)
             if cancel_event.is_set():
                 raise OperationCancelled(context)
             if exit_code:
@@ -497,9 +499,14 @@ class DownloadService:
                 subtitle_embedded=subtitles.embedded, subtitle_auto_used=subtitles.auto_used,
                 resolved_media=request.video, resolved_format=request.format,
             )
+        except OperationPaused as exc:
+            _release_cancelled_stack_resources(exc)
+            raise
         except OperationCancelled as exc:
             cancellation_context = exc.context or context
             _release_cancelled_stack_resources(exc)
+            if getattr(cancel_event, 'is_paused', lambda: False)() and not getattr(cancel_event, 'is_cancelled', lambda: False)():
+                raise OperationPaused(cancellation_context) from None
             cleanup_report = artifacts.cleanup()
             raise OperationCancelled(cancellation_context, cleanup_report) from None
         except AppError:
@@ -507,6 +514,8 @@ class DownloadService:
         except Exception as exc:
             if cancel_event.is_set():
                 _release_cancelled_stack_resources(exc)
+                if getattr(cancel_event, 'is_paused', lambda: False)() and not getattr(cancel_event, 'is_cancelled', lambda: False)():
+                    raise OperationPaused(context) from None
                 cleanup_report = artifacts.cleanup()
                 raise OperationCancelled(context, cleanup_report) from None
             technical = redact_sensitive(str(exc))

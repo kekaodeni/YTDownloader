@@ -128,6 +128,28 @@ def test_download_selection_maps_to_original_domain_option(quick_window, tmp_pat
     assert signal.args == [video, video.formats[page.state['formatIndex']], 'chosen.name', str(tmp_path/'chosen')]
     assert signal.args[1] is video.formats[page.state['formatIndex']]
 
+
+def test_task_card_pause_resume_and_cancel_have_real_button_states(quick_window, tmp_path, qtbot):
+    from conftest import find_item
+    from yt_downloader.core.models import DownloadProgress, TaskStatus
+    page = quick_window.download_page
+    request = _request(tmp_path)
+    page.add_task(request)
+    page.update_task(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 25, 1, 4))
+    qtbot.waitUntil(lambda: find_item(quick_window, 'taskPause-' + request.task_id).isVisible(), timeout=2000)
+    pause = find_item(quick_window, 'taskPause-' + request.task_id)
+    cancel = find_item(quick_window, 'taskCancel-' + request.task_id)
+    assert pause.property('appearance') == 'normal' and cancel.property('appearance') == 'normal'
+    assert pause.isEnabled()
+    with qtbot.waitSignal(page.pause_requested):
+        page.taskAction(request.task_id, 'pause')
+    page.paused_task(request.task_id)
+    assert page.cards[request.task_id].values['resumeEnabled']
+    with qtbot.waitSignal(page.resume_requested):
+        page.taskAction(request.task_id, 'resume')
+    page.update_task(DownloadProgress(request.task_id, TaskStatus.MERGING))
+    assert not page.cards[request.task_id].values['pauseEnabled']
+
 def test_settings_auto_save_after_text_edit_and_show_saved_status(quick_window, qtbot, tmp_path):
     page = quick_window.settings_page
     with qtbot.waitSignal(page.save_requested, timeout=1500) as signal:

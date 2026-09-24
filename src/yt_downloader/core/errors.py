@@ -54,3 +54,8 @@ class OperationCancelled(AppError):
             context=context or ErrorContext(),
         )
         object.__setattr__(self, "cleanup_report", cleanup_report)
+
+
+class OperationPaused(AppError):
+    def __init__(self, context: ErrorContext | None = None) -> None:
+        super().__init__("paused", "下载已暂停。", "Download paused by the user", context or ErrorContext())
