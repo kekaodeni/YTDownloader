@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from conftest import click_item, find_item
+
 
 def test_cookie_profile_can_be_disabled_without_losing_saved_profile(qapp):
     from yt_downloader.ui.quick_cookies import CookiePresenter
@@ -143,3 +145,31 @@ def test_cookie_editor_save_failure_keeps_original_profile(qapp):
     assert presenter.saveEditor({'id': 'one', 'name': 'Changed', 'source': 'browser',
                                  'browser': 'firefox', 'domain': 'x.com'}) is False
     assert presenter.profiles == (original,)
+
+
+def test_cookie_settings_help_and_editor_source_fields_are_interactive(quick_window, qtbot):
+    quick_window._select_page(2)
+    help_button = find_item(quick_window, 'cookiePrivacyHelp')
+    assert help_button.isVisible() and help_button.isEnabled()
+    click_item(quick_window, help_button)
+    qtbot.waitUntil(lambda: any(s.state['kind'] == 'info' for s in quick_window.dialogs.sessions))
+    info = next(s for s in quick_window.dialogs.sessions if s.state['kind'] == 'info')
+    assert '敏感凭据' in info.state['message']
+    info.reject()
+
+    quick_window.cookies.newProfile()
+    session = quick_window.cookies._editor_session
+    qtbot.waitUntil(lambda: find_item(quick_window, 'cookieSourceCombo').isVisible())
+    assert session.state['source'] == 'browser'
+    assert find_item(quick_window, 'cookieBrowser').isVisible()
+    assert find_item(quick_window, 'cookieBrowserProfile').isVisible()
+    assert not find_item(quick_window, 'cookieBrowse').isVisible()
+
+    session.setSource('file')
+    qtbot.waitUntil(lambda: find_item(quick_window, 'cookieBrowse').isVisible())
+    assert not find_item(quick_window, 'cookieBrowser').isVisible()
+    assert not find_item(quick_window, 'cookieBrowserProfile').isVisible()
+
+    session.setSource('browser')
+    qtbot.waitUntil(lambda: find_item(quick_window, 'cookieBrowser').isVisible())
+    assert not find_item(quick_window, 'cookieBrowse').isVisible()
