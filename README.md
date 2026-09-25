@@ -2,7 +2,7 @@
 
 YT Downloader 是基于 yt-dlp、FFmpeg 与 PySide6 的 Windows 11 视频下载工具。界面使用 Qt Quick/QML；媒体解析、下载、格式转换和字幕处理使用随软件分发的锁定组件。
 
-当前 develop 为 **v0.5.0 候选版本，尚未发布**。正式稳定下载仍为 [v0.4.2](https://github.com/kekaodeni/YTDownloader/releases/tag/v0.4.2)。本文介绍候选版本能力，不能作为正式发布验收已完成的证明。
+当前 develop 对应 v0.5.0 发布候选。主要下载入口为 [GitHub 最新稳定版](https://github.com/kekaodeni/YTDownloader/releases/latest)；v0.5.0 正式发布后将设为 Latest。本文介绍 v0.5.0 能力，正式发布状态以 GitHub Release 页面为准。
 
 ![浅色下载界面](docs/images/download-light.png)
 
@@ -37,7 +37,7 @@ YT Downloader 是基于 yt-dlp、FFmpeg 与 PySide6 的 Windows 11 视频下载�
 
 兼容级别按能力区分：YouTube 与 Bilibili 为 VERIFIED 下载站点；Vimeo 为 METADATA VERIFIED / DOWNLOAD EXPERIMENTAL。Vimeo 解析成功后仍可尝试下载，但登录、地区、HTTP 401/403 或 DRM 限制会按实际错误分类显示。其他 yt-dlp extractor 保持 EXPERIMENTAL。
 
-v0.4.2 是长期 legacy updater bridge，GitHub Latest 保持指向它。v0.4.2+ 从 Releases 列表选择最高兼容稳定版；未来发布 v0.5.0 时须设置 `make_latest=false`。v0.5.0 使用 schema 2 / protocol 2，helper 位于内部目录；保留旧布局备份的回滚能力。
+v0.4.2 是历史 legacy updater bridge，保留其 tag、Release 和资产，不再要求 GitHub Latest 永久指向它。v0.5.0 正式发布时设为 Latest（`make_latest=true`），并使用稳定版设置（`prerelease=false`、`draft=false`）。v0.4.2 及更新版本从 Releases 列表选择最高兼容稳定版。v0.5.0 使用 schema 2 / protocol 2，helper 位于内部目录；保留旧布局备份的回滚能力。
 
 本项目与所支持的媒体网站无关联。下载内容前请确认您有权保存和使用该内容，并遵守所在地法律与服务条款。
 

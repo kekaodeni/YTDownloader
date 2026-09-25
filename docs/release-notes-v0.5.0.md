@@ -1,7 +1,7 @@
-# YTDownloader v0.5.0 — Release notes draft
+# YTDownloader v0.5.0
 
-This is a release-candidate draft, not an announcement of a published release.
-Final package hashes and acceptance results must be attached after validation.
+v0.5.0 为当前正式稳定版本。GitHub Release 使用 tag `v0.5.0`，发布后设为 Latest；
+`prerelease=false`、`draft=false`、`make_latest=true`。
 
 ## 中文
 
@@ -19,8 +19,7 @@ Vimeo 页面入口可能需要登录；公开播放器的元数据可解析，�
 播放列表最多展示 1000 项；暂停不打断正在执行的下载或 FFmpeg。
 浏览器 Cookie 的 fixture 验证不代表所有真实浏览器账户均可用。
 
-更新链：v0.4.1 → v0.4.2 → v0.5.0。v0.4.2 必须继续作为 GitHub Latest；
-未来本版本发布须使用 `make_latest=false`，新客户端通过 Releases 列表发现。
+更新链：v0.4.1 → v0.4.2 → v0.5.0。v0.4.2 保留为历史桥接版本，既有 tag、Release 和资产继续保留；它不再需要永久保持 Latest。v0.5.0 发布后成为 GitHub Latest，新客户端通过 Releases 列表选择最高兼容稳定版。
 v0.5.0 标准包根目录不含 updater EXE；其清单按内部布局直接生成。
 
 ## English
@@ -50,6 +49,8 @@ download action available. Playlist selection is capped at 1000
 entries. Pausing does not interrupt an active download or FFmpeg operation.
 Browser fixtures do not constitute real-account acceptance for every browser.
 
-Upgrade path: v0.4.1 → v0.4.2 → v0.5.0. Keep v0.4.2 as GitHub Latest and publish
-this future release with `make_latest=false`. New clients enumerate Releases.
-The standard v0.5.0 package has no root-level updater executable.
+Upgrade path: v0.4.1 → v0.4.2 → v0.5.0. The v0.4.2 bridge remains available
+with its tag, release and assets preserved. After publication, v0.5.0 becomes
+GitHub Latest (`make_latest=true`, `prerelease=false`, `draft=false`). New clients
+enumerate Releases and select the highest compatible stable version. The
+standard v0.5.0 package has no root-level updater executable.
