@@ -12,15 +12,19 @@ def test_package_and_runtime_versions_match() -> None:
 
     assert __version__ == "0.5.0"
     assert project["project"]["version"] == __version__
-    assert (project_root / "README.md").read_text(encoding="utf-8").startswith(
-        "# YT Downloader 0.5.0"
-    )
     build_script = (project_root / "scripts" / "build.ps1").read_text(encoding="utf-8")
     assert "--metadata-process-self-test" in build_script
     assert "YTDownloaderUpdater.spec" in build_script
     assert "Production update trust is not configured" in build_script
     assert 'SafePackageExtractor.validate_tree' in build_script
     assert '$RelativePath.Replace("\\", "/")' in build_script
+
+
+def test_readme_uses_stable_product_name() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    assert (project_root / "README.md").read_text(encoding="utf-8").startswith(
+        "# YTDownloader\n"
+    )
 
 
 def test_packaged_self_test_runs_before_qml_initialization(monkeypatch, tmp_path: Path) -> None:
