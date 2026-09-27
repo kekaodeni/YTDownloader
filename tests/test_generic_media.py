@@ -93,6 +93,33 @@ def test_media_resolver_passes_canonical_douyin_url_to_ytdlp():
     assert seen == [canonical]
 
 
+def test_media_resolver_passes_canonical_soop_url_to_ytdlp():
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    raw_url = 'https://vod.sooplive.com/player/207618639/catch?from=share#player'
+    canonical = 'https://vod.sooplive.com/player/207618639?from=share#player'
+    seen = []
+
+    class Ydl(AbstractContextManager):
+        def __init__(self, options):
+            self.options = options
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, *, download):
+            assert download is False
+            seen.append(url)
+            return media_fixture('soop', canonical)
+        def sanitize_info(self, data):
+            return data
+
+    media = MediaResolver(ydl_factory=Ydl, require_deno=False).fetch_metadata(
+        raw_url, include_thumbnail=False)
+
+    assert seen == [canonical]
+    assert media.url == canonical
+    assert media.original_url == canonical
+
+
 @pytest.mark.parametrize(
     ('formats', 'expected_code'),
     [([], 'NO_FORMATS'),

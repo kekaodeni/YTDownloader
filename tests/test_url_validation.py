@@ -33,6 +33,47 @@ def test_douyin_normalization_leaves_unmatched_urls_unchanged(raw: str) -> None:
     assert normalize_media_url(raw) == raw
 
 
+def test_soop_standard_url_is_unchanged() -> None:
+    url = "https://vod.sooplive.com/player/207618639"
+    assert normalize_media_url(url) == url
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            "https://vod.sooplive.com/player/207618639/catch",
+            "https://vod.sooplive.com/player/207618639",
+        ),
+        (
+            "https://vod.sooplive.com/player/207618639/catch?foo=bar",
+            "https://vod.sooplive.com/player/207618639?foo=bar",
+        ),
+        (
+            "https://vod.sooplive.com/player/207618639/catch#fragment",
+            "https://vod.sooplive.com/player/207618639#fragment",
+        ),
+    ],
+)
+def test_soop_catch_url_canonicalizes_without_losing_suffix(raw: str, expected: str) -> None:
+    assert normalize_media_url(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://vod.sooplive.com/player/abc/catch",
+        "https://vod.sooplive.com/player/123/other",
+        "https://vod.sooplive.com/player/123/catch/",
+        "https://vod.sooplive.co.kr/player/123/catch",
+        "https://example.com/player/123/catch",
+        "https://example.com/video?next=/player/123/catch",
+    ],
+)
+def test_unmatched_soop_catch_urls_are_unchanged(raw: str) -> None:
+    assert normalize_media_url(raw) == raw
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

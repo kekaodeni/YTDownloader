@@ -28,6 +28,12 @@ def normalize_media_url(raw_url: str) -> str:
             raise ValueError('Invalid port')
     except (ValueError, UnicodeError) as exc:
         raise InvalidMediaUrl('请输入有效的 HTTP 或 HTTPS 链接，不要包含账号、密码或控制字符。') from exc
+    # SOOP's /catch route is an alias for its standard player URL. Match only
+    # this exact HTTPS host and numeric-ID path; keep query and fragment data.
+    soop_catch = re.fullmatch(r"/player/(\d+)/catch", parsed.path)
+    if (parsed.scheme == "https" and parsed.port is None
+            and parsed.hostname == "vod.sooplive.com" and soop_catch):
+        return parsed._replace(path=f"/player/{soop_catch.group(1)}").geturl()
     # Douyin's精选 modal links are only an alternate spelling for the normal
     # video page. Leave all other paths, domains, and ambiguous IDs untouched.
     if (parsed.scheme == "https" and parsed.port is None
