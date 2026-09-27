@@ -1,5 +1,5 @@
 """History selection and record-only commands backed by the existing records."""
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QUrl, Qt, Signal, Slot
 
 from yt_downloader.core.formatting import format_bytes
 from yt_downloader.core.models import STATUS_TEXT, TaskStatus
@@ -20,7 +20,8 @@ class HistoryPresenter(ViewState):
 
     def __init__(self, dialogs, parent=None):
         super().__init__(parent, managing=False, selectedId='', selectedIndex=-1,
-                         fileExists=False, canDelete=False, checkedCount=0, managementText='')
+                         fileExists=False, canDelete=False, checkedCount=0, selectableCount=0,
+                         selectAllState=Qt.CheckState.Unchecked.value, managementText='')
         self.dialogs = dialogs
         self.records = []
         self._checked = set()
@@ -80,13 +81,22 @@ class HistoryPresenter(ViewState):
         self.select(self._state['selectedId'])
 
     def _refresh(self):
+        selectable_count = sum(r.status in TERMINAL for r in self.records)
+        checked_count = len(self._checked)
+        select_all_state = (
+            Qt.CheckState.Unchecked.value if checked_count == 0 else
+            Qt.CheckState.Checked.value if checked_count == selectable_count else
+            Qt.CheckState.PartiallyChecked.value
+        )
         self._model.replace([dict(id=r.task_id, title=r.title,
                                  subtitle=f'{r.quality_label}  ·  {format_bytes(r.file_size)}',
                                  status=STATUS_TEXT[r.status], date=r.created_at,
                                  thumbnail=self._thumbnail_sources.get(r.task_id) or (QUrl.fromLocalFile(str(r.thumbnail_path)).toString() if r.thumbnail_path and r.thumbnail_path.is_file() else ''),
                                  checked=r.task_id in self._checked, deletable=r.status in TERMINAL)
                              for r in self.records])
-        self.update(checkedCount=len(self._checked), managementText=f'已选择 {len(self._checked)} 项')
+        self.update(checkedCount=checked_count, selectableCount=selectable_count,
+                    selectAllState=select_all_state,
+                    managementText=f'已选择 {checked_count} 项')
 
     def selected_record(self):
         return next((r for r in self.records if r.task_id == self._state['selectedId']), None)

@@ -97,7 +97,7 @@ def test_management_checkbox_click_toggles_once_and_syncs_batch_controls(quick_w
     click_center(quick_window,checkbox,qapp)
     assert page.state['checkedCount'] == 2
 
-    click_center(quick_window,find_item(quick_window,'historySelectNone'),qapp)
+    click_center(quick_window,find_item(quick_window,'historySelectAll'),qapp)
     assert page.state['checkedCount'] == 0
     assert delete.property('enabled') is False
     assert page.state['managementText'] == '已选择 0 项'
@@ -144,7 +144,7 @@ def test_management_selects_only_terminal_records(quick_window,tmp_path,qtbot):
         quick_window.dialogs.sessions[-1].answer(True)
     assert signal.args == [('done','failed')]
 
-def test_confirmed_batch_delete_exits_management_after_repository_success(quick_window,tmp_path,qtbot):
+def test_confirmed_batch_delete_exits_management_after_repository_success(quick_window,tmp_path,qapp,qtbot):
     page = quick_window.history_page
     page.set_records([_record(tmp_path,'done',TaskStatus.COMPLETED), _record(tmp_path,'failed',TaskStatus.FAILED)])
     page.manage(True); page.selectAll(True)
@@ -156,6 +156,8 @@ def test_confirmed_batch_delete_exits_management_after_repository_success(quick_
     page.batch_delete_succeeded(2, 0)
     assert page.state['managing'] is False
     assert page.state['checkedCount'] == 0
+    run_frames(qapp)
+    assert find_item(quick_window,'historySelectAll').property('checkState').value == 0
 
 def test_cancelled_batch_delete_keeps_management_selection(quick_window,tmp_path,qtbot):
     page = quick_window.history_page

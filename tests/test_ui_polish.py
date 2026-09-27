@@ -1,6 +1,7 @@
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtTest import QTest
 
-from conftest import find_item, run_frames
+from conftest import click_item, find_item, run_frames
 from test_history_repository import _record
 from yt_downloader.core.models import CookieProfile, TaskStatus
 from test_download_service import _request
@@ -14,25 +15,99 @@ def _object_names(window):
         pending.extend(item.childItems())
 
 
-def test_history_management_toolbar_and_compact_checkboxes(quick_window, qapp, tmp_path):
+def test_history_management_toolbar_has_one_tri_state_select_all(quick_window, qapp, tmp_path):
     page = quick_window.history_page
-    page.set_records([_record(tmp_path, 'done', TaskStatus.COMPLETED)])
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two', 'three')])
     quick_window._select_page(1)
     page.manage(True)
     run_frames(qapp)
 
-    action_names = ('historySelectAll', 'historySelectNone', 'historyDeleteSelected',
-                    'historyClear', 'historyManageToggle')
+    action_names = ('historySelectAll', 'historyDeleteSelected', 'historyClear', 'historyManageToggle')
     actions = [find_item(quick_window, name) for name in action_names]
     assert all(action.isVisible() for action in actions)
     centers = [action.y() + action.height() / 2 for action in actions]
     assert max(centers) - min(centers) < 1
+    assert 'historySelectNone' not in set(_object_names(quick_window))
 
-    check = find_item(quick_window, 'historySelect-done')
-    indicator = find_item(quick_window, 'historyCheckboxIndicator-done')
-    assert check.isVisible()
+    check = find_item(quick_window, 'historySelectAll')
+    assert check.property('text') == '全选'
+    assert check.property('checkState').value == 0
+    assert check.property('enabled')  # Non-empty history is selectable.
+
+    page.toggle('one')
+    run_frames(qapp)
+    assert check.property('checkState').value == 1
+    assert page.state['checkedCount'] == 1
+    assert page.state['managementText'] == '已选择 1 项'
+
+    page.selectAll(True)
+    run_frames(qapp)
+    assert check.property('checkState').value == 2
+    assert page.state['checkedCount'] == 3
+
+    page.toggle('two')
+    run_frames(qapp)
+    assert check.property('checkState').value == 1
+
+    # Clicking the indicator or the label while partial selects all.
+    point = check.mapToScene(QPointF(17, check.height() / 2)).toPoint()
+    QTest.mouseClick(quick_window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 3
+    assert check.property('checkState').value == 2
+
+    # The label is part of the same control hit target.
+    click_item(quick_window, check)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 0
+    assert check.property('checkState').value == 0
+    click_item(quick_window, check)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 3
+    assert check.property('checkState').value == 2
+    click_item(quick_window, check)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 0
+    assert check.property('checkState').value == 0
+
+    indicator = find_item(quick_window, 'historyCheckboxIndicator-one')
+    row_check = find_item(quick_window, 'historySelect-one')
+    assert row_check.isVisible()
     assert indicator.width() <= 18 and indicator.height() <= 18
-    assert abs(indicator.y() + indicator.height() / 2 - check.height() / 2) < 1
+
+    page.set_records([])
+    run_frames(qapp)
+    assert check.property('checkState').value == 0
+    assert not check.property('enabled')
+
+
+def test_history_row_and_checkbox_selection_keep_select_all_in_sync(quick_window, qapp, tmp_path):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two')])
+    quick_window._select_page(1)
+    page.manage(True)
+    run_frames(qapp)
+    top_check = find_item(quick_window, 'historySelectAll')
+    click_item(quick_window, find_item(quick_window, 'historyTitle-one'))
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 1
+    assert top_check.property('checkState').value == 1
+    row_check = find_item(quick_window, 'historySelect-two')
+    click_item(quick_window, row_check)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 2
+    assert top_check.property('checkState').value == 2
+    assert page.model.get(1)['checked'] is True
+
+    page.selectAll(True)
+    page.set_records([_record(tmp_path, 'two', TaskStatus.COMPLETED)])
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 1
+    assert top_check.property('checkState').value == 2
+
+    page.set_records([])
+    run_frames(qapp)
+    assert top_check.property('checkState').value == 0
 
 
 def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_window, qapp):

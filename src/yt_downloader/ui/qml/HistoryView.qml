@@ -9,8 +9,61 @@ Item {
         RowLayout { objectName: "historyHeader"; Layout.fillWidth: true; spacing: 6
             UiText { text: "历史记录"; role: "PageTitle" }
             Item { Layout.fillWidth: true }
-            UiButton { objectName: "historySelectAll"; visible: history.state.managing; text: "全选"; onClicked: history.selectAll(true) }
-            UiButton { objectName: "historySelectNone"; visible: history.state.managing; text: "取消全选"; enabled: history.state.checkedCount > 0; onClicked: history.selectAll(false) }
+            CheckBox {
+                id: selectAllCheck
+                objectName: "historySelectAll"
+                visible: history.state.managing
+                text: "全选"
+                enabled: history.state.selectableCount > 0
+                tristate: true
+                checkState: history.state.selectAllState
+                nextCheckState: function() { return history.state.selectAllState }
+                onClicked: history.selectAll(history.state.selectAllState !== Qt.Checked)
+                hoverEnabled: true
+                leftPadding: 8; rightPadding: 10; topPadding: 0; bottomPadding: 0; spacing: 8
+                implicitWidth: indicator.width + spacing + contentItem.implicitWidth + leftPadding + rightPadding
+                implicitHeight: 38
+                Layout.alignment: Qt.AlignVCenter
+                font.family: theme.fontFamily("Button", "全选")
+                font.pointSize: theme.fontSize("Button")
+                font.weight: theme.fontWeight("Button")
+                Accessible.name: "全选"
+                indicator: Rectangle {
+                    x: selectAllCheck.leftPadding
+                    y: (selectAllCheck.height - height) / 2
+                    width: 18; height: 18; radius: 5
+                    color: !selectAllCheck.enabled ? theme.state.subtle : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
+                    border.width: selectAllCheck.visualFocus ? 2 : 1
+                    border.color: selectAllCheck.visualFocus ? theme.state.accent : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : theme.state.stroke
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✓"
+                        visible: selectAllCheck.checkState === Qt.Checked
+                        color: theme.state.onAccent
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                    }
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 9; height: 2; radius: 1
+                        visible: selectAllCheck.checkState === Qt.PartiallyChecked
+                        color: theme.state.onAccent
+                    }
+                }
+                contentItem: UiText {
+                    leftPadding: selectAllCheck.indicator.width + selectAllCheck.spacing
+                    text: selectAllCheck.text
+                    color: selectAllCheck.enabled ? theme.state.text : theme.state.disabled
+                    verticalAlignment: Text.AlignVCenter
+                    font: selectAllCheck.font
+                }
+                background: Rectangle {
+                    radius: 8
+                    color: !selectAllCheck.enabled ? "transparent" : selectAllCheck.down ? theme.state.stroke : selectAllCheck.hovered ? theme.state.subtle : "transparent"
+                    border.width: selectAllCheck.visualFocus ? 2 : 0
+                    border.color: theme.state.accent
+                }
+            }
             UiButton { objectName: "historyDeleteSelected"; visible: history.state.managing; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
             UiButton { objectName: "historyClear"; visible: history.state.managing; text: "清空历史"; onClicked: history.clearTerminal() }
             UiButton { objectName: "historyManageToggle"; text: history.state.managing ? "完成" : "管理"; appearance: history.state.managing ? "primary" : "normal"; onClicked: history.manage(!history.state.managing) }
@@ -22,9 +75,17 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             model: history.model; reuseItems: true; clip: true; spacing: 5
             boundsBehavior: Flickable.StopAtBounds
-            currentIndex: history.state.selectedIndex
             keyNavigationEnabled: true
-            onCurrentIndexChanged: if (currentIndex >= 0) history.select(history.model.get(currentIndex).id)
+            function syncSelectedIndex() {
+                const selectedIndex = history.state.selectedIndex
+                if (currentIndex !== selectedIndex) currentIndex = selectedIndex
+            }
+            Component.onCompleted: syncSelectedIndex()
+            Connections {
+                target: history
+                function onChanged() { list.syncSelectedIndex() }
+            }
+            onCurrentIndexChanged: if (currentIndex >= 0 && history.model.get(currentIndex).id !== history.state.selectedId) history.select(history.model.get(currentIndex).id)
             ScrollBar.vertical: ScrollBar { onPressedChanged: if (pressed) wheel.stop() }
             WheelSmoother { id: wheel; view: list }
             Keys.onPressed: function(event) {
