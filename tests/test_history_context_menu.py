@@ -1,5 +1,6 @@
 from PySide6.QtCore import Qt, QPointF, QObject
 from PySide6.QtTest import QTest
+import pytest
 from yt_downloader.core.models import TaskStatus
 from test_history_repository import _record
 from conftest import find_item, run_frames, click_item
@@ -10,6 +11,96 @@ def prepare(window, tmp_path, qapp):
     window._select_page(1)
     run_frames(qapp)
     return page
+
+
+def click_center(window, item, qapp):
+    point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
+    QTest.mouseClick(window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+    run_frames(qapp, 80)
+
+
+@pytest.mark.parametrize('mode', ['light','dark'])
+@pytest.mark.parametrize('target_name', [
+    'historyTitle-first', 'historyCover-first', 'historyStatus-first',
+])
+def test_management_clicking_row_content_toggles_shared_selection(quick_window,tmp_path,qapp,target_name,mode):
+    page = prepare(quick_window,tmp_path,qapp)
+    quick_window.theme.set_mode(mode)
+    page.manage(True)
+    target = find_item(quick_window,target_name)
+
+    click_center(quick_window,target,qapp)
+    assert page.state['checkedCount'] == 1
+    assert page.model.get(0)['checked'] is True
+
+    click_center(quick_window,target,qapp)
+    assert page.state['checkedCount'] == 0
+    assert page.model.get(0)['checked'] is False
+
+
+@pytest.mark.parametrize('mode', ['light','dark'])
+def test_management_row_hover_shows_select_cursor_and_preserves_selected_background(quick_window,tmp_path,qapp,mode):
+    page = prepare(quick_window,tmp_path,qapp)
+    quick_window.theme.set_mode(mode)
+    page.manage(True)
+    row = find_item(quick_window,'history-first')
+    point = row.mapToScene(QPointF(row.width() - 4, row.height() / 2)).toPoint()
+
+    QTest.mouseMove(quick_window.root,QPointF(0,0).toPoint())
+    run_frames(qapp,60)
+    QTest.mouseMove(quick_window.root,point)
+    run_frames(qapp,60)
+    assert row.property('rowCursorShape') == Qt.PointingHandCursor.value
+    assert row.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
+
+    QTest.mouseClick(quick_window.root,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier,point)
+    run_frames(qapp,60)
+    assert page.state['checkedCount'] == 1
+    assert row.property('color').name().lower() == quick_window.theme.state['selection'].lower()
+
+
+def test_management_clicking_row_padding_toggles_but_normal_mode_does_not(quick_window,tmp_path,qapp):
+    page = prepare(quick_window,tmp_path,qapp)
+    row = find_item(quick_window,'history-first')
+    point = row.mapToScene(QPointF(row.width() - 3, row.height() - 3)).toPoint()
+
+    QTest.mouseClick(quick_window.root,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier,point)
+    run_frames(qapp,80)
+    assert page.state['checkedCount'] == 0
+    assert page.selected_record().task_id == 'first'
+
+    page.manage(True)
+    QTest.mouseClick(quick_window.root,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier,point)
+    run_frames(qapp,80)
+    assert page.state['checkedCount'] == 1
+
+
+def test_management_checkbox_click_toggles_once_and_syncs_batch_controls(quick_window,tmp_path,qapp):
+    page = prepare(quick_window,tmp_path,qapp)
+    page.manage(True)
+    checkbox = find_item(quick_window,'historySelect-first')
+    delete = find_item(quick_window,'historyDeleteSelected')
+
+    click_center(quick_window,checkbox,qapp)
+    assert page.state['checkedCount'] == 1
+    assert page.model.get(0)['checked'] is True
+    assert delete.property('enabled') is True
+
+    page.selectAll(True)
+    assert page.state['checkedCount'] == 2
+    click_center(quick_window,find_item(quick_window,'historyTitle-first'),qapp)
+    assert page.state['checkedCount'] == 1
+    assert page.model.get(0)['checked'] is False
+    assert page.model.get(1)['checked'] is True
+    assert '已选择 1 项' == page.state['managementText']
+
+    click_center(quick_window,checkbox,qapp)
+    assert page.state['checkedCount'] == 2
+
+    click_center(quick_window,find_item(quick_window,'historySelectNone'),qapp)
+    assert page.state['checkedCount'] == 0
+    assert delete.property('enabled') is False
+    assert page.state['managementText'] == '已选择 0 项'
 
 def test_context_menu_selects_pointer_record_and_has_all_actions(quick_window,tmp_path,qapp):
     page = prepare(quick_window,tmp_path,qapp)
@@ -79,8 +170,10 @@ def test_management_keyboard_shortcuts_toggle_select_all_delete(quick_window,tmp
     page = prepare(quick_window,tmp_path,qapp)
     page.manage(True); page.select('first')
     find_item(quick_window,'historyList').forceActiveFocus()
-    QTest.keyClick(quick_window.root,Qt.Key_Space)
+    QTest.keyClick(quick_window.root,Qt.Key_Return)
     assert page.state['checkedCount'] == 1
+    QTest.keyClick(quick_window.root,Qt.Key_Space)
+    assert page.state['checkedCount'] == 0
     QTest.keyClick(quick_window.root,Qt.Key_A,Qt.ControlModifier)
     assert page.state['checkedCount'] == 2
     QTest.keyClick(quick_window.root,Qt.Key_Delete)

@@ -32,7 +32,7 @@ Item {
                 if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
                     if (history.state.selectedId && list.currentItem) contextMenu.popup(list.currentItem, 24, list.currentItem.height - 4)
                     event.accepted = true
-                } else if (history.state.managing && event.key === Qt.Key_Space) {
+                } else if (history.state.managing && (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                     history.toggle(history.state.selectedId); event.accepted = true
                 } else if (history.state.managing && event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
                     history.selectAll(true); event.accepted = true
@@ -48,17 +48,33 @@ Item {
                 onItemChanged: history.requestThumbnail(item.id)
                 ListView.onReused: history.requestThumbnail(item.id)
                 width: list.width - 10; height: row.implicitHeight + 24; radius: 10
-                color: item.id === history.state.selectedId ? theme.state.selection : hover.hovered ? theme.state.subtle : "transparent"
-                border.width: item.id === history.state.selectedId && list.activeFocus ? 1 : 0
+                property bool rowSelected: history.state.managing ? item.checked : item.id === history.state.selectedId
+                property int rowCursorShape: hover.cursorShape
+                color: rowSelected ? theme.state.selection : hover.hovered ? theme.state.subtle : "transparent"
+                border.width: rowSelected && list.activeFocus ? 1 : 0
                 border.color: theme.state.accent
                 Accessible.role: Accessible.ListItem
                 Accessible.name: item.title + "，" + item.status
-                HoverHandler { id: hover }
+                HoverHandler {
+                    id: hover
+                    cursorShape: history.state.managing && item.deletable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                }
                 TapHandler {
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    acceptedButtons: Qt.RightButton
                     onTapped: function(point, button) {
                         history.select(item.id); list.forceActiveFocus()
-                        if (button === Qt.RightButton) contextMenu.popup(historyRow, point.position.x, point.position.y)
+                        contextMenu.popup(historyRow, point.position.x, point.position.y)
+                    }
+                }
+                MouseArea {
+                    objectName: "historyRowHitTarget-" + item.id
+                    anchors.fill: parent
+                    z: -1
+                    acceptedButtons: Qt.LeftButton
+                    onClicked: {
+                        list.forceActiveFocus()
+                        if (history.state.managing) history.toggle(item.id)
+                        else history.select(item.id)
                     }
                 }
                 RowLayout { id: row; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12; spacing: 14
@@ -107,11 +123,11 @@ Item {
                         }
                     }
                     ColumnLayout { Layout.fillWidth: true; spacing: 6
-                        UiText { Layout.fillWidth: true; text: item.title; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
-                        UiText { Layout.fillWidth: true; text: item.subtitle; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
-                        UiText { visible: root.width < 620; text: item.status; role: "Caption"; color: theme.state.secondary }
+                        UiText { objectName: "historyTitle-" + item.id; Layout.fillWidth: true; text: item.title; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
+                        UiText { objectName: "historySubtitle-" + item.id; Layout.fillWidth: true; text: item.subtitle; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
+                        UiText { objectName: "historyStatusMobile-" + item.id; visible: root.width < 620; text: item.status; role: "Caption"; color: theme.state.secondary }
                     }
-                    UiText { visible: root.width >= 620; text: item.status; role: "Caption"; color: theme.state.secondary }
+                    UiText { objectName: "historyStatus-" + item.id; visible: root.width >= 620; text: item.status; role: "Caption"; color: theme.state.secondary }
                 }
             }
             Column { anchors.centerIn: parent; width: parent.width; spacing: 10; visible: history.model.count === 0
