@@ -1,5 +1,6 @@
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
+import pytest
 
 from conftest import click_item, find_item, run_frames
 from test_history_repository import _record
@@ -79,6 +80,49 @@ def test_history_management_toolbar_has_one_tri_state_select_all(quick_window, q
     run_frames(qapp)
     assert check.property('checkState').value == 0
     assert not check.property('enabled')
+
+
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+def test_history_select_all_uses_secondary_toolbar_button_chrome(quick_window, qapp, tmp_path, mode):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path, 'one', TaskStatus.COMPLETED)])
+    quick_window._select_page(1)
+    quick_window.theme.set_mode(mode)
+    page.manage(True)
+    run_frames(qapp)
+
+    check = find_item(quick_window, 'historySelectAll')
+    delete = find_item(quick_window, 'historyDeleteSelected')
+    background = find_item(quick_window, 'historySelectAllBackground')
+    assert check.height() == delete.height() == 38
+    assert abs(delete.x() - check.x() - check.width() - 6) < 1
+    assert background.property('radius') == 8
+    assert background.property('color').name().lower() == quick_window.theme.state['surface'].lower()
+
+    page.selectAll(True)
+    run_frames(qapp)
+    assert check.property('checkState').value == 2
+    assert background.property('color').name().lower() == quick_window.theme.state['surface'].lower()
+
+    point = check.mapToScene(QPointF(check.width() / 2, check.height() / 2)).toPoint()
+    QTest.mouseMove(quick_window.root, QPointF(0, 0).toPoint())
+    run_frames(qapp, 60)
+    QTest.mouseMove(quick_window.root, point)
+    run_frames(qapp, 180)
+    assert background.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
+
+    QTest.mousePress(quick_window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+    run_frames(qapp, 180)
+    assert background.property('color').name().lower() == quick_window.theme.state['stroke'].lower()
+    QTest.mouseRelease(quick_window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+    check.forceActiveFocus()
+    run_frames(qapp, 60)
+    assert check.property('activeFocus')
+
+    page.set_records([])
+    run_frames(qapp)
+    assert not check.property('enabled')
+    assert background.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
 
 
 def test_history_row_and_checkbox_selection_keep_select_all_in_sync(quick_window, qapp, tmp_path):

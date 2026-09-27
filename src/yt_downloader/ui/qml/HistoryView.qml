@@ -20,7 +20,7 @@ Item {
                 nextCheckState: function() { return history.state.selectAllState }
                 onClicked: history.selectAll(history.state.selectAllState !== Qt.Checked)
                 hoverEnabled: true
-                leftPadding: 8; rightPadding: 10; topPadding: 0; bottomPadding: 0; spacing: 8
+                leftPadding: 14; rightPadding: 14; topPadding: 0; bottomPadding: 0; spacing: 8
                 implicitWidth: indicator.width + spacing + contentItem.implicitWidth + leftPadding + rightPadding
                 implicitHeight: 38
                 Layout.alignment: Qt.AlignVCenter
@@ -28,6 +28,8 @@ Item {
                 font.pointSize: theme.fontSize("Button")
                 font.weight: theme.fontWeight("Button")
                 Accessible.name: "全选"
+                scale: down && !shell.state.reduceMotion ? 0.985 : 1
+                Behavior on scale { SmoothedAnimation { duration: 90; velocity: -1 } }
                 indicator: Rectangle {
                     x: selectAllCheck.leftPadding
                     y: (selectAllCheck.height - height) / 2
@@ -58,10 +60,12 @@ Item {
                     font: selectAllCheck.font
                 }
                 background: Rectangle {
+                    objectName: "historySelectAllBackground"
                     radius: 8
-                    color: !selectAllCheck.enabled ? "transparent" : selectAllCheck.down ? theme.state.stroke : selectAllCheck.hovered ? theme.state.subtle : "transparent"
-                    border.width: selectAllCheck.visualFocus ? 2 : 0
-                    border.color: theme.state.accent
+                    color: !selectAllCheck.enabled ? theme.state.subtle : selectAllCheck.down ? theme.state.stroke : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
+                    border.width: selectAllCheck.visualFocus ? 2 : 1
+                    border.color: selectAllCheck.visualFocus ? theme.state.accent : theme.state.stroke
+                    Behavior on color { ColorAnimation { duration: shell.state.reduceMotion ? 0 : 120 } }
                 }
             }
             UiButton { objectName: "historyDeleteSelected"; visible: history.state.managing; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
