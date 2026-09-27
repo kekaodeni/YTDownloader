@@ -31,7 +31,8 @@ def classify_metadata_error(error):
         return 'DRM_UNSUPPORTED', '该媒体受 DRM 保护，无法处理。'
     if any(text in message for text in ('private video', 'video is private', 'private media', 'this video is private')):
         return 'PRIVATE_MEDIA', '该媒体为私有内容，当前无法访问。'
-    if re.search(r'(?:use|provide|requires?|pass|supply|need)\b[^.\n]{0,80}\bcookies?\b|--cookies(?:-from-browser)?', message):
+    if (re.search(r'(?:use|provide|requires?|pass|supply|need)\b[^.\n]{0,80}\bcookies?\b|--cookies(?:-from-browser)?', message)
+            or re.search(r'fresh\s+cookies?[^.\n]{0,100}\b(?:are\s+)?(?:needed|required)\b', message)):
         return 'COOKIE_REQUIRED', '此内容需要登录状态，请选择 Cookie 配置后重新解析。'
     if any(text in message for text in ('login required', 'log in to', 'sign in to', 'authentication required', 'requires authentication', 'age-restricted', 'confirm your age')):
         return 'AUTH_REQUIRED', '该媒体需要登录或年龄验证，请使用你有权访问内容的 Cookie 配置。'

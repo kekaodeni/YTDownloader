@@ -134,9 +134,10 @@ class MediaResolver:
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
             media = resolve_metadata(info, normalized, self.codec_preference)
             if not media.formats and not media.audio_formats and media.media_type != 'playlist':
-                drm = info.get('has_drm') or any(item.get('has_drm') for item in (info.get('formats') or []) if isinstance(item, Mapping))
+                raw_formats = info.get('formats')
+                drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))
                 raise AppError(
-                    'DRM_UNSUPPORTED' if drm else 'formats_unavailable',
+                    'DRM_UNSUPPORTED' if drm else 'APP_FORMAT_FILTER_ERROR' if raw_formats else 'NO_FORMATS',
                     '该媒体受 DRM 保护，无法处理。' if drm else '该媒体没有当前版本可下载的视频格式。',
                     'No usable video formats in extractor metadata',
                     ErrorContext(url=normalized, stage='Normalizing formats', log_excerpt='\n'.join(ydl_logger.lines)),

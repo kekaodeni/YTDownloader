@@ -53,7 +53,12 @@ def normalize_formats(
     formats = [dict(item) for item in raw_formats]
     videos = [
         item for item in formats
-        if item.get("vcodec") not in {None, "none"}
+        # Some native HLS extractors (including HuyaVideo) return a usable
+        # resolution and URL while leaving both codec fields unknown. Keep
+        # those candidates so yt-dlp can choose them; audio-only renditions
+        # have vcodec='none' and remain excluded here.
+        if item.get("vcodec") != "none"
+        and (item.get("vcodec") is not None or isinstance(item.get("height"), (int, float)))
     ]
     # Some extractors (including X HLS) identify an audio rendition with
     # vcodec=none but leave acodec unknown. yt-dlp can still select it.
@@ -116,7 +121,9 @@ def normalize_formats(
             size_is_estimate = video_size_is_estimate
         acodec = str(
             video.get("acodec") if has_audio
-            else (audio.get("acodec") or "unknown" if audio else "none")
+            else (audio.get("acodec") or "unknown" if audio
+                  else "unknown" if video.get("acodec") is None
+                  else "none")
         )
         options.append(FormatOption(
             label=_quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps),

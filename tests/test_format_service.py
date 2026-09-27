@@ -52,6 +52,31 @@ def test_x_hls_audio_with_unspecified_codec_is_retained_for_native_selection() -
     assert option.acodec != "none"
 
 
+def test_huya_hls_video_formats_with_unspecified_codecs_are_retained() -> None:
+    # Redacted shape from native HuyaVideo metadata. yt-dlp -F exposes all
+    # three resolutions as downloadable m3u8 formats with unknown codecs.
+    formats = [
+        {"format_id": "360P", "ext": "mp4", "protocol": "m3u8_native", "width": 640,
+         "height": 360, "fps": None, "tbr": None, "vcodec": None, "acodec": None,
+         "url": "https://media.example/360.m3u8"},
+        {"format_id": "720P", "ext": "mp4", "protocol": "m3u8_native", "width": 1280,
+         "height": 720, "fps": None, "tbr": None, "vcodec": None, "acodec": None,
+         "url": "https://media.example/720.m3u8"},
+        {"format_id": "1080P", "ext": "mp4", "protocol": "m3u8_native", "width": 1920,
+         "height": 1080, "fps": None, "tbr": None, "vcodec": None, "acodec": None,
+         "url": "https://media.example/1080.m3u8"},
+    ]
+
+    media = resolve_metadata(
+        {"extractor": "huya:video", "extractor_key": "HuyaVideo", "formats": formats},
+        "https://www.huya.com/video/play/1126525468.html",
+    )
+
+    assert [option.video_format_id for option in media.formats] == ["1080P", "720P", "360P"]
+    assert [option.format_selector for option in media.formats] == ["1080P", "720P", "360P"]
+    assert all(option.vcodec == "unknown" and option.acodec == "unknown" for option in media.formats)
+
+
 @pytest.mark.parametrize("preference", [CodecPreference.AUTO, CodecPreference.VP9])
 def test_vp9_webm_selection_and_size_match_native_ytdlp(preference) -> None:
     # Public metadata captured without media/signed URLs or request headers.

@@ -24,6 +24,7 @@ def test_input_rejects_unsafe_urls(url):
     ('Unable to download webpage: Connection timed out', 'NETWORK_ERROR'),
     ('Login required to watch this video', 'AUTH_REQUIRED'),
     ('Use --cookies-from-browser to authenticate', 'COOKIE_REQUIRED'),
+    ('Fresh cookies (not necessarily logged in) are needed', 'COOKIE_REQUIRED'),
     ('This video is not available in your country', 'GEO_RESTRICTED'),
     ('This video is private', 'PRIVATE_MEDIA'),
     ('This video is DRM protected', 'DRM_UNSUPPORTED'),

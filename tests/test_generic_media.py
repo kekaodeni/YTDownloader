@@ -69,6 +69,57 @@ def test_generic_extractors_receive_url_and_map_typed_metadata(extractor, url):
     assert media.compatibility == media.download_compatibility
 
 
+def test_media_resolver_passes_canonical_douyin_url_to_ytdlp():
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    raw_url = 'https://www.douyin.com/jingxuan?modal_id=7685632626505820153'
+    canonical = 'https://www.douyin.com/video/7685632626505820153'
+    seen = []
+
+    class Ydl(AbstractContextManager):
+        def __init__(self, options):
+            self.options = options
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, *, download):
+            assert download is False
+            seen.append(url)
+            return media_fixture('Douyin', canonical)
+        def sanitize_info(self, data):
+            return data
+
+    MediaResolver(ydl_factory=Ydl, require_deno=False).fetch_metadata(raw_url, include_thumbnail=False)
+
+    assert seen == [canonical]
+
+
+@pytest.mark.parametrize(
+    ('formats', 'expected_code'),
+    [([], 'NO_FORMATS'),
+     ([{'format_id': 'unknown', 'vcodec': 'none', 'acodec': 'none'}], 'APP_FORMAT_FILTER_ERROR')],
+)
+def test_media_resolver_distinguishes_empty_metadata_from_filtered_formats(formats, expected_code):
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    info = media_fixture('OtherExtractor', 'https://media.example/watch/item')
+    info['formats'] = formats
+
+    class Ydl(AbstractContextManager):
+        def __init__(self, options):
+            self.options = options
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, *, download):
+            return info
+        def sanitize_info(self, data):
+            return data
+
+    with pytest.raises(AppError) as caught:
+        MediaResolver(ydl_factory=Ydl, require_deno=False).fetch_metadata(info['webpage_url'], include_thumbnail=False)
+
+    assert caught.value.code == expected_code
+
+
 def test_unsupported_url_has_specific_error_not_generic_parse_failure():
     url = 'https://unsupported.example/item'
     error = DownloadError('Unsupported URL: ' + url, exc_info=(UnsupportedError, UnsupportedError(url), None))

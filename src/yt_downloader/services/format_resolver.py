@@ -72,6 +72,17 @@ class YtDlpFormatResolver:
             None,
         )
         if video is None:
+            # Some native extractors return playable video candidates with a
+            # known resolution/protocol but no codec strings (for example
+            # Huya HLS). yt-dlp has already selected one; retain that result
+            # when it has video dimensions instead of discarding it here.
+            video = next(
+                (item for item in requested
+                 if item.get("vcodec") is None
+                 and isinstance(item.get("height"), (int, float))),
+                None,
+            )
+        if video is None:
             return None
         audio = next(
             (

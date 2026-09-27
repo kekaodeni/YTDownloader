@@ -28,7 +28,15 @@ def normalize_media_url(raw_url: str) -> str:
             raise ValueError('Invalid port')
     except (ValueError, UnicodeError) as exc:
         raise InvalidMediaUrl('请输入有效的 HTTP 或 HTTPS 链接，不要包含账号、密码或控制字符。') from exc
-    # Preserve meaningful query parameters and fragments for the extractor.
+    # Douyin's精选 modal links are only an alternate spelling for the normal
+    # video page. Leave all other paths, domains, and ambiguous IDs untouched.
+    if (parsed.scheme == "https" and parsed.port is None
+            and parsed.hostname in {"douyin.com", "www.douyin.com"}
+            and parsed.path == "/jingxuan"):
+        modal_ids = parse_qs(parsed.query, keep_blank_values=True).get("modal_id", [])
+        if len(modal_ids) == 1 and re.fullmatch(r"\d+", modal_ids[0]):
+            return f"https://www.douyin.com/video/{modal_ids[0]}"
+    # Preserve meaningful query parameters and fragments for other extractors.
     return text
 
 
