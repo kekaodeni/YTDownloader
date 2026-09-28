@@ -140,14 +140,20 @@ Item {
     Dialog {
         id: profileEditor
         objectName: "downloadProfileEditor"
+        property int surfaceRadius: 16
         parent: Overlay.overlay; modal: true; focus: true; closePolicy: Popup.NoAutoClose
         width: Math.min(560, parent ? parent.width - 32 : 560)
         height: Math.min(720, parent ? parent.height - 36 : 720)
         x: parent ? (parent.width - width) / 2 : 0
         y: parent ? (parent.height - height) / 2 : 0
-        padding: 22
-        title: "自定义下载预设"
-        background: Rectangle { radius: 16; color: theme.state.elevated; border.color: theme.state.stroke }
+        padding: 0
+        title: ""
+        background: Rectangle {
+            objectName: "profileEditorSurface"
+            radius: profileEditor.surfaceRadius
+            color: theme.state.elevated
+            border.color: theme.state.stroke
+        }
         Overlay.modal: Rectangle { color: "#550C1524" }
         onRejected: settings.closeProfileEditor()
         onClosed: if (settings.state.profileEditorOpen) settings.closeProfileEditor()
@@ -158,9 +164,26 @@ Item {
                 else if (!settings.state.profileEditorOpen && profileEditor.visible) profileEditor.close()
             }
         }
-        contentItem: ScrollView {
-            clip: true; contentWidth: availableWidth
-            ColumnLayout { width: parent.width; spacing: 14
+        contentItem: ColumnLayout {
+            spacing: 0
+            Item {
+                objectName: "profileEditorHeader"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 66
+                UiText {
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.leftMargin: 24; anchors.rightMargin: 24
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "自定义下载预设"; role: "SectionTitle"
+                }
+            }
+            ScrollView {
+                id: profileEditorBody
+                objectName: "profileEditorBody"
+                Layout.fillWidth: true; Layout.fillHeight: true
+                Layout.leftMargin: 24; Layout.rightMargin: 24
+                clip: true; contentWidth: availableWidth
+                ColumnLayout { width: profileEditorBody.availableWidth; spacing: 14
                 SettingField { Layout.fillWidth: true; label: "名称"
                     UiField { objectName: "profileNameInput"; Layout.fillWidth: true; text: settings.state.profileDraftName; placeholderText: "例如：2160p 下载"; onTextEdited: settings.editProfileField("name", text) }
                 }
@@ -190,13 +213,18 @@ Item {
                 }
                 UiSwitch { objectName: "profileSubtitleEmbed"; text: "嵌入视频"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleEmbed; onToggled: settings.editProfileField("subtitle_embed", checked) }
                 UiText { objectName: "profileEditorMessage"; Layout.fillWidth: true; visible: text.length > 0; text: settings.state.profileMessage; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                }
             }
-        }
-        footer: RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            UiButton { text: "取消"; onClicked: settings.closeProfileEditor() }
-            UiButton { objectName: "saveProfile"; text: "保存"; appearance: "primary"; onClicked: settings.saveProfile() }
+            RowLayout {
+                objectName: "profileEditorActions"
+                Layout.fillWidth: true
+                Layout.leftMargin: 24; Layout.rightMargin: 24
+                Layout.topMargin: 20; Layout.bottomMargin: 24
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                UiButton { objectName: "profileEditorCancel"; text: "取消"; onClicked: settings.closeProfileEditor() }
+                UiButton { objectName: "saveProfile"; text: "保存"; appearance: "primary"; onClicked: settings.saveProfile() }
+            }
         }
     }
 }

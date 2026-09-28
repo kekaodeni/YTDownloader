@@ -3,7 +3,7 @@ import math
 from collections.abc import Mapping
 
 from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
-from yt_downloader.core.models import CodecPreference, PlaylistEntry, PlaylistMetadata, ResolvedMedia, SubtitleTrack
+from yt_downloader.core.models import PlaylistEntry, PlaylistMetadata, ResolvedMedia, SubtitleTrack
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
 
@@ -31,7 +31,7 @@ def _tracks(value, is_auto=False):
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
 
 
-def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
+def resolve_metadata(info, original_url):
     if not isinstance(info, Mapping):
         raise TypeError('yt-dlp returned non-mapping metadata')
     extractor = str(info.get('extractor') or '')
@@ -44,11 +44,11 @@ def resolve_metadata(info, original_url, codec_preference=CodecPreference.AUTO):
         raw_formats = [info] if info.get('url') and not is_playlist else []
     formats = () if is_playlist else tuple(normalize_formats(
         [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')],
-        duration=duration, codec_preference=codec_preference, extractor_key=extractor_key))
+        duration=duration, extractor_key=extractor_key))
     usable = [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')]
     audios = tuple(normalize_audio_formats(usable)) if not is_playlist else ()
     videos = tuple(normalize_formats([item for item in usable if item.get('acodec') == 'none'],
-                                    duration=duration, codec_preference=codec_preference,
+                                    duration=duration,
                                     extractor_key=extractor_key)) if not is_playlist else ()
     media_type = 'playlist' if is_playlist else 'live' if info.get('is_live') else 'audio' if info.get('vcodec') == 'none' else 'video'
     playlist = None

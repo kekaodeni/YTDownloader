@@ -225,21 +225,26 @@ def test_profile_initializes_each_new_task_without_mutating_default(quick_window
     page = quick_window.download_page
     request = _request(tmp_path)
     source = request.video
-    from yt_downloader.core.models import FormatOption
-    low = FormatOption('720p', 720, 30, 'avc1', 'mp4a', 'MP4', 'mp4', 'low', 100, True, 'low', is_recommended=True)
-    high = FormatOption('2160p', 2160, 30, 'av01', 'mp4a', 'MP4', 'mp4', 'high', 400, True, 'high')
-    video = replace(source, formats=(low, high))
+    from yt_downloader.core.formats import normalize_formats
+    formats = [
+        {'format_id': f'{codec}-{height}', 'ext': 'mp4', 'width': 1280 if height == 720 else 1920,
+         'height': height, 'fps': 30, 'vcodec': codec_value, 'acodec': 'none'}
+        for height in (720, 1080)
+        for codec, codec_value in (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'))
+    ]
+    video = replace(source, formats=tuple(normalize_formats(formats)))
     profile = DownloadProfile('p-high', '最高画质', quality_tier='highest', codec_preference='av1')
 
     page.show_video(video, profile=profile)
-    assert page.state['formatIndex'] == 1
-    assert page.state['qualityAuto'] is False
-    page.selectFormat(0)  # Current-task override.
     assert page.state['formatIndex'] == 0
+    assert page.available_formats[page.state['formatIndex']].video_format_id == 'av1-1080'
+    assert page.state['qualityAuto'] is False
+    page.selectFormat(1)  # Current-task override.
+    assert page.state['formatIndex'] == 1
     assert profile.quality_tier == 'highest'
 
     page.show_video(replace(video, video_id='next'), profile=profile)
-    assert page.state['formatIndex'] == 1
+    assert page.state['formatIndex'] == 0
     assert page.state['mediaMode'] == 'video_audio'
 
 def test_network_test_is_separate_from_save(quick_window, qtbot):

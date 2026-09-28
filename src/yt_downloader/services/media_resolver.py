@@ -17,7 +17,7 @@ from yt_dlp.utils import DownloadError
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.services.media_metadata import resolve_metadata
 from yt_downloader.services.media_errors import classify_metadata_error
-from yt_downloader.core.models import CodecPreference, ResolvedMedia
+from yt_downloader.core.models import ResolvedMedia
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
@@ -65,7 +65,6 @@ class MediaResolver:
         deno_path: str | Path | None = None,
         require_deno: bool = True,
         network_policy: NetworkPolicy | None = None,
-        codec_preference: CodecPreference = CodecPreference.AUTO,
         cookie_profile=None,
     ) -> None:
         self.ydl_factory = ydl_factory
@@ -75,7 +74,6 @@ class MediaResolver:
         # JavaScript is needed; non-YouTube media must not fail a global gate.
         self.require_deno = require_deno
         self.network_policy = network_policy
-        self.codec_preference = codec_preference
         self.cookie_profile = cookie_profile
 
     def fetch_metadata(
@@ -132,7 +130,7 @@ class MediaResolver:
                 info = ydl.sanitize_info(extracted)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
-            media = resolve_metadata(info, normalized, self.codec_preference)
+            media = resolve_metadata(info, normalized)
             if not media.formats and not media.audio_formats and media.media_type != 'playlist':
                 raw_formats = info.get('formats')
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))

@@ -9,7 +9,8 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration, format_eta, format_speed
-from yt_downloader.core.models import DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
+from yt_downloader.core.formats import apply_codec_preference
+from yt_downloader.core.models import CodecPreference, DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.ui.quick_state import RowModel, ViewState
 
@@ -282,6 +283,7 @@ class DownloadPresenter(ViewState):
 
     def show_video(self, video, *, preferred_quality='recommended', profile=None):
         self.video = video
+        self._format_codec_preference = CodecPreference(profile.codec_preference) if profile else CodecPreference.AUTO
         self._selected_entries.clear()
         self._entries.replace([dict(id=str(index), index=index, title=entry.title,
                                    url=entry.url, thumbnail=entry.thumbnail, unavailable=entry.unavailable,
@@ -351,8 +353,12 @@ class DownloadPresenter(ViewState):
                              (codec == 'opus' and option.acodec == 'opus'))
             return matching or choices
         if mode == 'video_only':
-            return self.video.video_only_formats
-        return self.video.formats
+            choices = self.video.video_only_formats
+        else:
+            choices = self.video.formats
+        if self._format_codec_preference is CodecPreference.AUTO:
+            return choices
+        return tuple(apply_codec_preference(option, self._format_codec_preference) for option in choices)
 
     @Slot(str)
     def selectMode(self, mode):

@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
-from yt_downloader.core.models import CodecPreference, ParseState, CookieProfile
+from yt_downloader.core.models import ParseState, CookieProfile
 from yt_downloader.infrastructure.windows_job import ProcessJob
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
@@ -29,7 +29,6 @@ class MetadataProcessConfig:
     deno_path: str
     proxy_mode: str
     custom_proxy_url: str
-    codec_preference: CodecPreference
     require_deno: bool = True
     cookie_profile: CookieProfile | None = None
 
@@ -91,7 +90,6 @@ def metadata_process_entry(
             deno_path=Path(config.deno_path) if config.deno_path else None,
             require_deno=config.require_deno,
             network_policy=network,
-            codec_preference=config.codec_preference,
             cookie_profile=config.cookie_profile,
         )
         video = service.fetch_metadata(url, cancel_event, include_thumbnail=False)
@@ -312,9 +310,7 @@ class MetadataProcessController(QObject):
 
 def run_metadata_process_self_test(app: QObject) -> int:
     """Exercise frozen helper spawn, cancel, timeout and child cleanup."""
-    config = MetadataProcessConfig(
-        "", "direct", "", CodecPreference.AUTO, require_deno=False
-    )
+    config = MetadataProcessConfig("", "direct", "", require_deno=False)
     cancel_controller = MetadataProcessController(
         app,
         entrypoint=metadata_process_self_test_entry,

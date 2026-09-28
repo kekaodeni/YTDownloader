@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from yt_downloader.core.models import CodecPreference, ParseState
+from yt_downloader.core.models import ParseState
 from yt_downloader.workers.metadata_process import (
     MetadataProcessConfig,
     MetadataProcessController,
@@ -34,7 +34,6 @@ def test_user_cancel_terminates_a_blocked_metadata_process_within_two_seconds(
         deno_path="",
         proxy_mode="direct",
         custom_proxy_url="",
-        codec_preference=CodecPreference.AUTO,
         require_deno=False,
     )
     controller.start(token, token.source, config)
@@ -62,7 +61,6 @@ def test_hard_timeout_is_terminal_and_restores_controller(qtbot) -> None:
         deno_path="",
         proxy_mode="direct",
         custom_proxy_url="",
-        codec_preference=CodecPreference.AUTO,
         require_deno=False,
     )
 
@@ -82,7 +80,6 @@ def test_broken_ipc_becomes_a_localized_failure(qtbot) -> None:
         deno_path="",
         proxy_mode="direct",
         custom_proxy_url="",
-        codec_preference=CodecPreference.AUTO,
         require_deno=False,
     )
 

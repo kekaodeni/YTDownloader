@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yt_dlp
 
-from yt_downloader.core.formats import normalize_formats
+from yt_downloader.core.formats import apply_codec_preference, normalize_formats
 from yt_downloader.core.models import CodecPreference, FormatOption
 from yt_downloader.services.media_metadata import resolve_metadata
 
@@ -87,7 +87,7 @@ def test_vp9_webm_selection_and_size_match_native_ytdlp(preference) -> None:
         ydl.sort_formats({"formats": native_formats})
         native = ydl._select_formats(native_formats, ydl.build_format_selector("bv*+ba/b"))[0]
 
-    option = normalize_formats(formats, codec_preference=preference)[0]
+    option = apply_codec_preference(normalize_formats(formats)[0], preference)
 
     assert option.format_selector == native["format_id"] == "315+251"
     assert option.video_protocol == "https"
@@ -251,7 +251,7 @@ def test_auto_codec_policy_uses_ytdlp_native_format_order() -> None:
             "filesize": 170_918_192,
             "url": "https://example.invalid/video",
         },
-    ], codec_preference=CodecPreference.AUTO)
+    ])
 
     assert options[0].format_selector == "401+140"
     assert options[0].video_format_id == "401"
@@ -267,7 +267,7 @@ def test_auto_codec_policy_uses_ytdlp_native_format_order() -> None:
         (CodecPreference.H264, "701"),
     ],
 )
-def test_explicit_codec_policy_only_filters_candidates_before_ytdlp_ranking(
+def test_codec_preference_selects_candidate_after_normalization_without_filtering_tiers(
     preference: CodecPreference,
     expected_id: str,
 ) -> None:
@@ -284,9 +284,11 @@ def test_explicit_codec_policy_only_filters_candidates_before_ytdlp_ranking(
         {**shared, "format_id": "401", "vcodec": "av01.0.12M.08"},
         {**shared, "format_id": "628", "vcodec": "vp09.00.51.08"},
         {**shared, "format_id": "701", "vcodec": "avc1.640033"},
-    ], codec_preference=preference)
+    ])
 
-    assert options[0].video_format_id == expected_id
+    selected = apply_codec_preference(options[0], preference)
+    assert selected.video_format_id == expected_id
+    assert options[0].candidate_video_format_ids == ("401", "628", "701")
 
 
 @pytest.mark.parametrize(

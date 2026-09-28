@@ -1,5 +1,5 @@
 from PySide6.QtCore import QObject, QPointF, Qt
-from PySide6.QtGui import QAccessible
+from PySide6.QtGui import QAccessible, QColor
 from PySide6.QtTest import QTest
 import pytest
 
@@ -349,6 +349,74 @@ def test_settings_profiles_follow_v2_information_architecture(quick_window, qapp
     settings.setDefaultProfile(profile.id)
     run_frames(qapp)
     assert default_combo.property('currentIndex') == 2
+
+
+@pytest.mark.parametrize('mode,surface', [('light', '#FFFFFF'), ('dark', '#2A2F39')])
+def test_profile_editor_dialog_uses_one_rounded_surface_for_all_corners(quick_window, qapp, mode, surface):
+    quick_window.theme.set_mode(mode)
+    quick_window._select_page(2)
+    quick_window.settings_page.newProfile()
+    run_frames(qapp)
+
+    editor = find_item(quick_window, 'downloadProfileEditor')
+    image = quick_window.root.grabWindow()
+    dpr = image.devicePixelRatio()
+    left = round(editor.property('x') * dpr)
+    top = round(editor.property('y') * dpr)
+    right = round((editor.property('x') + editor.property('width')) * dpr) - 1
+    bottom = round((editor.property('y') + editor.property('height')) * dpr) - 1
+    inset = round(2 * dpr)
+    corners = (
+        image.pixelColor(left + inset, top + inset),
+        image.pixelColor(right - inset, top + inset),
+        image.pixelColor(left + inset, bottom - inset),
+        image.pixelColor(right - inset, bottom - inset),
+    )
+
+    assert all(color != QColor(surface) for color in corners)
+    assert editor.property('title') == ''
+
+
+def test_profile_editor_footer_stays_inside_rounded_safe_area(quick_window, qapp):
+    quick_window._select_page(2)
+    quick_window.settings_page.newProfile()
+    run_frames(qapp)
+
+    editor = find_item(quick_window, 'downloadProfileEditor')
+    cancel = find_item(quick_window, 'profileEditorCancel')
+    save = find_item(quick_window, 'saveProfile')
+    root_item = quick_window.root.contentItem()
+    cancel_origin = cancel.mapToItem(root_item, QPointF(0, 0))
+    save_origin = save.mapToItem(root_item, QPointF(0, 0))
+    editor_right = editor.property('x') + editor.property('width')
+    editor_bottom = editor.property('y') + editor.property('height')
+
+    assert editor_right - (save_origin.x() + save.width()) >= 24
+    assert editor_bottom - (save_origin.y() + save.height()) >= 24
+    assert abs(cancel.height() - save.height()) < 1
+    assert abs(cancel_origin.y() - save_origin.y()) < 1
+    assert save_origin.x() - (cancel_origin.x() + cancel.width()) >= 8
+
+
+def test_profile_editor_subtitle_fields_keep_dependent_disabled_state(quick_window, qapp):
+    quick_window._select_page(2)
+    quick_window.settings_page.newProfile()
+    run_frames(qapp)
+
+    subtitle = find_item(quick_window, 'profileSubtitleEnabled')
+    automatic = find_item(quick_window, 'profileSubtitleAuto')
+    subtitle_format = find_item(quick_window, 'profileSubtitleFormat')
+    embed = find_item(quick_window, 'profileSubtitleEmbed')
+    assert not automatic.isEnabled()
+    assert not subtitle_format.isEnabled()
+    assert not embed.isEnabled()
+
+    quick_window.settings_page.editProfileField('subtitle_enabled', True)
+    run_frames(qapp)
+    assert subtitle.property('checked')
+    assert automatic.isEnabled()
+    assert subtitle_format.isEnabled()
+    assert embed.isEnabled()
 
 
 def test_download_cookie_button_and_aligned_media_fields(quick_window, qapp, tmp_path):

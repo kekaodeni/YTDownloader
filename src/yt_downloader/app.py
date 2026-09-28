@@ -143,7 +143,6 @@ class AppController:
         self.media = MediaResolver(
             deno_path=self.deno_path,
             network_policy=self.network,
-            codec_preference=self.settings.codec_preference,
         )
         self.download_service = DownloadService(
             deno_path=self.deno_path,
@@ -275,7 +274,6 @@ class AppController:
             deno_path=str(self.deno_path or ""),
             proxy_mode=self.settings.proxy_mode,
             custom_proxy_url=self.settings.custom_proxy_url,
-            codec_preference=self.settings.codec_preference,
             require_deno=True,
             cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
         ))
@@ -732,7 +730,6 @@ class AppController:
             self.download_service.ffmpeg_path = self.ffmpeg.ffmpeg_path
             self.download_service.concurrent_fragments = settings.concurrent_fragments
             self.queue.set_concurrency(settings.max_concurrent_downloads)
-            self.media.codec_preference = settings.codec_preference
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))

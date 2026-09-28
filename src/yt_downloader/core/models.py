@@ -92,6 +92,30 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
 
 
 @dataclass(frozen=True, slots=True)
+class CodecFormatVariant:
+    codec_preference: CodecPreference
+    video_format_id: str
+    audio_format_id: str | None
+    format_selector: str
+    vcodec: str
+    acodec: str
+    container: str
+    final_ext: str
+    estimated_size: int | None
+    requires_merge: bool
+    fps: float | None
+    video_size: int | None
+    video_size_is_estimate: bool
+    audio_size: int | None
+    audio_size_is_estimate: bool
+    video_protocol: str
+    audio_protocol: str
+    video_extension: str
+    audio_extension: str
+    size_kind: SizeKind
+
+
+@dataclass(frozen=True, slots=True)
 class FormatOption:
     label: str
     height: int | None
@@ -118,6 +142,7 @@ class FormatOption:
     video_extension: str = ''
     audio_extension: str = ''
     candidate_video_format_ids: tuple[str, ...] = ()
+    codec_variants: tuple[CodecFormatVariant, ...] = ()
 
     @property
     def display_height(self) -> int | None:

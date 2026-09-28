@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Iterable, Mapping
 
-from .models import CodecPreference, FormatOption, SizeKind
+from .models import CodecFormatVariant, CodecPreference, FormatOption, SizeKind
 from yt_downloader.services.format_resolver import YtDlpFormatResolver
 
 
@@ -42,11 +42,82 @@ def _quality_label(width: int | None, height: int | None, fps: float | None) -> 
     return f"{vertical_resolution}p{suffix}{fps_text}{orientation}"
 
 
+def _option_for_selection(resolved, candidates, duration, height, site_quality):
+    video = dict(resolved.video)
+    video_id = str(video.get("format_id") or "")
+    if not video_id:
+        return None
+    video_ext = str(video.get("ext") or "mp4").lower()
+    width = int(video["width"]) if isinstance(video.get("width"), (int, float)) else None
+    fps = float(video["fps"]) if isinstance(video.get("fps"), (int, float)) else None
+    has_audio = video.get("acodec") not in {None, "none"}
+    audio = dict(resolved.audio) if resolved.audio else None
+    audio_id = str(audio.get("format_id")) if audio else None
+    selector = video_id if has_audio or not audio_id else f"{video_id}+{audio_id}"
+    audio_ext = str(audio.get("ext") or "") if audio else video_ext
+    if has_audio:
+        final_ext = video_ext
+    elif video_ext == "mp4" and audio_ext in {"m4a", "mp4"}:
+        final_ext = "mp4"
+    elif video_ext == "webm" and audio_ext == "webm":
+        final_ext = "webm"
+    else:
+        final_ext = "mkv"
+    video_size, video_size_is_estimate = _size(video, duration)
+    audio_size, audio_size_is_estimate = _size(audio, duration) if audio else (None, False)
+    if audio:
+        estimated = video_size + audio_size if video_size is not None and audio_size is not None else None
+        size_is_estimate = video_size_is_estimate or audio_size_is_estimate
+    else:
+        estimated = video_size
+        size_is_estimate = video_size_is_estimate
+    acodec = str(
+        video.get("acodec") if has_audio
+        else (audio.get("acodec") or "unknown" if audio
+              else "unknown" if video.get("acodec") is None
+              else "none")
+    )
+    return FormatOption(
+        label=_quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps),
+        height=height, fps=fps, vcodec=str(video.get("vcodec") or "unknown"), acodec=acodec,
+        container=final_ext.upper() if final_ext != "webm" else "WebM", final_ext=final_ext,
+        format_selector=selector, estimated_size=estimated, requires_merge=bool(audio_id),
+        video_format_id=video_id, audio_format_id=audio_id, video_extension=video_ext,
+        audio_extension=audio_ext, candidate_video_format_ids=tuple(
+            str(item["format_id"]) for item in candidates if item.get("format_id")),
+        width=width, size_is_estimate=size_is_estimate, video_size=video_size,
+        video_size_is_estimate=video_size_is_estimate, audio_size=audio_size,
+        audio_size_is_estimate=audio_size_is_estimate, video_protocol=str(video.get("protocol") or ""),
+        audio_protocol=str(audio.get("protocol") or "") if audio else "",
+        size_kind=(SizeKind.UNKNOWN if estimated is None else SizeKind.ESTIMATED
+                   if size_is_estimate else SizeKind.EXACT),
+    )
+
+
+def apply_codec_preference(option: FormatOption, preference: CodecPreference) -> FormatOption:
+    """Apply a task's codec choice after complete metadata normalization."""
+    if preference is CodecPreference.AUTO or not option.codec_variants:
+        return option
+    variant = next((item for item in option.codec_variants
+                    if item.codec_preference is preference), None)
+    if variant is None:
+        return option
+    return replace(option, video_format_id=variant.video_format_id,
+                   audio_format_id=variant.audio_format_id, format_selector=variant.format_selector,
+                   vcodec=variant.vcodec, acodec=variant.acodec, container=variant.container,
+                   final_ext=variant.final_ext, estimated_size=variant.estimated_size,
+                   requires_merge=variant.requires_merge, fps=variant.fps,
+                   video_size=variant.video_size, video_size_is_estimate=variant.video_size_is_estimate,
+                   audio_size=variant.audio_size, audio_size_is_estimate=variant.audio_size_is_estimate,
+                   video_protocol=variant.video_protocol, audio_protocol=variant.audio_protocol,
+                   video_extension=variant.video_extension, audio_extension=variant.audio_extension,
+                   size_kind=variant.size_kind)
+
+
 def normalize_formats(
     raw_formats: Iterable[Mapping[str, Any]],
     *,
     duration: float | None = None,
-    codec_preference: CodecPreference = CodecPreference.AUTO,
     resolver: YtDlpFormatResolver | None = None,
     extractor_key: str = "",
 ) -> list[FormatOption]:
@@ -86,77 +157,31 @@ def normalize_formats(
     options: list[FormatOption] = []
     resolver = resolver or YtDlpFormatResolver()
     for (height, _orientation_width, _fps_bucket, site_quality), candidates in grouped.items():
-        resolved = resolver.resolve(candidates, audios, codec_preference)
+        resolved = resolver.resolve(candidates, audios, CodecPreference.AUTO)
         if resolved is None:
             continue
-        video = dict(resolved.video)
-        video_id = str(video.get("format_id") or "")
-        if not video_id:
+        option = _option_for_selection(resolved, candidates, duration, height, site_quality)
+        if option is None:
             continue
-        video_ext = str(video.get("ext") or "mp4").lower()
-        width = int(video["width"]) if isinstance(video.get("width"), (int, float)) else None
-        fps = float(video["fps"]) if isinstance(video.get("fps"), (int, float)) else None
-        has_audio = video.get("acodec") not in {None, "none"}
-        audio = dict(resolved.audio) if resolved.audio else None
-
-        audio_id = str(audio.get("format_id")) if audio else None
-        selector = video_id if has_audio or not audio_id else f"{video_id}+{audio_id}"
-        audio_ext = str(audio.get("ext") or "") if audio else video_ext
-        if has_audio:
-            final_ext = video_ext
-        elif video_ext == "mp4" and audio_ext in {"m4a", "mp4"}:
-            final_ext = "mp4"
-        elif video_ext == "webm" and audio_ext == "webm":
-            final_ext = "webm"
-        else:
-            final_ext = "mkv"
-
-        video_size, video_size_is_estimate = _size(video, duration)
-        audio_size, audio_size_is_estimate = _size(audio, duration) if audio else (None, False)
-        if audio:
-            estimated = video_size + audio_size if video_size is not None and audio_size is not None else None
-            size_is_estimate = video_size_is_estimate or audio_size_is_estimate
-        else:
-            estimated = video_size
-            size_is_estimate = video_size_is_estimate
-        acodec = str(
-            video.get("acodec") if has_audio
-            else (audio.get("acodec") or "unknown" if audio
-                  else "unknown" if video.get("acodec") is None
-                  else "none")
-        )
-        options.append(FormatOption(
-            label=_quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps),
-            height=height,
-            fps=fps,
-            vcodec=str(video.get("vcodec") or "unknown"),
-            acodec=acodec,
-            container=final_ext.upper() if final_ext != "webm" else "WebM",
-            final_ext=final_ext,
-            format_selector=selector,
-            estimated_size=estimated,
-            requires_merge=bool(audio_id),
-            video_format_id=video_id,
-            audio_format_id=audio_id,
-            video_extension=video_ext,
-            audio_extension=audio_ext,
-            candidate_video_format_ids=tuple(str(item['format_id']) for item in candidates if item.get('format_id')),
-            width=width,
-            size_is_estimate=size_is_estimate,
-            video_size=video_size,
-            video_size_is_estimate=video_size_is_estimate,
-            audio_size=audio_size,
-            audio_size_is_estimate=audio_size_is_estimate,
-            video_protocol=str(video.get("protocol") or ""),
-            audio_protocol=str(audio.get("protocol") or "") if audio else "",
-            size_kind=(
-                SizeKind.UNKNOWN
-                if estimated is None
-                else SizeKind.ESTIMATED
-                if size_is_estimate
-                else SizeKind.EXACT
-            ),
-        ))
+        variants = []
+        for preference in (CodecPreference.AV1, CodecPreference.VP9, CodecPreference.H264):
+            alternate = resolver.resolve(candidates, audios, preference)
+            alternate_option = _option_for_selection(alternate, candidates, duration, height, site_quality) if alternate else None
+            if alternate_option is None or alternate_option.video_format_id == option.video_format_id:
+                continue
+            variants.append(CodecFormatVariant(
+                codec_preference=preference, video_format_id=alternate_option.video_format_id,
+                audio_format_id=alternate_option.audio_format_id, format_selector=alternate_option.format_selector,
+                vcodec=alternate_option.vcodec, acodec=alternate_option.acodec,
+                container=alternate_option.container, final_ext=alternate_option.final_ext,
+                estimated_size=alternate_option.estimated_size, requires_merge=alternate_option.requires_merge,
+                fps=alternate_option.fps, video_size=alternate_option.video_size,
+                video_size_is_estimate=alternate_option.video_size_is_estimate,
+                audio_size=alternate_option.audio_size, audio_size_is_estimate=alternate_option.audio_size_is_estimate,
+                video_protocol=alternate_option.video_protocol, audio_protocol=alternate_option.audio_protocol,
+                video_extension=alternate_option.video_extension, audio_extension=alternate_option.audio_extension,
+                size_kind=alternate_option.size_kind))
+        options.append(replace(option, codec_variants=tuple(variants)))
 
     options.sort(
         key=lambda option: (
