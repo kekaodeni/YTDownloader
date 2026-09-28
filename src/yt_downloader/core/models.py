@@ -122,6 +122,7 @@ class CodecFormatVariant:
     video_extension: str
     audio_extension: str
     size_kind: SizeKind
+    dynamic_range: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +158,7 @@ class FormatOption:
     semantic_fps: float | None = None
     quality_rank: int | None = None
     semantic_portrait: bool | None = None
+    dynamic_range: str = ""
 
     @property
     def display_height(self) -> int | None:

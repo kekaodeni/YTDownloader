@@ -134,6 +134,53 @@ def test_bilibili_semantic_quality_ignores_nonstandard_encoded_dimensions():
     assert len({option.label for option in media.formats}) == len(media.formats)
 
 
+def test_bilibili_dynamic_range_125_126_preserves_semantics_and_codec_candidates():
+    formats = [
+        {"format_id": format_id, "ext": "mp4", "width": 3360, "height": 1890,
+         "fps": 30, "quality": quality, "dynamic_range": dynamic_range,
+         "vcodec": codec, "acodec": "none"}
+        for format_id, quality, dynamic_range, codec in (
+            ("dv-av1", 126, "DV", "av01.0.12M.08"),
+            ("dv-hevc", 126, "DV", "hev1.1.6.L150"),
+            ("hdr-avc", 125, "HDR10", "avc1.640033"),
+            ("sdr-avc", 120, "SDR", "avc1.640033"),
+        )
+    ]
+
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+
+    by_range = {option.dynamic_range: option for option in media.formats}
+    assert by_range["DV"].label == "2160p 4K 杜比视界"
+    assert by_range["HDR10"].label == "2160p 4K HDR"
+    assert by_range["SDR"].label == "2160p 4K"
+    assert set(by_range["DV"].candidate_video_format_ids) == {"dv-av1", "dv-hevc"}
+    assert apply_codec_preference(by_range["DV"], CodecPreference.AV1).dynamic_range == "DV"
+    assert {option.site_quality for option in media.formats} == {120, 125, 126}
+    assert all("QN" not in option.label for option in media.formats)
+    assert len({option.label for option in media.formats}) == len(media.formats)
+    assert {option.dynamic_range for option in media.formats} == {"DV", "HDR10", "SDR"}
+
+
+def test_bilibili_dynamic_range_uses_semantic_fps_without_guessing():
+    formats = [
+        {"format_id": format_id, "ext": "mp4", "width": 3360, "height": 1890,
+         "fps": fps, "quality": 126, "dynamic_range": "DV",
+         "vcodec": "avc1.640033", "acodec": "none"}
+        for format_id, fps in (("dv-30", 30), ("dv-unknown", None), ("dv-60", 59.94))
+    ]
+
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+
+    assert {option.label for option in media.formats} == {
+        "2160p 4K 杜比视界", "2160p 4K 杜比视界 60 FPS",
+    }
+    assert {option.dynamic_range for option in media.formats} == {"DV"}
+    no_fps = next(option for option in media.formats if option.label == "2160p 4K 杜比视界")
+    assert set(no_fps.candidate_video_format_ids) == {"dv-30", "dv-unknown"}
+
+
 def test_bilibili_unknown_quality_and_other_extractors_keep_generic_resolution_labels():
     bilibili = resolve_metadata({"extractor_key": "BiliBili", "formats": [
         {"format_id": "unknown-bili-q", "ext": "mp4", "width": 1576, "height": 886,

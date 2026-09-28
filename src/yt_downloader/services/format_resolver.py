@@ -83,6 +83,15 @@ class YtDlpFormatResolver:
                 None,
             )
         if video is None:
+            # Keep a single native combined stream when yt-dlp exposes no
+            # codec or resolution fields, while preserving its exact format ID.
+            video = next(
+                (item for item in requested
+                 if item.get("vcodec") is None and item.get("acodec") is None
+                 and item.get("format_id") and (item.get("url") or item.get("protocol"))),
+                None,
+            )
+        if video is None:
             return None
         audio = next(
             (

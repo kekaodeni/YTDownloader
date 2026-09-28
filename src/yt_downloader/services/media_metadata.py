@@ -31,7 +31,7 @@ def _tracks(value, is_auto=False):
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
 
 
-def resolve_metadata(info, original_url):
+def resolve_metadata(info, original_url, *, requested_url=None):
     if not isinstance(info, Mapping):
         raise TypeError('yt-dlp returned non-mapping metadata')
     extractor = str(info.get('extractor') or '')
@@ -85,7 +85,7 @@ def resolve_metadata(info, original_url):
         duration=duration, thumbnail_url=thumbnail, thumbnail_bytes=None, formats=formats,
         audio_formats=audios, video_only_formats=videos, entries=tuple(entries),
         entries_truncated=is_playlist and len(info.get("entries") or []) > 1000,
-        extractor=extractor, extractor_key=extractor_key, original_url=original_url,
+        extractor=extractor, extractor_key=extractor_key, original_url=requested_url or original_url,
         webpage_url=webpage_url, media_type=media_type, uploader=str(info.get('uploader') or ''),
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,
         description=str(info.get('description') or ''), subtitles=_tracks(info.get('subtitles')),

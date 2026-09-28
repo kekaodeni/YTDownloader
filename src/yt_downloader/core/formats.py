@@ -19,8 +19,8 @@ class _BilibiliQualityTier:
 
 # These are Bilibili's user-facing DASH quality IDs. Keep them separate from
 # the raw width/height/fps reported for each encoded candidate.
-# Other IDs are passed through dynamically by yt-dlp. HDR/Dolby Vision flags
-# (125/126) do not define a fixed nominal resolution, so they use raw fallback.
+# HDR and Dolby Vision use a 4K semantic resolution. Their dynamic range is
+# still read from yt-dlp metadata separately.
 _BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
     6: _BilibiliQualityTier(240, 10, "240p"),
     16: _BilibiliQualityTier(360, 20, "360p"),
@@ -31,6 +31,8 @@ _BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
     112: _BilibiliQualityTier(1080, 70, "1080p 高码率"),
     116: _BilibiliQualityTier(1080, 80, "1080p 60 FPS", "fixed60"),
     120: _BilibiliQualityTier(2160, 90, "2160p 4K", "measured"),
+    125: _BilibiliQualityTier(2160, 100, "2160p 4K", "measured"),
+    126: _BilibiliQualityTier(2160, 110, "2160p 4K", "measured"),
 }
 
 
@@ -114,6 +116,13 @@ def _option_for_selection(
         semantic_fps = 60.0
     if quality_tier:
         label = quality_tier.label
+        dynamic_range = str(video.get("dynamic_range") or "")
+        if dynamic_range.casefold() == "dv":
+            label += " 杜比视界"
+        elif dynamic_range.casefold() in {"hdr", "hdr10"}:
+            label += " HDR"
+        elif dynamic_range and dynamic_range.casefold() != "sdr":
+            label += f" {dynamic_range}"
         if quality_tier.fps_mode == "measured" and semantic_fps:
             label += " 60 FPS"
         if is_portrait:
@@ -137,6 +146,7 @@ def _option_for_selection(
         semantic_fps=semantic_fps,
         quality_rank=quality_tier.rank if quality_tier else None,
         semantic_portrait=is_portrait if quality_tier else None,
+        dynamic_range=str(video.get("dynamic_range") or ""),
         size_kind=(SizeKind.UNKNOWN if estimated is None else SizeKind.ESTIMATED
                    if size_is_estimate else SizeKind.EXACT),
     )
@@ -160,7 +170,7 @@ def apply_codec_preference(option: FormatOption, preference: CodecPreference) ->
                    audio_size=variant.audio_size, audio_size_is_estimate=variant.audio_size_is_estimate,
                    video_protocol=variant.video_protocol, audio_protocol=variant.audio_protocol,
                    video_extension=variant.video_extension, audio_extension=variant.audio_extension,
-                   size_kind=variant.size_kind)
+                   size_kind=variant.size_kind, dynamic_range=variant.dynamic_range)
 
 
 def normalize_formats(
@@ -178,7 +188,10 @@ def normalize_formats(
         # those candidates so yt-dlp can choose them; audio-only renditions
         # have vcodec='none' and remain excluded here.
         if item.get("vcodec") != "none"
-        and (item.get("vcodec") is not None or isinstance(item.get("height"), (int, float)))
+        and (item.get("vcodec") is not None or isinstance(item.get("height"), (int, float))
+             or (len(formats) == 1 and item.get("format_id")
+                 and (item.get("url") or item.get("protocol"))
+                 and item.get("acodec") is None))
     ]
     # Some extractors (including X HLS) identify an audio rendition with
     # vcodec=none but leave acodec unknown. yt-dlp can still select it.
@@ -200,7 +213,11 @@ def normalize_formats(
         quality_tier = _BILIBILI_QUALITY_TIERS.get(raw_site_quality)
         if quality_tier:
             portrait = width is not None and height is not None and height > width
-            key = ("bilibili", raw_site_quality, portrait)
+            dynamic_range = str(item.get("dynamic_range") or "")
+            semantic_fps = (60 if quality_tier.fps_mode == "fixed60"
+                            or quality_tier.fps_mode == "measured" and fps is not None and fps >= 50
+                            else 0)
+            key = ("bilibili", raw_site_quality, dynamic_range, semantic_fps, portrait)
         else:
             if display_height is not None and display_height < 144:
                 continue
@@ -215,7 +232,7 @@ def normalize_formats(
         if group_key[0] == "bilibili":
             site_quality = group_key[1]
             quality_tier = _BILIBILI_QUALITY_TIERS[site_quality]
-            orientation = group_key[2]
+            orientation = group_key[4]
         else:
             site_quality = group_key[4]
             quality_tier = None
@@ -246,7 +263,7 @@ def normalize_formats(
                 audio_size=alternate_option.audio_size, audio_size_is_estimate=alternate_option.audio_size_is_estimate,
                 video_protocol=alternate_option.video_protocol, audio_protocol=alternate_option.audio_protocol,
                 video_extension=alternate_option.video_extension, audio_extension=alternate_option.audio_extension,
-                size_kind=alternate_option.size_kind))
+                size_kind=alternate_option.size_kind, dynamic_range=alternate_option.dynamic_range))
         options.append(replace(option, codec_variants=tuple(variants)))
 
     label_counts: dict[str, int] = {}

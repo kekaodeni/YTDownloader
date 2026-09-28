@@ -117,7 +117,58 @@ def test_media_resolver_passes_canonical_soop_url_to_ytdlp():
 
     assert seen == [canonical]
     assert media.url == canonical
-    assert media.original_url == canonical
+    assert media.original_url == raw_url
+
+
+def test_soop_catch_unknown_codec_hls_format_survives_into_download_request():
+    from pathlib import Path
+
+    from yt_downloader.core.models import DownloadRequest
+    from yt_downloader.services.download_options import media_options
+    from yt_downloader.services.download_options import prepare_request
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    raw_url = 'https://vod.sooplive.com/player/207147181/catch'
+    canonical = 'https://vod.sooplive.com/player/207147181'
+    native_format = {
+        'format_id': 'hls', 'ext': 'mp4', 'protocol': 'm3u8_native',
+        'dynamic_range': 'SDR', 'url': 'https://media.example/video/manifest.m3u8',
+    }
+    info = {
+        '_type': 'video', 'extractor': 'soop', 'extractor_key': 'AfreecaTV',
+        'id': '1788846066249480', 'title': 'SOOP Catch', 'webpage_url': canonical,
+        'formats': [native_format],
+    }
+
+    class Ydl(AbstractContextManager):
+        def __init__(self, options):
+            self.options = options
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, *, download):
+            assert download is False
+            assert url == canonical
+            return info
+        def sanitize_info(self, data):
+            return data
+
+    media = MediaResolver(ydl_factory=Ydl, require_deno=False).fetch_metadata(
+        raw_url, include_thumbnail=False)
+
+    assert len(media.formats) == 1
+    assert media.formats[0].video_format_id == 'hls'
+    assert media.formats[0].format_selector == 'hls'
+    assert media.formats[0].vcodec == media.formats[0].acodec == 'unknown'
+    assert media.url == canonical
+    assert media.original_url == raw_url
+    assert media.video_id == info['id']
+
+    request = prepare_request(DownloadRequest(
+        task_id='soop-catch', video=media, format=media.formats[0],
+        output_directory=Path('out'), filename_stem='soop-catch',
+    ))
+    assert request.video.url == canonical
+    assert media_options(request)['format'] == 'hls'
 
 
 @pytest.mark.parametrize(

@@ -136,7 +136,7 @@ class MediaResolver:
                     cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
-            media = resolve_metadata(info, normalized)
+            media = resolve_metadata(info, normalized, requested_url=url.strip())
             if not media.formats and not media.audio_formats and media.media_type != 'playlist':
                 raw_formats = info.get('formats')
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))
