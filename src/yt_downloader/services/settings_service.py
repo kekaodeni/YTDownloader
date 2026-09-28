@@ -9,7 +9,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from yt_downloader.core.models import AppSettings, CodecPreference
+from yt_downloader.core.models import AppSettings, CodecPreference, DownloadProfile
+from yt_downloader.services.download_profiles import (
+    BUILTIN_PROFILE_IDS,
+    profile_from_mapping,
+    profiles_by_id,
+    validate_profile,
+)
 from yt_downloader.services.network_policy import NetworkPolicy
 
 
@@ -17,6 +23,11 @@ logger = logging.getLogger(__name__)
 _THEMES = {"system", "light", "dark"}
 _PROXY_MODES = {"system", "direct", "custom"}
 _FRAGMENT_COUNTS = {0, 1, 2, 4, 8}
+_QUALITY_ALIASES = {
+    'recommended': 'recommended', 'auto': 'recommended', 'highest': 'highest',
+    '2160p': '2160p', '1440p': '1440p', '1080p': '1080p', '720p': '720p',
+    '2160p 4K': '2160p', '1440p 2K': '1440p', '1080': '1080p',
+}
 
 
 class SettingsService:
@@ -35,8 +46,8 @@ class SettingsService:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             settings, source_schema = self._from_mapping(data)
-            self._migration_pending = source_schema < 5
-            self._migration_source_schema = source_schema if source_schema < 5 else None
+            self._migration_pending = source_schema < 6
+            self._migration_source_schema = source_schema if source_schema < 6 else None
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring invalid settings file %s: %s", self.path, exc)
@@ -46,13 +57,13 @@ class SettingsService:
         if not isinstance(data, dict):
             raise ValueError("settings root must be an object")
         source_schema = int(data.get("schema_version", 1))
-        if source_schema not in {1, 2, 3, 4, 5}:
+        if source_schema not in {1, 2, 3, 4, 5, 6}:
             raise ValueError("unsupported settings schema")
         theme = str(data.get("theme", "system"))
         if theme not in _THEMES:
             raise ValueError("invalid theme")
         directory = str(data.get("download_directory") or self.default_download_directory)
-        quality = str(data.get("default_quality") or "recommended")
+        quality = _QUALITY_ALIASES.get(str(data.get('default_quality') or 'recommended'), 'recommended')
         proxy_mode = str(data.get("proxy_mode") or "system")
         if proxy_mode not in _PROXY_MODES:
             raise ValueError("invalid proxy mode")
@@ -68,10 +79,46 @@ class SettingsService:
             codec_preference = CodecPreference(str(data.get("codec_preference") or "auto"))
         except ValueError as exc:
             raise ValueError("invalid codec preference") from exc
+        custom_profiles: tuple[DownloadProfile, ...] = ()
+        default_profile_id = 'auto'
+        # V2 deliberately uses new keys. V1 development-only keys are ignored.
+        raw_profiles = data.get('custom_download_profiles') if source_schema == 6 else None
+        if isinstance(raw_profiles, list):
+            profiles = []
+            seen_profile_ids = set()
+            for item in raw_profiles:
+                try:
+                    profile = profile_from_mapping(item)
+                except (TypeError, ValueError) as exc:
+                    logger.warning('Ignoring invalid semantic download profile: %s', exc)
+                    continue
+                if profile.id in seen_profile_ids:
+                    logger.warning('Ignoring duplicate semantic download profile %s', profile.id)
+                    continue
+                seen_profile_ids.add(profile.id)
+                profiles.append(profile)
+            custom_profiles = tuple(profiles)
+        raw_default_profile_id = str(data.get('default_download_profile_id') or '') if source_schema == 6 else ''
+        profile_index = profiles_by_id(custom_profiles)
+        if raw_default_profile_id in profile_index:
+            default_profile_id = raw_default_profile_id
+        elif not custom_profiles:
+            old_quality = quality
+            try:
+                old_codec = CodecPreference(str(data.get('codec_preference') or 'auto')).value
+            except ValueError:
+                old_codec = 'auto'
+            if old_quality != 'recommended' or old_codec != 'auto':
+                migrated = DownloadProfile(
+                    id='migrated-default', name='迁移的默认设置',
+                    quality_tier=old_quality if old_quality in {'highest', '2160p', '1440p', '1080p', '720p'} else 'recommended',
+                    codec_preference=old_codec,
+                )
+                custom_profiles = (migrated,)
+                default_profile_id = migrated.id
         return AppSettings(
-            schema_version=5,
+            schema_version=6,
             download_directory=directory,
-            default_quality=quality,
             theme=theme,
             reduce_motion=bool(data.get("reduce_motion", False)),
             ffmpeg_directory=str(data.get("ffmpeg_directory") or ""),
@@ -79,17 +126,18 @@ class SettingsService:
             custom_proxy_url=custom_proxy_url,
             concurrent_fragments=concurrent_fragments,
             max_concurrent_downloads=maximum,
-            codec_preference=codec_preference,
             auto_check_updates=bool(data.get("auto_check_updates", True)),
-            use_cookies=(bool(data.get('use_cookies', False)) if source_schema == 5
+            use_cookies=(bool(data.get('use_cookies', False)) if source_schema >= 5
                          else bool(data.get('default_cookie_profile_id'))),
+            default_download_profile_id=default_profile_id,
+            custom_download_profiles=custom_profiles,
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:
         self.validate(settings)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        normalized = replace(settings, schema_version=5)
+        normalized = replace(settings, schema_version=6)
         payload = json.dumps(asdict(normalized), ensure_ascii=False, indent=2) + "\n"
         source_schema = self._migration_source_schema or 2
         backup = self.path.with_name(f"settings.v{source_schema}.backup.json")
@@ -126,8 +174,15 @@ class SettingsService:
             raise ValueError('同时下载任务数必须为 1–4。')
         if settings.concurrent_fragments not in _FRAGMENT_COUNTS:
             raise ValueError("分片并发设置无效。")
-        if settings.codec_preference not in set(CodecPreference):
-            raise ValueError("视频编码偏好设置无效。")
+        profile_index = profiles_by_id(settings.custom_download_profiles)
+        if settings.default_download_profile_id not in profile_index:
+            raise ValueError('默认下载预设无效。')
+        ids = set()
+        for profile in settings.custom_download_profiles:
+            validate_profile(profile)
+            if profile.id in ids:
+                raise ValueError('自定义下载预设标识重复。')
+            ids.add(profile.id)
         NetworkPolicy(settings.proxy_mode, settings.custom_proxy_url).snapshot()
         directory = Path(settings.download_directory).expanduser()
         if not directory.is_absolute():

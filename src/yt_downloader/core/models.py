@@ -323,10 +323,27 @@ class HistoryRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class DownloadProfile:
+    """A named set of semantic defaults; never stores resolver format IDs."""
+
+    id: str
+    name: str
+    content_mode: str = 'video_audio'
+    quality_tier: str = 'recommended'
+    codec_preference: str = 'auto'
+    audio_codec: str = 'original'
+    audio_quality: str = 'original'
+    subtitle_enabled: bool = False
+    subtitle_auto: bool = False
+    subtitle_embed: bool = False
+    subtitle_format: str = 'srt'
+    subtitle_languages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 5
+    schema_version: int = 6
     download_directory: str = ""
-    default_quality: str = "recommended"
     theme: str = "system"
     reduce_motion: bool = False
     ffmpeg_directory: str = ""
@@ -334,9 +351,29 @@ class AppSettings:
     custom_proxy_url: str = ""
     concurrent_fragments: int = 0
     max_concurrent_downloads: int = 2
-    codec_preference: CodecPreference = CodecPreference.AUTO
     auto_check_updates: bool = True
     use_cookies: bool = False
+    default_download_profile_id: str = 'auto'
+    custom_download_profiles: tuple[DownloadProfile, ...] = ()
+
+    @property
+    def default_profile(self) -> DownloadProfile:
+        for profile in self.custom_download_profiles:
+            if profile.id == self.default_download_profile_id:
+                return profile
+        if self.default_download_profile_id == 'best':
+            return DownloadProfile('best', '最高质量', quality_tier='highest')
+        return DownloadProfile('auto', '自动推荐')
+
+    # Compatibility projections keep existing resolver and retry call sites
+    # on the one profile source of truth while those paths are migrated.
+    @property
+    def default_quality(self) -> str:
+        return self.default_profile.quality_tier
+
+    @property
+    def codec_preference(self) -> CodecPreference:
+        return CodecPreference(self.default_profile.codec_preference)
 
 
 @dataclass(frozen=True, slots=True)
