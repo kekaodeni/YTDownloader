@@ -317,11 +317,15 @@ class AppController:
         if hasattr(self.window, 'cookies'):
             self.window.cookies.update(authRequired=False)
         retry = self._pending_retry
+        profile = self.settings.default_profile if retry is None else None
         preferred = (
             retry.format.label if isinstance(retry, DownloadRequest)
-            else retry.quality_label if retry else self.settings.default_quality
+            else retry.quality_label if retry else profile.quality_tier
         )
-        self.window.download_page.show_video(video, preferred_quality=preferred)
+        if profile is None:
+            self.window.download_page.show_video(video, preferred_quality=preferred)
+        else:
+            self.window.download_page.show_video(video, preferred_quality=preferred, profile=profile)
         if hasattr(self.window, 'scroll_download_to_top'):
             self.window.scroll_download_to_top()
         if retry:
@@ -596,7 +600,7 @@ class AppController:
                                           subtitle_format=state['subtitleFormat'], cookie_profile=profile,
                                           cookie_profile_id=profile.id if profile else '', batch_id=batch_id,
                                           playlist_id=media.playlist.id if media.playlist else '', playlist_title=media.title,
-                                          resolve_before_download=True, preferred_quality=self.settings.default_quality)
+                                          resolve_before_download=True, preferred_quality=self.settings.default_profile.quality_tier)
                 record = HistoryRecord(request.task_id, child.media_key, redact_sensitive(child.url), child.title,
                                        output / request.filename_stem, '解析后自动选择', None, None, TaskStatus.PENDING, created,
                                        media_mode=str(request.media_mode), audio_codec=request.audio_codec,

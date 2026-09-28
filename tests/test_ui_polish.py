@@ -1,4 +1,4 @@
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QObject, QPointF, Qt
 from PySide6.QtGui import QAccessible
 from PySide6.QtTest import QTest
 import pytest
@@ -306,6 +306,49 @@ def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_windo
     assert help_button.property('appearance') == 'normal'
     assert delete_button.property('appearance') == 'danger'
     assert abs(edit_button.height() - delete_button.height()) < 1
+
+
+def test_settings_profiles_follow_v2_information_architecture(quick_window, qapp):
+    quick_window._select_page(2)
+    run_frames(qapp)
+    default_combo = find_item(quick_window, 'defaultDownloadProfile')
+    empty_state = find_item(quick_window, 'emptyDownloadProfiles')
+    create_button = find_item(quick_window, 'newDownloadProfile')
+    assert default_combo.property('count') == 2
+    assert default_combo.property('currentIndex') == 0
+    assert empty_state.isVisible()
+    assert not quick_window.root.findChild(QObject, 'builtinProfile-auto')
+    assert not quick_window.root.findChild(QObject, 'builtinProfile-best')
+
+    quick_window.settings_page.newProfile()
+    run_frames(qapp)
+    editor = find_item(quick_window, 'downloadProfileEditor')
+    assert editor.property('visible')
+    assert find_item(quick_window, 'profileQuality').isVisible()
+    assert find_item(quick_window, 'profileCodec').isVisible()
+    quick_window.settings_page.editProfileField('name', '2160p 下载')
+    quick_window.settings_page.editProfileField('quality_tier', '2160p')
+    quick_window.settings_page.saveProfile()
+    run_frames(qapp)
+
+    settings = quick_window.settings_page
+    profile = settings.current_settings().custom_download_profiles[0]
+    assert default_combo.property('count') == 3
+    assert default_combo.property('currentIndex') == 0
+    row = find_item(quick_window, 'customProfile-' + profile.id)
+    assert row.isVisible()
+    assert not empty_state.isVisible()
+    assert find_item(quick_window, 'editProfile-' + profile.id).isVisible()
+    assert find_item(quick_window, 'deleteProfile-' + profile.id).isVisible()
+    assert not quick_window.root.findChild(QObject, 'copyProfile-' + profile.id)
+    assert not quick_window.root.findChild(QObject, 'setDefaultProfile-' + profile.id)
+    assert create_button.isVisible()
+    assert not quick_window.root.findChild(QObject, 'downloadProfileSelector')
+    assert not quick_window.root.findChild(QObject, 'profileManagerButton')
+
+    settings.setDefaultProfile(profile.id)
+    run_frames(qapp)
+    assert default_combo.property('currentIndex') == 2
 
 
 def test_download_cookie_button_and_aligned_media_fields(quick_window, qapp, tmp_path):

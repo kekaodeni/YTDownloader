@@ -60,6 +60,23 @@ def test_v1_development_keys_are_ignored_without_corrupting_global_settings(tmp_
     assert settings.custom_download_profiles == ()
 
 
+def test_invalid_v2_profile_does_not_discard_other_settings(tmp_path):
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({
+        'schema_version': 6,
+        'download_directory': str(tmp_path),
+        'theme': 'dark',
+        'default_download_profile_id': 'p-broken',
+        'custom_download_profiles': [{'id': 'p-broken', 'name': 'Broken', 'codec_preference': 'bestvideo'}],
+    }), encoding='utf-8')
+    settings = SettingsService(path, default_download_directory=tmp_path).load()
+
+    assert settings.theme == 'dark'
+    assert settings.download_directory == str(tmp_path)
+    assert settings.default_download_profile_id == 'auto'
+    assert settings.custom_download_profiles == ()
+
+
 def test_custom_profile_storage_contains_only_semantic_download_options(tmp_path):
     path = tmp_path / 'settings.json'
     profile = DownloadProfile('p-anime', '动漫收藏', quality_tier='1080p',

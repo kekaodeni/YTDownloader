@@ -280,7 +280,7 @@ class DownloadPresenter(ViewState):
                     parseText='正在取消…' if cancelling else '取消解析' if busy else '解析',
                     parseHint='连接较慢，仍在尝试。你可以取消解析。' if state is ParseState.SLOW else '')
 
-    def show_video(self, video, *, preferred_quality='recommended'):
+    def show_video(self, video, *, preferred_quality='recommended', profile=None):
         self.video = video
         self._selected_entries.clear()
         self._entries.replace([dict(id=str(index), index=index, title=entry.title,
@@ -306,12 +306,37 @@ class DownloadPresenter(ViewState):
                     thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',
                     formats=labels, formatIndex=selected, filename=sanitize_filename(video.title),
                     directory=self._default_directory)
-        self.selectFormat(selected)
-        self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
-        if self._state['mediaMode'] == 'video_audio':
+        if profile is not None:
+            self._subtitle_preferences.update(enabled=profile.subtitle_enabled, auto=profile.subtitle_auto,
+                                              embed=profile.subtitle_embed)
+            self.update(audioCodec=profile.audio_codec, audioQuality=profile.audio_quality,
+                        subtitleFormat=profile.subtitle_format)
+            self.selectMode(profile.content_mode)
+            if profile.content_mode == 'audio_only':
+                self.selectAudio(profile.audio_codec, profile.audio_quality)
+            preferred_quality = profile.quality_tier
+        else:
+            self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
+        options = self.available_formats
+        if options:
+            if preferred_quality == 'highest':
+                selected = max(range(len(options)), key=lambda i: (options[i].display_height or 0, options[i].fps or 0, options[i].estimated_size or 0))
+            elif preferred_quality in {'2160p', '1440p', '1080p', '720p'}:
+                selected = next((i for i, option in enumerate(options)
+                                 if option.display_height == int(preferred_quality[:-1])), 0)
+            elif preferred_quality == 'recommended':
+                selected = next((i for i, option in enumerate(options) if option.is_recommended), 0)
+            else:
+                selected = next((i for i, option in enumerate(options) if option.label == preferred_quality), 0)
             self.selectFormat(selected)
         self.update(qualityAuto=preferred_quality == 'recommended' and self._state['mediaMode'] == 'video_audio')
         self._subtitle_state(reset_selection=True)
+        if profile is not None and profile.subtitle_languages and self._state['subtitleEnabled']:
+            available = {item['code'] for item in self._state['subtitleChoices']}
+            languages = [code for code in profile.subtitle_languages if code in available]
+            if languages:
+                self.update(subtitleLanguages=languages)
+                self._subtitle_state()
 
     @property
     def available_formats(self):

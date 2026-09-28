@@ -27,7 +27,7 @@ def test_app_controller_does_not_apply_stale_metadata_to_the_download_page(tmp_p
     controller = AppController.__new__(AppController)
     controller._metadata_gate = LatestRequestGate()
     controller._pending_retry = None
-    controller.settings = SimpleNamespace(default_quality="recommended")
+    controller.settings = SimpleNamespace(default_profile=SimpleNamespace(quality_tier='recommended'))
     displayed: list[str] = []
     controller.window = SimpleNamespace(
         download_page=SimpleNamespace(show_video=lambda video, **_kwargs: displayed.append(video.video_id))

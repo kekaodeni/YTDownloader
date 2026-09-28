@@ -13,6 +13,43 @@ Item {
             ColumnLayout {
                 id: body; width: scroll.width - 12; spacing: 20
                 UiText { text: "下载"; role: "SectionTitle" }
+                ColumnLayout {
+                    id: downloadProfilesSection; objectName: "downloadProfilesSection"
+                    Layout.fillWidth: true; spacing: 10
+                    UiText { text: "下载预设"; role: "SectionTitle" }
+                    SettingField { Layout.fillWidth: true; label: "默认下载预设"
+                        UiCombo {
+                            objectName: "defaultDownloadProfile"; Layout.fillWidth: true
+                            accessibleName: "默认下载预设"
+                            model: settings.state.profileOptions.map(function(profile) { return profile.name })
+                            currentIndex: Math.max(0, settings.state.profileOptions.findIndex(function(profile) { return profile.id === settings.state.defaultProfileId }))
+                            onActivated: settings.setDefaultProfile(settings.state.profileOptions[currentIndex].id)
+                        }
+                    }
+                    UiText { Layout.fillWidth: true; text: "用于设置新解析任务的初始下载参数。解析后仍可针对当前视频单独调整。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                    RowLayout { Layout.fillWidth: true; spacing: 8
+                        UiText { Layout.fillWidth: true; text: "自定义预设"; role: "SectionTitle" }
+                        UiButton { objectName: "newDownloadProfile"; text: "+ 新建预设"; appearance: "normal"; onClicked: settings.newProfile() }
+                    }
+                    UiText { objectName: "emptyDownloadProfiles"; Layout.fillWidth: true; visible: settings.state.customProfiles.length === 0; text: "暂无自定义预设。"; role: "Caption"; color: theme.state.muted }
+                    Repeater {
+                        model: settings.state.customProfiles
+                        delegate: Rectangle {
+                            required property var modelData
+                            objectName: "customProfile-" + modelData.id
+                            Layout.fillWidth: true; implicitHeight: 68; radius: 10
+                            color: theme.state.surface; border.color: theme.state.stroke
+                            RowLayout { anchors.fill: parent; anchors.margins: 10; spacing: 8
+                                ColumnLayout { Layout.fillWidth: true; spacing: 2
+                                    UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
+                                    UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
+                                }
+                                UiButton { objectName: "editProfile-" + modelData.id; text: "编辑"; onClicked: settings.editProfile(modelData.id) }
+                                UiButton { objectName: "deleteProfile-" + modelData.id; text: "删除"; appearance: "danger"; onClicked: settings.deleteProfile(modelData.id) }
+                            }
+                        }
+                    }
+                }
                 SettingField {
                     Layout.fillWidth: true; label: "默认下载目录"
                     RowLayout { Layout.fillWidth: true
@@ -21,18 +58,12 @@ Item {
                     }
                 }
                 GridLayout {
-                    Layout.fillWidth: true; columns: root.width >= 720 ? 3 : 1; columnSpacing: 16; rowSpacing: 16
-                    SettingField { Layout.fillWidth: true; label: "默认画质"
-                        UiCombo { Layout.fillWidth: true; accessibleName: "默认画质"; model: ["自动推荐", "2160p", "1440p", "1080p", "720p"]; property var values: ["recommended", "2160p 4K", "1440p 2K", "1080p", "720p"]; currentIndex: Math.max(0, values.indexOf(settings.state.default_quality)); onActivated: settings.edit("default_quality", values[currentIndex]) }
-                    }
+                    Layout.fillWidth: true; columns: root.width >= 720 ? 2 : 1; columnSpacing: 16; rowSpacing: 16
                     SettingField { Layout.fillWidth: true; label: "同时下载任务数"
                         UiCombo { Layout.fillWidth: true; accessibleName: "同时下载任务数"; model: ["1", "2（默认）", "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.edit("max_concurrent_downloads", currentIndex + 1) }
                     }
                     SettingField { Layout.fillWidth: true; label: "分片并发"
                         UiCombo { Layout.fillWidth: true; accessibleName: "分片并发数"; model: ["自动", "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.edit("concurrent_fragments", values[currentIndex]) }
-                    }
-                    SettingField { Layout.fillWidth: true; label: "视频编码（高级）"
-                        UiCombo { Layout.fillWidth: true; accessibleName: "视频编码偏好"; model: ["自动推荐", "AV1", "VP9", "H.264"]; property var values: ["auto", "av1", "vp9", "h264"]; currentIndex: Math.max(0, values.indexOf(settings.state.codec_preference)); onActivated: settings.edit("codec_preference", values[currentIndex]) }
                     }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
@@ -104,6 +135,64 @@ Item {
                 UiText { Layout.fillWidth: true; text: settings.state.saveText; role: "Caption"; wrapMode: Text.Wrap }
                 UiButton { text: "立即保存"; onClicked: settings.save() }
             }
+        }
+    }
+    Dialog {
+        id: profileEditor
+        objectName: "downloadProfileEditor"
+        parent: Overlay.overlay; modal: true; focus: true; closePolicy: Popup.NoAutoClose
+        width: Math.min(560, parent ? parent.width - 32 : 560)
+        height: Math.min(680, parent ? parent.height - 36 : 680)
+        x: parent ? (parent.width - width) / 2 : 0
+        y: parent ? (parent.height - height) / 2 : 0
+        padding: 22
+        title: "自定义下载预设"
+        background: Rectangle { radius: 16; color: theme.state.elevated; border.color: theme.state.stroke }
+        Overlay.modal: Rectangle { color: "#550C1524" }
+        onRejected: settings.closeProfileEditor()
+        onClosed: if (settings.state.profileEditorOpen) settings.closeProfileEditor()
+        Connections {
+            target: settings
+            function onChanged() {
+                if (settings.state.profileEditorOpen && !profileEditor.visible) profileEditor.open()
+                else if (!settings.state.profileEditorOpen && profileEditor.visible) profileEditor.close()
+            }
+        }
+        contentItem: ScrollView {
+            clip: true; contentWidth: availableWidth
+            ColumnLayout { width: parent.width; spacing: 14
+                SettingField { Layout.fillWidth: true; label: "名称"
+                    UiField { objectName: "profileNameInput"; Layout.fillWidth: true; text: settings.state.profileDraftName; placeholderText: "例如：2160p 下载"; onTextEdited: settings.editProfileField("name", text) }
+                }
+                SettingField { Layout.fillWidth: true; label: "下载内容"
+                    UiCombo { objectName: "profileContentMode"; Layout.fillWidth: true; accessibleName: "预设下载内容"; model: ["视频 + 音频", "仅视频", "仅音频"]; property var values: ["video_audio", "video_only", "audio_only"]; currentIndex: values.indexOf(settings.state.profileDraftContentMode); onActivated: settings.editProfileField("content_mode", values[currentIndex]) }
+                }
+                SettingField { Layout.fillWidth: true; label: "画质"
+                    UiCombo { objectName: "profileQuality"; Layout.fillWidth: true; accessibleName: "预设画质"; model: ["自动推荐", "最高质量", "2160p", "1440p", "1080p", "720p"]; property var values: ["recommended", "highest", "2160p", "1440p", "1080p", "720p"]; currentIndex: values.indexOf(settings.state.profileDraftQuality); onActivated: settings.editProfileField("quality_tier", values[currentIndex]) }
+                }
+                SettingField { Layout.fillWidth: true; label: "视频编码"
+                    UiCombo { objectName: "profileCodec"; Layout.fillWidth: true; accessibleName: "预设视频编码"; model: ["自动推荐", "AV1", "VP9", "H.264"]; property var values: ["auto", "av1", "vp9", "h264"]; currentIndex: values.indexOf(settings.state.profileDraftCodec); onActivated: settings.editProfileField("codec_preference", values[currentIndex]) }
+                }
+                SettingField { Layout.fillWidth: true; label: "音频格式"
+                    UiCombo { objectName: "profileAudioCodec"; Layout.fillWidth: true; accessibleName: "预设音频格式"; model: ["原始音频", "M4A", "MP3", "Opus", "FLAC"]; property var values: ["original", "m4a", "mp3", "opus", "flac"]; currentIndex: values.indexOf(settings.state.profileDraftAudioCodec); onActivated: settings.editProfileField("audio_codec", values[currentIndex]) }
+                }
+                SettingField { Layout.fillWidth: true; label: "转码音频质量"
+                    UiCombo { objectName: "profileAudioQuality"; Layout.fillWidth: true; accessibleName: "预设音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; property var values: ["original", "320", "256", "192", "128"]; currentIndex: values.indexOf(settings.state.profileDraftAudioQuality); onActivated: settings.editProfileField("audio_quality", values[currentIndex]) }
+                }
+                UiSwitch { objectName: "profileSubtitleEnabled"; text: "下载字幕"; checked: settings.state.profileDraftSubtitleEnabled; onToggled: settings.editProfileField("subtitle_enabled", checked) }
+                UiSwitch { objectName: "profileSubtitleAuto"; text: "包含自动生成字幕"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleAuto; onToggled: settings.editProfileField("subtitle_auto", checked) }
+                SettingField { Layout.fillWidth: true; label: "字幕格式"
+                    UiCombo { objectName: "profileSubtitleFormat"; Layout.fillWidth: true; accessibleName: "预设字幕格式"; model: ["SRT", "VTT"]; property var values: ["srt", "vtt"]; currentIndex: values.indexOf(settings.state.profileDraftSubtitleFormat); enabled: settings.state.profileDraftSubtitleEnabled; onActivated: settings.editProfileField("subtitle_format", values[currentIndex]) }
+                }
+                UiSwitch { objectName: "profileSubtitleEmbed"; text: "嵌入视频"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleEmbed; onToggled: settings.editProfileField("subtitle_embed", checked) }
+                UiText { objectName: "profileEditorMessage"; Layout.fillWidth: true; visible: text.length > 0; text: settings.state.profileMessage; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+            }
+        }
+        footer: RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            UiButton { text: "取消"; onClicked: settings.closeProfileEditor() }
+            UiButton { objectName: "saveProfile"; text: "保存"; appearance: "primary"; onClicked: settings.saveProfile() }
         }
     }
 }

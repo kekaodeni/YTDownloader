@@ -3,7 +3,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from yt_downloader.core.errors import AppError, CancellationCleanupReport
-from yt_downloader.core.models import CodecPreference, DownloadProgress, DownloadResult, ParseState, TaskStatus
+from yt_downloader.core.models import DownloadProgress, DownloadProfile, DownloadResult, ParseState, TaskStatus
 from yt_downloader.ui.quick_dialogs import ErrorSession
 from test_download_service import _request
 from conftest import find_item, click_item, run_frames
@@ -155,7 +155,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(quick_window, 
     with qtbot.waitSignal(page.save_requested, timeout=1500) as signal:
         page.edit('download_directory', str(tmp_path/'新的目录'))
     saved = signal.args[0]
-    assert saved.schema_version == 5
+    assert saved.schema_version == 6
     assert saved.download_directory == str(tmp_path/'新的目录')
     assert page.state['saveText'] == '正在保存…'
     page.mark_saved(saved)
@@ -180,11 +180,67 @@ def test_network_settings_round_trip_through_auto_save(quick_window, qtbot):
     assert signal.args[0].custom_proxy_url == 'http://127.0.0.1:8080'
     assert signal.args[0].concurrent_fragments == 4
 
-def test_codec_preference_is_auto_saved(quick_window, qtbot):
+def test_default_profile_is_auto_saved(quick_window, qtbot):
     page = quick_window.settings_page
     with qtbot.waitSignal(page.save_requested) as signal:
-        page.edit('codec_preference',CodecPreference.AV1.value)
-    assert signal.args[0].codec_preference is CodecPreference.AV1
+        page.setDefaultProfile('best')
+    assert signal.args[0].default_download_profile_id == 'best'
+    assert signal.args[0].default_quality == 'highest'
+
+
+def test_custom_profile_create_edit_delete_and_default_selection(quick_window, qtbot):
+    page = quick_window.settings_page
+    page.newProfile()
+    assert page.state['profileDraftQuality'] == 'recommended'
+    assert page.state['profileDraftCodec'] == 'auto'
+    page.editProfileField('name', '动漫收藏')
+    page.editProfileField('quality_tier', '1080p')
+    page.editProfileField('subtitle_enabled', True)
+    with qtbot.waitSignal(page.save_requested, timeout=1500):
+        page.saveProfile()
+
+    profile = page.current_settings().custom_download_profiles[0]
+    assert profile.name == '动漫收藏'
+    assert profile.quality_tier == '1080p'
+    assert profile.subtitle_enabled
+    assert page.state['defaultProfileId'] == 'auto'
+
+    with qtbot.waitSignal(page.save_requested, timeout=1500):
+        page.setDefaultProfile(profile.id)
+    assert page.current_settings().default_download_profile_id == profile.id
+
+    page.editProfile(profile.id)
+    page.editProfileField('quality_tier', '2160p')
+    with qtbot.waitSignal(page.save_requested, timeout=1500):
+        page.saveProfile()
+    assert page.current_settings().default_profile.quality_tier == '2160p'
+
+    with qtbot.waitSignal(page.save_requested, timeout=1500):
+        page.deleteProfile(profile.id)
+    assert page.current_settings().default_download_profile_id == 'auto'
+    assert page.current_settings().custom_download_profiles == ()
+
+
+def test_profile_initializes_each_new_task_without_mutating_default(quick_window, tmp_path):
+    page = quick_window.download_page
+    request = _request(tmp_path)
+    source = request.video
+    from yt_downloader.core.models import FormatOption
+    low = FormatOption('720p', 720, 30, 'avc1', 'mp4a', 'MP4', 'mp4', 'low', 100, True, 'low', is_recommended=True)
+    high = FormatOption('2160p', 2160, 30, 'av01', 'mp4a', 'MP4', 'mp4', 'high', 400, True, 'high')
+    video = replace(source, formats=(low, high))
+    profile = DownloadProfile('p-high', '最高画质', quality_tier='highest', codec_preference='av1')
+
+    page.show_video(video, profile=profile)
+    assert page.state['formatIndex'] == 1
+    assert page.state['qualityAuto'] is False
+    page.selectFormat(0)  # Current-task override.
+    assert page.state['formatIndex'] == 0
+    assert profile.quality_tier == 'highest'
+
+    page.show_video(replace(video, video_id='next'), profile=profile)
+    assert page.state['formatIndex'] == 1
+    assert page.state['mediaMode'] == 'video_audio'
 
 def test_network_test_is_separate_from_save(quick_window, qtbot):
     page = quick_window.settings_page; saves = []
