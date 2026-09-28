@@ -171,6 +171,78 @@ def test_soop_catch_unknown_codec_hls_format_survives_into_download_request():
     assert media_options(request)['format'] == 'hls'
 
 
+@pytest.mark.parametrize('probe_error', [None, TimeoutError('probe timeout'), OSError('probe unavailable')])
+def test_single_unknown_soop_hls_format_uses_probe_once_and_keeps_raw_metadata(probe_error):
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    url = 'https://vod.sooplive.com/player/207147181/catch'
+    info = {
+        '_type': 'video', 'extractor': 'soop', 'extractor_key': 'AfreecaTV',
+        'id': 'native-id', 'title': 'SOOP Catch',
+        'formats': [{'format_id': 'hls', 'protocol': 'm3u8_native', 'ext': 'mp4',
+                     'width': None, 'height': None, 'fps': None, 'url': 'https://media.example/stream.m3u8'}],
+    }
+    class Ydl(AbstractContextManager):
+        def __init__(self, _options): pass
+        def __exit__(self, *args): pass
+        def extract_info(self, _url, *, download):
+            assert download is False
+            return info
+        def sanitize_info(self, data): return data
+    class Probe:
+        calls = []
+        def probe_stream(self, stream_url, *, http_headers, timeout):
+            self.calls.append((stream_url, http_headers, timeout))
+            if probe_error:
+                raise probe_error
+            return {'width': 1080, 'height': 1920, 'avg_frame_rate': '60000/1001',
+                    'codec_name': 'h264'}
+    probe = Probe()
+
+    media = MediaResolver(ydl_factory=Ydl, ffmpeg_service=probe, require_deno=False).fetch_metadata(
+        url, include_thumbnail=False)
+
+    assert len(probe.calls) == 1
+    option = media.formats[0]
+    assert option.width is option.height is option.fps is None
+    assert (option.detected_width, option.detected_height) == (
+        (None, None) if probe_error else (1080, 1920))
+    if probe_error:
+        assert option.detected_fps is None
+    else:
+        assert option.detected_fps == pytest.approx(60000 / 1001)
+    assert option.display_metadata_source == ('original' if probe_error else 'ffprobe')
+    assert option.label == ('原始画质' if probe_error else '1080p 60 FPS 竖屏')
+    assert info['formats'][0]['width'] is None and info['formats'][0]['height'] is None
+
+
+def test_soop_native_dimensions_skip_ffprobe():
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    url = 'https://vod.sooplive.com/player/205280431/catch'
+    info = {'_type': 'video', 'extractor': 'soop', 'extractor_key': 'AfreecaTV',
+            'formats': [
+                {'format_id': '1080P', 'protocol': 'm3u8_native', 'width': 1080,
+                 'height': 1920, 'vcodec': 'avc1', 'url': 'https://media.example/a.m3u8'},
+                {'format_id': '720P', 'protocol': 'm3u8_native', 'width': 720,
+                 'height': 1280, 'vcodec': 'avc1', 'url': 'https://media.example/b.m3u8'},
+                {'format_id': '540P', 'protocol': 'm3u8_native', 'width': 540,
+                 'height': 960, 'vcodec': 'avc1', 'url': 'https://media.example/c.m3u8'},
+            ]}
+    class Ydl(AbstractContextManager):
+        def __init__(self, _options): pass
+        def __exit__(self, *args): pass
+        def extract_info(self, _url, *, download): return info
+        def sanitize_info(self, data): return data
+    class Probe:
+        def probe_stream(self, *_args, **_kwargs): raise AssertionError('native dimensions must skip ffprobe')
+
+    media = MediaResolver(ydl_factory=Ydl, ffmpeg_service=Probe(), require_deno=False).fetch_metadata(
+        url, include_thumbnail=False)
+    assert [item.label for item in media.formats] == ['1080p 竖屏', '720p 竖屏', '540p 竖屏']
+    assert media.formats[0].display_metadata_source == 'yt-dlp'
+
+
 @pytest.mark.parametrize(
     ('formats', 'expected_code'),
     [([], 'NO_FORMATS'),

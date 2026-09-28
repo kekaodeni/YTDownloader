@@ -159,22 +159,28 @@ class FormatOption:
     quality_rank: int | None = None
     semantic_portrait: bool | None = None
     dynamic_range: str = ""
+    detected_width: int | None = None
+    detected_height: int | None = None
+    detected_fps: float | None = None
+    display_metadata_source: str = "yt-dlp"
 
     @property
     def display_height(self) -> int | None:
         if self.semantic_height is not None:
             return self.semantic_height
-        if self.height is None:
+        width = self.width if self.width is not None else self.detected_width
+        height = self.height if self.height is not None else self.detected_height
+        if height is None:
             return None
-        if self.width is not None and self.height > self.width:
-            return self.width
-        return self.height
+        if width is not None and height > width:
+            return width
+        return height
 
     @property
     def display_fps(self) -> float | None:
         if self.quality_rank is not None:
             return self.semantic_fps
-        return self.fps
+        return self.fps if self.fps is not None else self.detected_fps
 
     @property
     def quality_sort_key(self) -> tuple[int, int, float, int]:
@@ -278,6 +284,11 @@ class PlaylistEntry:
     duration: float | None = None
     thumbnail: str = ''
     unavailable: bool = False
+    formats: tuple[FormatOption, ...] = ()
+    audio_formats: tuple[FormatOption, ...] = ()
+    video_only_formats: tuple[FormatOption, ...] = ()
+    embedded: bool = False
+    selected_format: FormatOption | None = None
 
 
 # Keep existing download/history consumers and older fixtures source-compatible.
@@ -310,6 +321,7 @@ class DownloadRequest:
     preferred_quality: str = 'recommended'
     use_native_format: bool = False
     resume_partial: bool = False
+    playlist_item_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

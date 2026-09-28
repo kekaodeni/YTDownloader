@@ -423,6 +423,8 @@ class DownloadService:
             "final_path": str(final_path),
         }
         options.update(media_options(request))
+        if request.playlist_item_index is not None:
+            options['noplaylist'] = False
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:

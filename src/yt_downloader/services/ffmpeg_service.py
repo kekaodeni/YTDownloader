@@ -168,6 +168,40 @@ class FfmpegService:
             ) from exc
         return payload
 
+    def probe_stream(
+        self, url: str, *, http_headers: dict[str, str] | None = None, timeout: float = 8,
+    ) -> dict[str, Any]:
+        """Read basic video stream dimensions from an HLS URL without changing yt-dlp metadata."""
+        executable = self._require(self.ffprobe_path, "ffprobe")
+        arguments = [str(executable), "-v", "error", "-rw_timeout", str(int(timeout * 1_000_000)),
+                     "-select_streams", "v:0", "-show_entries",
+                     "stream=codec_name,width,height,avg_frame_rate,r_frame_rate",
+                     "-of", "json"]
+        # Never put credentials in process arguments. These headers are enough
+        # for public/referrer guarded streams; authenticated sources gracefully
+        # fall back to the extractor's original-quality label.
+        safe_headers = {key: value for key, value in (http_headers or {}).items()
+                        if key.casefold() in {"user-agent", "referer", "origin"}}
+        if safe_headers:
+            header_block = "".join(f"{key}: {value}\r\n" for key, value in safe_headers.items())
+            arguments.extend(("-headers", header_block))
+        arguments.append(url)
+        result = self._run(arguments, timeout=timeout, stage="Probing stream")
+        payload = json.loads(result.stdout)
+        stream = next((item for item in payload.get("streams", [])
+                       if item.get("codec_type", "video") == "video"), None)
+        if not isinstance(stream, dict):
+            raise ValueError("ffprobe returned no video stream")
+        def rate(value):
+            try:
+                numerator, denominator = str(value).split("/", 1)
+                return float(numerator) / float(denominator) if float(denominator) else None
+            except (TypeError, ValueError, ZeroDivisionError):
+                return None
+        return {"width": stream.get("width"), "height": stream.get("height"),
+                "fps": rate(stream.get("avg_frame_rate")) or rate(stream.get("r_frame_rate")),
+                "codec": stream.get("codec_name")}
+
     def probe_duration(self, media_path: str | Path, *, cancel_event: threading.Event | None = None) -> float:
         payload = self.probe(media_path, cancel_event=cancel_event)
         try:

@@ -1,0 +1,55 @@
+{
+  "_type": "playlist",
+  "id": "BV1TiGg6kErJ",
+  "extractor": "BiliBili",
+  "extractor_key": "BiliBili",
+  "title": "【直播回放】HDR直播：明日方舟/鹰角嘉年华 2026年08月01日13点场",
+  "webpage_url": "https://www.bilibili.com/video/BV1TiGg6kErJ/",
+  "thumbnail": null,
+  "entries": [
+    {
+      "_type": "video",
+      "id": "BV1TiGg6kErJ_p1",
+      "playlist_index": 1,
+      "title": "【直播回放】HDR直播：明日方舟/鹰角嘉年华 2026年08月01日13点场 (P1)",
+      "url": null,
+      "webpage_url": "https://www.bilibili.com/video/BV1TiGg6kErJ/",
+      "ie_key": "BiliBili",
+      "duration": 7219.315,
+      "thumbnail": "https://i.example.invalid/replay-p1.jpg",
+      "formats": [
+        {"format_id": "16", "quality": 16, "width": 640, "height": 360, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001E", "acodec": "none", "url": "https://media.example.invalid/video-16"},
+        {"format_id": "32", "quality": 32, "width": 852, "height": 480, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001F", "acodec": "none", "url": "https://media.example.invalid/video-32"},
+        {"format_id": "64", "quality": 64, "width": 1280, "height": 720, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001F", "acodec": "none", "url": "https://media.example.invalid/video-64"},
+        {"format_id": "80", "quality": 80, "width": 1920, "height": 1080, "fps": 30, "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "url": "https://media.example.invalid/video-80"},
+        {"format_id": "116", "quality": 116, "width": 1920, "height": 1080, "fps": 59.832, "ext": "mp4", "vcodec": "avc1.64002A", "acodec": "none", "url": "https://media.example.invalid/video-116"},
+        {"format_id": "125", "quality": 125, "width": 1920, "height": 1080, "fps": 59.832, "dynamic_range": "HDR10", "ext": "mp4", "vcodec": "avc1.640033", "acodec": "none", "url": "https://media.example.invalid/video-125"},
+        {"format_id": "30216", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 64, "url": "https://media.example.invalid/audio-30216"},
+        {"format_id": "30232", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128, "url": "https://media.example.invalid/audio-30232"},
+        {"format_id": "30280", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 192, "url": "https://media.example.invalid/audio-30280"}
+      ]
+    },
+    {
+      "_type": "video",
+      "id": "BV1TiGg6kErJ_p2",
+      "playlist_index": 2,
+      "title": "【直播回放】HDR直播：明日方舟/鹰角嘉年华 2026年08月01日13点场 (P2)",
+      "url": null,
+      "webpage_url": "https://www.bilibili.com/video/BV1TiGg6kErJ/",
+      "ie_key": "BiliBili",
+      "duration": 5018.552,
+      "thumbnails": [{"url": "https://i.example.invalid/replay-p2.jpg"}],
+      "formats": [
+        {"format_id": "16", "quality": 16, "width": 640, "height": 360, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001E", "acodec": "none", "url": "https://media.example.invalid/video-16"},
+        {"format_id": "32", "quality": 32, "width": 852, "height": 480, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001F", "acodec": "none", "url": "https://media.example.invalid/video-32"},
+        {"format_id": "64", "quality": 64, "width": 1280, "height": 720, "fps": 30, "ext": "mp4", "vcodec": "avc1.64001F", "acodec": "none", "url": "https://media.example.invalid/video-64"},
+        {"format_id": "80", "quality": 80, "width": 1920, "height": 1080, "fps": 30, "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "url": "https://media.example.invalid/video-80"},
+        {"format_id": "116", "quality": 116, "width": 1920, "height": 1080, "fps": 59.936, "ext": "mp4", "vcodec": "avc1.64002A", "acodec": "none", "url": "https://media.example.invalid/video-116"},
+        {"format_id": "125", "quality": 125, "width": 1920, "height": 1080, "fps": 59.936, "dynamic_range": "HDR10", "ext": "mp4", "vcodec": "avc1.640033", "acodec": "none", "url": "https://media.example.invalid/video-125"},
+        {"format_id": "30216", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 64, "url": "https://media.example.invalid/audio-30216"},
+        {"format_id": "30232", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128, "url": "https://media.example.invalid/audio-30232"},
+        {"format_id": "30280", "quality": 0, "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 192, "url": "https://media.example.invalid/audio-30280"}
+      ]
+    }
+  ]
+}

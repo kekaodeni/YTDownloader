@@ -19,8 +19,8 @@ class _BilibiliQualityTier:
 
 # These are Bilibili's user-facing DASH quality IDs. Keep them separate from
 # the raw width/height/fps reported for each encoded candidate.
-# HDR and Dolby Vision use a 4K semantic resolution. Their dynamic range is
-# still read from yt-dlp metadata separately.
+# HDR/Dolby Vision tiers retain their own quality identity, while their visible
+# resolution comes from yt-dlp's actual dimensions rather than the quality ID.
 _BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
     6: _BilibiliQualityTier(240, 10, "240p"),
     16: _BilibiliQualityTier(360, 20, "360p"),
@@ -31,8 +31,8 @@ _BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
     112: _BilibiliQualityTier(1080, 70, "1080p 高码率"),
     116: _BilibiliQualityTier(1080, 80, "1080p 60 FPS", "fixed60"),
     120: _BilibiliQualityTier(2160, 90, "2160p 4K", "measured"),
-    125: _BilibiliQualityTier(2160, 100, "2160p 4K", "measured"),
-    126: _BilibiliQualityTier(2160, 110, "2160p 4K", "measured"),
+    125: _BilibiliQualityTier(0, 100, "", "measured"),
+    126: _BilibiliQualityTier(0, 110, "", "measured"),
 }
 
 
@@ -79,6 +79,10 @@ def _option_for_selection(
     video_ext = str(video.get("ext") or "mp4").lower()
     width = int(video["width"]) if isinstance(video.get("width"), (int, float)) else None
     fps = float(video["fps"]) if isinstance(video.get("fps"), (int, float)) else None
+    detected = video.get("_display_probe") or {}
+    detected_width = int(detected["width"]) if isinstance(detected.get("width"), (int, float)) else None
+    detected_height = int(detected["height"]) if isinstance(detected.get("height"), (int, float)) else None
+    detected_fps = float(detected["fps"]) if isinstance(detected.get("fps"), (int, float)) else None
     has_audio = video.get("acodec") not in {None, "none"}
     audio = dict(resolved.audio) if resolved.audio else None
     audio_id = str(audio.get("format_id")) if audio else None
@@ -107,7 +111,9 @@ def _option_for_selection(
               else "none")
     )
     height = int(video["height"]) if isinstance(video.get("height"), (int, float)) else None
-    is_portrait = (height is not None and width is not None and height > width
+    display_width = width if width is not None else detected_width
+    display_raw_height = height if height is not None else detected_height
+    is_portrait = (display_raw_height is not None and display_width is not None and display_raw_height > display_width
                    if orientation is None else orientation)
     semantic_fps = None
     if quality_tier and quality_tier.fps_mode == "fixed60":
@@ -115,20 +121,31 @@ def _option_for_selection(
     elif quality_tier and quality_tier.fps_mode == "measured" and fps is not None and fps >= 50:
         semantic_fps = 60.0
     if quality_tier:
-        label = quality_tier.label
         dynamic_range = str(video.get("dynamic_range") or "")
-        if dynamic_range.casefold() == "dv":
+        semantic_range_tier = site_quality in {125, 126}
+        if semantic_range_tier:
+            range_value = dynamic_range.casefold()
+            label = ("杜比视界" if range_value == "dv" or site_quality == 126
+                     else "HDR" if range_value in {"hdr", "hdr10"} or site_quality == 125
+                     else quality_tier.label or "原始画质")
+        else:
+            label = quality_tier.label or _quality_label(width, height, None)
+            if label == "未知清晰度":
+                label = "原始画质"
+        if not semantic_range_tier and dynamic_range.casefold() == "dv":
             label += " 杜比视界"
-        elif dynamic_range.casefold() in {"hdr", "hdr10"}:
+        elif not semantic_range_tier and dynamic_range.casefold() in {"hdr", "hdr10"}:
             label += " HDR"
-        elif dynamic_range and dynamic_range.casefold() != "sdr":
+        elif not semantic_range_tier and dynamic_range and dynamic_range.casefold() != "sdr":
             label += f" {dynamic_range}"
         if quality_tier.fps_mode == "measured" and semantic_fps:
             label += " 60 FPS"
         if is_portrait:
             label += " 竖屏"
     else:
-        label = _quality_label(width, height, fps)
+        label = _quality_label(width or detected_width, height or detected_height, fps or detected_fps)
+        if label == "未知清晰度" and detected.get("source") == "original":
+            label = "原始画质"
     return FormatOption(
         label=label,
         height=height, fps=fps, vcodec=str(video.get("vcodec") or "unknown"), acodec=acodec,
@@ -142,11 +159,13 @@ def _option_for_selection(
         audio_size_is_estimate=audio_size_is_estimate, video_protocol=str(video.get("protocol") or ""),
         audio_protocol=str(audio.get("protocol") or "") if audio else "",
         site_quality=site_quality,
-        semantic_height=quality_tier.nominal_height if quality_tier else None,
+        semantic_height=quality_tier.nominal_height if quality_tier and quality_tier.nominal_height else None,
         semantic_fps=semantic_fps,
         quality_rank=quality_tier.rank if quality_tier else None,
         semantic_portrait=is_portrait if quality_tier else None,
         dynamic_range=str(video.get("dynamic_range") or ""),
+        detected_width=detected_width, detected_height=detected_height, detected_fps=detected_fps,
+        display_metadata_source=str(detected.get("source") or "yt-dlp"),
         size_kind=(SizeKind.UNKNOWN if estimated is None else SizeKind.ESTIMATED
                    if size_is_estimate else SizeKind.EXACT),
     )

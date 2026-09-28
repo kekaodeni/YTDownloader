@@ -9,6 +9,7 @@ from pathlib import Path
 import threading
 import traceback
 from typing import Any, Callable, Mapping, Protocol
+from urllib.parse import urlsplit
 
 import requests
 import yt_dlp
@@ -24,6 +25,7 @@ from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
+from yt_downloader.services.ffmpeg_service import FfmpegService
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,7 @@ class MediaResolver:
         network_policy: NetworkPolicy | None = None,
         cookie_profile=None,
         cookie_enabled: bool = False,
+        ffmpeg_service: FfmpegService | None = None,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
@@ -78,6 +81,7 @@ class MediaResolver:
         self.network_policy = network_policy
         self.cookie_profile = cookie_profile
         self.cookie_enabled = bool(cookie_enabled)
+        self.ffmpeg_service = ffmpeg_service
 
     def fetch_metadata(
         self,
@@ -116,6 +120,11 @@ class MediaResolver:
             "js_runtimes": js_config,
             "remote_components": [],
         }
+        parsed_url = urlsplit(normalized)
+        if parsed_url.hostname and parsed_url.hostname.casefold().endswith("bilibili.com") and "/video/" in parsed_url.path:
+            # Bilibili replay video pages expose each segment's formats only in
+            # yt-dlp's native playlist entries. Keep ordinary lists flat.
+            options["extract_flat"] = False
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
         try:
@@ -136,8 +145,10 @@ class MediaResolver:
                     cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
-            media = resolve_metadata(info, normalized, requested_url=url.strip())
-            if not media.formats and not media.audio_formats and media.media_type != 'playlist':
+            detected_formats = self._probe_unknown_soop_hls(info, cancel_event)
+            media = resolve_metadata(info, normalized, requested_url=url.strip(),
+                                     detected_formats=detected_formats)
+            if not media.formats and not media.audio_formats and media.media_type not in {'playlist', 'multi_video'}:
                 raw_formats = info.get('formats')
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))
                 raise AppError(
@@ -184,6 +195,48 @@ class MediaResolver:
                     log_excerpt="\n".join(ydl_logger.lines),
                 ),
             ) from exc
+
+    def _probe_unknown_soop_hls(self, info: Mapping[str, Any], cancel_event=None) -> dict[str, dict[str, Any]]:
+        formats = info.get("formats")
+        extractor = str(info.get("extractor_key") or info.get("extractor") or "").casefold()
+        if (not extractor.startswith(("soop", "afreecatv"))
+                or not isinstance(formats, list) or len(formats) != 1):
+            return {}
+        item = formats[0]
+        if (not isinstance(item, Mapping) or item.get("vcodec") == "none"
+                or (item.get("width") and item.get("height"))):
+            return {}
+        protocol = str(item.get("protocol") or "").casefold()
+        url = item.get("url")
+        if not (url and ("m3u8" in protocol or str(url).split("?", 1)[0].casefold().endswith(".m3u8"))):
+            return {}
+        format_id = str(item.get("format_id") or "")
+        if not self.ffmpeg_service:
+            return {format_id: {"source": "original"}}
+        headers = item.get("http_headers")
+        safe_headers = {str(key): str(value) for key, value in headers.items()
+                        if str(key).casefold() in {"user-agent", "referer", "origin"}} if isinstance(headers, Mapping) else {}
+        if cancel_event and cancel_event.is_set():
+            raise OperationCancelled(ErrorContext(stage="Probing stream metadata"))
+        try:
+            detected = self.ffmpeg_service.probe_stream(str(url), http_headers=safe_headers, timeout=8)
+        except OperationCancelled:
+            raise
+        except Exception as exc:
+            logger.info("Optional HLS display probe failed (%s)", type(exc).__name__)
+            return {format_id: {"source": "original"}}
+        if not isinstance(detected, Mapping) or not detected.get("width") or not detected.get("height"):
+            return {format_id: {"source": "original"}}
+        detected = dict(detected)
+        if detected.get("fps") is None:
+            rate = detected.get("avg_frame_rate") or detected.get("r_frame_rate")
+            try:
+                numerator, denominator = str(rate).split("/", 1)
+                detected["fps"] = float(numerator) / float(denominator)
+            except (TypeError, ValueError, ZeroDivisionError):
+                detected["fps"] = None
+        result = {format_id: dict(detected, source="ffprobe")}
+        return result
 
     def fetch_thumbnail(
         self,

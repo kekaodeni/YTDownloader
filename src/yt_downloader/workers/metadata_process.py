@@ -18,6 +18,7 @@ from yt_downloader.infrastructure.windows_job import ProcessJob
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.media_resolver import MediaResolver
+from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.workers.request_gate import RequestToken
 
 
@@ -32,6 +33,7 @@ class MetadataProcessConfig:
     require_deno: bool = True
     cookie_profile: CookieProfile | None = None
     cookie_enabled: bool = False
+    ffprobe_path: str = ""
 
 
 def metadata_process_self_test_entry(
@@ -93,6 +95,8 @@ def metadata_process_entry(
             network_policy=network,
             cookie_profile=config.cookie_profile,
             cookie_enabled=config.cookie_enabled,
+            ffmpeg_service=(FfmpegService(ffprobe_path=Path(config.ffprobe_path))
+                            if config.ffprobe_path else None),
         )
         video = service.fetch_metadata(url, cancel_event, include_thumbnail=False)
         send_connection.send(("result", video))

@@ -136,7 +136,7 @@ def test_bilibili_semantic_quality_ignores_nonstandard_encoded_dimensions():
 
 def test_bilibili_dynamic_range_125_126_preserves_semantics_and_codec_candidates():
     formats = [
-        {"format_id": format_id, "ext": "mp4", "width": 3360, "height": 1890,
+        {"format_id": format_id, "ext": "mp4", "width": 3840, "height": 2160,
          "fps": 30, "quality": quality, "dynamic_range": dynamic_range,
          "vcodec": codec, "acodec": "none"}
         for format_id, quality, dynamic_range, codec in (
@@ -151,8 +151,8 @@ def test_bilibili_dynamic_range_125_126_preserves_semantics_and_codec_candidates
                              "https://www.bilibili.com/video/BV1KBaa6JEZV/")
 
     by_range = {option.dynamic_range: option for option in media.formats}
-    assert by_range["DV"].label == "2160p 4K 杜比视界"
-    assert by_range["HDR10"].label == "2160p 4K HDR"
+    assert by_range["DV"].label == "杜比视界"
+    assert by_range["HDR10"].label == "HDR"
     assert by_range["SDR"].label == "2160p 4K"
     assert set(by_range["DV"].candidate_video_format_ids) == {"dv-av1", "dv-hevc"}
     assert apply_codec_preference(by_range["DV"], CodecPreference.AV1).dynamic_range == "DV"
@@ -164,7 +164,7 @@ def test_bilibili_dynamic_range_125_126_preserves_semantics_and_codec_candidates
 
 def test_bilibili_dynamic_range_uses_semantic_fps_without_guessing():
     formats = [
-        {"format_id": format_id, "ext": "mp4", "width": 3360, "height": 1890,
+        {"format_id": format_id, "ext": "mp4", "width": 3840, "height": 2160,
          "fps": fps, "quality": 126, "dynamic_range": "DV",
          "vcodec": "avc1.640033", "acodec": "none"}
         for format_id, fps in (("dv-30", 30), ("dv-unknown", None), ("dv-60", 59.94))
@@ -174,10 +174,10 @@ def test_bilibili_dynamic_range_uses_semantic_fps_without_guessing():
                              "https://www.bilibili.com/video/BV1KBaa6JEZV/")
 
     assert {option.label for option in media.formats} == {
-        "2160p 4K 杜比视界", "2160p 4K 杜比视界 60 FPS",
+        "杜比视界", "杜比视界 60 FPS",
     }
     assert {option.dynamic_range for option in media.formats} == {"DV"}
-    no_fps = next(option for option in media.formats if option.label == "2160p 4K 杜比视界")
+    no_fps = next(option for option in media.formats if option.label == "杜比视界")
     assert set(no_fps.candidate_video_format_ids) == {"dv-30", "dv-unknown"}
 
 

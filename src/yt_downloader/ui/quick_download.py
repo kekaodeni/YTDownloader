@@ -158,7 +158,7 @@ class DownloadPresenter(ViewState):
         if not self.video or not 0 <= index < len(self.video.entries):
             return
         entry = self.video.entries[index]
-        if entry.unavailable:
+        if entry.unavailable or (entry.embedded and not self._entry_options(entry)):
             return
         if selected:
             self._selected_entries.add(index)
@@ -167,6 +167,29 @@ class DownloadPresenter(ViewState):
         row = self._entries.get(index)
         self._entries.put(dict(row, selected=selected))
         self.update(selectedCount=len(self._selected_entries))
+
+    def _entry_options(self, entry):
+        mode = self._state['mediaMode']
+        if mode == 'audio_only':
+            options = entry.audio_formats
+            codec = self._state['audioCodec']
+            matching = tuple(option for option in options if
+                             (codec == 'm4a' and option.acodec.startswith(('mp4a', 'aac'))) or
+                             (codec == 'opus' and option.acodec == 'opus'))
+            return matching or options
+        if mode == 'video_only':
+            return entry.video_only_formats
+        return entry.formats
+
+    @Slot(int, int)
+    def selectEntryFormat(self, index, format_index):
+        if not self.video or not 0 <= index < len(self.video.entries):
+            return
+        options = self._entry_options(self.video.entries[index])
+        if not 0 <= format_index < len(options):
+            return
+        row = self._entries.get(index)
+        self._entries.put(dict(row, formatIndex=format_index))
 
     @Slot(bool)
     def selectAllEntries(self, selected):
@@ -301,8 +324,13 @@ class DownloadPresenter(ViewState):
         self._selected_entries.clear()
         self._entries.replace([dict(id=str(index), index=index, title=entry.title,
                                    url=entry.url, thumbnail=entry.thumbnail, unavailable=entry.unavailable,
-                                   selected=False) for index, entry in enumerate(video.entries)])
-        self.update(playlist=video.media_type == 'playlist', selectedCount=0, playlistCount=len(video.entries))
+                                   selected=False, embedded=entry.embedded,
+                                   formatLabels=[option.label for option in self._entry_options(entry)],
+                                   formatIndex=next((i for i, option in enumerate(self._entry_options(entry))
+                                                     if option.is_recommended), 0))
+                              for index, entry in enumerate(video.entries)])
+        is_playlist = video.media_type in {'playlist', 'multi_video'}
+        self.update(playlist=is_playlist, selectedCount=0, playlistCount=len(video.entries))
         self._directory_overridden = False
         selected = 0
         labels = []
@@ -316,10 +344,12 @@ class DownloadPresenter(ViewState):
             compatibility_hint = '该网站由 yt-dlp 支持，但尚未经过 YTDownloader 完整验证。'
         else:
             compatibility_hint = ''
+        multi_video_hint = ('该视频包含多个分段，请为每个分段选择画质，再勾选需要下载的分段。'
+                            if video.media_type == 'multi_video' else '')
         self.update(cookieAuthStatus=auth_status, cookieAuthWarning=auth_warning,
                     cookieAuthInvalid=auth_state is AuthState.INVALID,
                     compatibilityHint=compatibility_hint,
-                    mediaHint=('仅显示前 1000 项，请明确选择需要的项目。' if video.entries_truncated else '请选择需要的项目；不会自动下载整个列表或频道。') if video.media_type == 'playlist' else '', technical='')
+                    mediaHint=(multi_video_hint or ('仅显示前 1000 项，请明确选择需要的项目。' if video.entries_truncated else '请选择需要的项目；不会自动下载整个列表或频道。')) if is_playlist else '', technical='')
         self.update(ready=True, title=video.title, meta=f'{video.channel}  ·  {format_duration(video.duration)}',
                     thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',
                     formats=labels, formatIndex=selected, filename=sanitize_filename(video.title),
@@ -388,6 +418,17 @@ class DownloadPresenter(ViewState):
         self.update(formats=[option.label for option in options], formatIndex=0, modeHint=hint, technical='')
         self.selectFormat(0)
         self.update(qualityAuto=mode == 'video_audio')
+        if self.video and self._state['playlist']:
+            for index, entry in enumerate(self.video.entries):
+                row = self._entries.get(index)
+                choices = self._entry_options(entry)
+                if entry.embedded and not choices:
+                    self._selected_entries.discard(index)
+                selected_index = next((i for i, option in enumerate(choices) if option.is_recommended), 0)
+                self._entries.put(dict(row, formatLabels=[option.label for option in choices],
+                                       formatIndex=selected_index,
+                                       unavailable=entry.unavailable or (entry.embedded and not choices)))
+            self.update(selectedCount=len(self._selected_entries))
         self._subtitle_state()
 
     @Slot(bool)
@@ -512,7 +553,15 @@ class DownloadPresenter(ViewState):
     def requestDownload(self):
         index = self._state['formatIndex']
         if self.video and self._state['playlist'] and self._selected_entries and not self._state['busy']:
-            self.batch_requested.emit(self.video, tuple(self.video.entries[i] for i in sorted(self._selected_entries)))
+            selected = []
+            for row_index in sorted(self._selected_entries):
+                entry = self.video.entries[row_index]
+                choices = self._entry_options(entry)
+                row = self._entries.get(row_index)
+                choice_index = row.get('formatIndex', 0)
+                option = choices[choice_index] if choices and 0 <= choice_index < len(choices) else None
+                selected.append(replace(entry, selected_format=option))
+            self.batch_requested.emit(self.video, tuple(selected))
             return
         if self.video and 0 <= index < len(self.available_formats) and not self._state['busy']:
             self.download_requested.emit(self.video, self.available_formats[index], self._state['filename'], self._state['directory'])

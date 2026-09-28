@@ -31,7 +31,7 @@ def _tracks(value, is_auto=False):
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
 
 
-def resolve_metadata(info, original_url, *, requested_url=None):
+def resolve_metadata(info, original_url, *, requested_url=None, detected_formats=None):
     if not isinstance(info, Mapping):
         raise TypeError('yt-dlp returned non-mapping metadata')
     extractor = str(info.get('extractor') or '')
@@ -42,15 +42,30 @@ def resolve_metadata(info, original_url, *, requested_url=None):
     raw_formats = info.get('formats')
     if not isinstance(raw_formats, list):
         raw_formats = [info] if info.get('url') and not is_playlist else []
+    detected_formats = detected_formats or {}
+    display_formats = []
+    for item in raw_formats:
+        if not isinstance(item, Mapping) or item.get('has_drm'):
+            continue
+        copy = dict(item)
+        detected = detected_formats.get(str(copy.get('format_id') or ''))
+        if detected:
+            copy['_display_probe'] = detected
+        display_formats.append(copy)
     formats = () if is_playlist else tuple(normalize_formats(
-        [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')],
+        display_formats,
         duration=duration, extractor_key=extractor_key))
-    usable = [item for item in raw_formats if isinstance(item, Mapping) and not item.get('has_drm')]
+    usable = display_formats
     audios = tuple(normalize_audio_formats(usable)) if not is_playlist else ()
     videos = tuple(normalize_formats([item for item in usable if item.get('acodec') == 'none'],
                                     duration=duration,
                                     extractor_key=extractor_key)) if not is_playlist else ()
-    media_type = 'playlist' if is_playlist else 'live' if info.get('is_live') else 'audio' if info.get('vcodec') == 'none' else 'video'
+    raw_entries = list((info.get('entries') or [])[:1000]) if is_playlist else []
+    is_bilibili = extractor_key.casefold().startswith('bilibili') or extractor.casefold().startswith('bilibili')
+    has_embedded_entries = is_bilibili and any(
+        isinstance(item, Mapping) and isinstance(item.get('formats'), list) and item.get('formats')
+        for item in raw_entries)
+    media_type = ('multi_video' if kind == 'multi_video' or has_embedded_entries else 'playlist') if is_playlist else 'live' if info.get('is_live') else 'audio' if info.get('vcodec') == 'none' else 'video'
     playlist = None
     if is_playlist or any(info.get(name) is not None for name in ('playlist_id', 'playlist_title', 'playlist_index')):
         index = _number(info.get('playlist_index'))
@@ -63,17 +78,41 @@ def resolve_metadata(info, original_url, *, requested_url=None):
     if not thumbnail and isinstance(info.get('thumbnails'), list):
         thumbnail = next((_http_url(item.get('url')) for item in reversed(info['thumbnails'])
                           if isinstance(item, Mapping) and _http_url(item.get('url'))), None)
+    if not thumbnail and has_embedded_entries:
+        first_entry = next((item for item in raw_entries if isinstance(item, Mapping)), {})
+        thumbnail = _http_url(first_entry.get('thumbnail'))
+        if not thumbnail and isinstance(first_entry.get('thumbnails'), list):
+            thumbnail = next((_http_url(item.get('url')) for item in reversed(first_entry['thumbnails'])
+                              if isinstance(item, Mapping) and _http_url(item.get('url'))), None)
     webpage_url = _http_url(info.get('webpage_url')) or original_url
     entries = []
     if is_playlist:
-        for index, item in enumerate((info.get('entries') or [])[:1000], 1):
+        for index, item in enumerate(raw_entries, 1):
             item = item if isinstance(item, Mapping) else {}
-            url = _http_url(item.get('webpage_url')) or _http_url(item.get('url')) or ''
-            entries.append(PlaylistEntry(str(item.get('id') or index), index,
+            embedded_raw = [value for value in (item.get('formats') or [])
+                            if isinstance(value, Mapping) and not value.get('has_drm')]
+            url = '' if embedded_raw else (_http_url(item.get('webpage_url')) or _http_url(item.get('url')) or '')
+            entry_duration = _number(item.get('duration'))
+            entry_key = str(item.get('ie_key') or item.get('extractor_key') or extractor_key)
+            entry_formats = tuple(normalize_formats(embedded_raw, duration=entry_duration,
+                                                   extractor_key=entry_key)) if embedded_raw else ()
+            entry_audio = tuple(normalize_audio_formats(embedded_raw)) if embedded_raw else ()
+            entry_video_only = tuple(normalize_formats([value for value in embedded_raw
+                                                        if value.get('acodec') == 'none'],
+                                                       duration=entry_duration,
+                                                       extractor_key=entry_key)) if embedded_raw else ()
+            item_thumbnail = _http_url(item.get('thumbnail'))
+            if not item_thumbnail and isinstance(item.get('thumbnails'), list):
+                item_thumbnail = next((_http_url(candidate.get('url')) for candidate in reversed(item['thumbnails'])
+                                       if isinstance(candidate, Mapping) and _http_url(candidate.get('url'))), None)
+            entry_index = _number(item.get('playlist_index')) or index
+            has_usable_embedded = bool(entry_formats or entry_audio or entry_video_only)
+            entries.append(PlaylistEntry(str(item.get('id') or index), int(entry_index),
                           str(item.get('title') or '此项目暂时不可用'), url,
                           str(item.get('ie_key') or item.get('extractor_key') or ''),
-                          _number(item.get('duration')), _http_url(item.get('thumbnail')) or '',
-                          not bool(url) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'}))
+                          entry_duration, item_thumbnail or '',
+                          not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'},
+                          entry_formats, entry_audio, entry_video_only, has_usable_embedded))
     metadata_compatibility = 'VERIFIED' if extractor_key.casefold() in METADATA_VERIFIED_EXTRACTORS or extractor.casefold() in METADATA_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     download_compatibility = 'VERIFIED' if extractor_key.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS or extractor.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     return ResolvedMedia(

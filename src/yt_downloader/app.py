@@ -277,6 +277,7 @@ class AppController:
             require_deno=True,
             cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
             cookie_enabled=bool(self.settings.use_cookies),
+            ffprobe_path=str(getattr(getattr(self, 'ffmpeg', None), 'ffprobe_path', None) or ""),
         ))
 
     def _save_cookie_profiles(self, profiles):
@@ -589,9 +590,19 @@ class AppController:
         self.queue.pause(batch_id)
         try:
             for entry in entries:
-                child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
-                                      entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
-                request = DownloadRequest(uuid.uuid4().hex, child, placeholder, output,
+                embedded = bool(entry.embedded and entry.selected_format)
+                if embedded:
+                    child = replace(media, video_id=entry.id, url=media.url, title=entry.title,
+                                    duration=entry.duration, thumbnail_url=entry.thumbnail or media.thumbnail_url,
+                                    formats=entry.formats, audio_formats=entry.audio_formats,
+                                    video_only_formats=entry.video_only_formats, entries=(), playlist=None,
+                                    media_type='video', extractor_key=entry.extractor_key or media.extractor_key)
+                    selected_format = entry.selected_format
+                else:
+                    child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
+                                          entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
+                    selected_format = placeholder
+                request = DownloadRequest(uuid.uuid4().hex, child, selected_format, output,
                                           sanitize_filename(entry.title), media_mode=state['mediaMode'],
                                           audio_codec=state['audioCodec'], audio_quality=state['audioQuality'],
                                           subtitle_enabled=state['subtitleEnabled'], subtitle_languages=tuple(state['subtitleLanguages']),
@@ -599,13 +610,15 @@ class AppController:
                                           subtitle_format=state['subtitleFormat'], cookie_profile=profile,
                                           cookie_profile_id=profile.id if profile else '', batch_id=batch_id,
                                           playlist_id=media.playlist.id if media.playlist else '', playlist_title=media.title,
-                                          resolve_before_download=True, preferred_quality=self.settings.default_profile.quality_tier)
+                                          resolve_before_download=not embedded,
+                                          preferred_quality=self.settings.default_profile.quality_tier,
+                                          playlist_item_index=entry.index if embedded else None)
                 record = HistoryRecord(request.task_id, child.media_key, redact_sensitive(child.url), child.title,
-                                       output / request.filename_stem, '解析后自动选择', None, None, TaskStatus.PENDING, created,
+                                       output / request.filename_stem, selected_format.label, selected_format.estimated_size, None, TaskStatus.PENDING, created,
                                        media_mode=str(request.media_mode), audio_codec=request.audio_codec,
                                        audio_bitrate=request.audio_quality, subtitle_languages=request.subtitle_languages,
-                                       subtitle_format=request.subtitle_format, extractor=entry.extractor_key,
-                                       source_site=urlsplit(entry.url).hostname or '', playlist_id=request.playlist_id,
+                                       subtitle_format=request.subtitle_format, extractor=entry.extractor_key or media.extractor_key,
+                                       source_site=urlsplit(child.url).hostname or '', playlist_id=request.playlist_id,
                                        playlist_title=media.title, batch_id=batch_id)
                 self.history.upsert(record)
                 self.queue.enqueue(request)

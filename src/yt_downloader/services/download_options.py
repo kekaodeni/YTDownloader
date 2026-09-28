@@ -60,8 +60,10 @@ def _effective_subtitle_request(request):
 
 def media_options(request):
     mode = MediaMode(request.media_mode)
+    playlist_selector = ({'playlist_items': str(request.playlist_item_index)}
+                         if request.playlist_item_index is not None else {})
     if mode is MediaMode.AUDIO_ONLY:
-        result = {'format': request.format.format_selector}
+        result = {'format': request.format.format_selector, **playlist_selector}
         if request.audio_codec != 'original':
             processor = {'key': 'FFmpegExtractAudio', 'preferredcodec': request.audio_codec}
             if request.audio_quality != 'original':
@@ -71,9 +73,10 @@ def media_options(request):
     if mode is MediaMode.VIDEO_ONLY:
         if not request.format.audio_format_id and request.format.acodec != 'none':
             raise ValueError('该格式包含声音，请选择独立视频流。')
-        return {'format': request.format.video_format_id}
+        return {'format': request.format.video_format_id, **playlist_selector}
     if request.use_native_format:
         # Let this installed yt-dlp choose and merge its own video/audio pair.
         # A displayed quality option is not a verified native format selector.
-        return {}
-    return {'format': request.format.format_selector, 'merge_output_format': request.format.final_ext}
+        return playlist_selector
+    return {'format': request.format.format_selector, 'merge_output_format': request.format.final_ext,
+            **playlist_selector}

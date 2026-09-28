@@ -162,20 +162,21 @@ Item {
                                 }
                                 ListView {
                                     objectName: "playlistItems"
-                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 64, 300)
+                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 88, 360)
                                     model: download.entries; clip: true; reuseItems: true
                                     boundsBehavior: Flickable.StopAtBounds
                                     ScrollBar.vertical: ScrollBar {}
                                     delegate: RowLayout {
                                         required property var item
-                                        width: ListView.view.width; height: 64; spacing: 8
+                                        width: ListView.view.width; height: 80; spacing: 8
                                         Thumbnail { Layout.preferredWidth: 64; Layout.preferredHeight: 40; source: item.thumbnail; visible: parent.width > 380 }
                                         UiSwitch { text: String(item.index + 1); enabled: !item.unavailable; checked: item.selected; onToggled: download.selectEntry(item.index, checked) }
                                         UiText { Layout.fillWidth: true; text: item.title; elide: Text.ElideRight }
+                                        UiCombo { objectName: "segmentFormatCombo"; Layout.preferredWidth: Math.min(210, parent.width * 0.32); visible: item.embedded && item.formatLabels.length > 0; enabled: !item.unavailable; accessibleName: "分段 " + (item.index + 1) + " 的画质"; model: item.formatLabels; currentIndex: item.formatIndex; onActivated: download.selectEntryFormat(item.index, currentIndex) }
                                         UiText { visible: item.unavailable; text: "不可用"; role: "Caption"; color: theme.state.muted }
                                     }
                                 }
-                                UiText { Layout.fillWidth: true; text: "所选项目共用以上模式、字幕与 Cookie 设置；格式会逐项自动选择。"; wrapMode: Text.Wrap; role: "Caption"; color: theme.state.secondary }
+                                UiText { Layout.fillWidth: true; text: download.state.mediaHint.indexOf("分段") >= 0 ? "每个分段按所选画质下载；下载请求仍使用该回放的原始链接。" : "所选项目共用以上模式、字幕与 Cookie 设置；格式会逐项自动选择。"; wrapMode: Text.Wrap; role: "Caption"; color: theme.state.secondary }
                             }
                             UiText { Layout.fillWidth: true; text: download.state.technical; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
                             RowLayout {
