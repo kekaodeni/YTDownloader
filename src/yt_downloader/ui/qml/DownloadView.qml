@@ -43,12 +43,27 @@ Item {
         RowLayout {
             Layout.fillWidth: true; spacing: 8
             UiText { text: "登录状态"; role: "Caption" }
+            UiText {
+                objectName: "cookieAuthStatus"
+                visible: text.length > 0
+                text: download.state.cookieAuthStatus
+                role: "Caption"
+                color: text.indexOf("有效") >= 0 ? theme.state.success : text.indexOf("失效") >= 0 ? theme.state.accent : theme.state.secondary
+            }
             Item { Layout.fillWidth: true }
             UiSwitch { objectName: "useCookieSwitch"; text: "使用 Cookie"; enabled: !download.state.busy; checked: download.state.cookieEnabled; onToggled: download.setCookieEnabled(checked) }
             UiButton { objectName: "cookieManagementButton"; text: "管理 Cookie"; appearance: "normal"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
-            UiButton { objectName: "cookieRetry"; text: "重新解析"; visible: cookies.state.authRequired; enabled: !download.state.busy; onClicked: download.requestParse() }
+            UiButton { objectName: "cookieRetry"; text: "重新解析"; visible: cookies.state.authRequired || download.state.cookieAuthInvalid; enabled: !download.state.busy; onClicked: download.requestParse() }
         }
-        UiText { Layout.fillWidth: true; visible: download.state.cookieHint.length > 0 || cookies.state.authRequired; text: cookies.state.authRequired ? "此内容需要登录状态；请开启 Cookie 并检查对应网站配置。" : download.state.cookieHint; role: "Caption"; color: cookies.state.authRequired ? theme.state.accent : theme.state.secondary; wrapMode: Text.Wrap }
+        UiText {
+            objectName: "cookieAuthWarning"
+            Layout.fillWidth: true
+            visible: download.state.cookieAuthWarning.length > 0 || download.state.cookieHint.length > 0 || cookies.state.authRequired
+            text: cookies.state.authRequired ? "此内容需要登录状态；请开启 Cookie 并检查对应网站配置。" : download.state.cookieAuthWarning.length > 0 ? download.state.cookieAuthWarning : download.state.cookieHint
+            role: "Caption"
+            color: (cookies.state.authRequired || download.state.cookieAuthInvalid) ? theme.state.accent : theme.state.secondary
+            wrapMode: Text.Wrap
+        }
         ColumnLayout {
             Layout.fillWidth: true; visible: download.state.busy; spacing: 8
             UiProgress { Layout.fillWidth: true; indeterminate: true }

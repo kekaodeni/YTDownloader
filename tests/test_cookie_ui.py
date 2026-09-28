@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from conftest import click_item, find_item
+from conftest import click_item, find_item, run_frames
 
 
 def test_cookie_profile_can_be_disabled_without_losing_saved_profile(qapp):
@@ -30,6 +30,44 @@ def test_cookie_required_keeps_url_and_exposes_retry(qapp):
     controller._apply_metadata_error(error)
     assert cookies.state['authRequired']
     assert errors == [error]  # technical details stay copyable
+
+
+def test_invalid_bilibili_cookie_is_a_nonblocking_warning_with_cookie_actions(quick_window, qapp, tmp_path):
+    from dataclasses import replace
+    from yt_downloader.core.models import AuthState
+    from test_download_service import _request
+
+    page = quick_window.download_page
+    page.setCookieEnabled(True)
+    video = replace(_request(tmp_path).video, extractor_key='BiliBili', auth_state=AuthState.INVALID)
+    page.show_video(video)
+    run_frames(qapp)
+
+    warning = find_item(quick_window, 'cookieAuthWarning')
+    assert page.state['ready'] is True
+    assert warning.isVisible()
+    assert '按游客权限解析' in warning.property('text')
+    assert find_item(quick_window, 'cookieManagementButton').isVisible()
+    assert find_item(quick_window, 'cookieRetry').isVisible()
+
+
+def test_valid_and_unknown_bilibili_auth_states_are_not_mislabeled_as_invalid(quick_window, qapp, tmp_path):
+    from dataclasses import replace
+    from yt_downloader.core.models import AuthState
+    from test_download_service import _request
+
+    page = quick_window.download_page
+    page.setCookieEnabled(True)
+    source = _request(tmp_path).video
+    page.show_video(replace(source, extractor_key='BiliBili', auth_state=AuthState.VALID))
+    run_frames(qapp)
+    assert '登录有效' in page.state['cookieAuthStatus']
+    assert page.state['cookieAuthWarning'] == ''
+
+    page.show_video(replace(source, extractor_key='BiliBili', auth_state=AuthState.UNKNOWN))
+    run_frames(qapp)
+    assert '无法验证' in page.state['cookieAuthStatus']
+    assert page.state['cookieAuthWarning'] == ''
 
 
 def test_cookie_modes_and_saved_profiles_are_explicit(qapp):

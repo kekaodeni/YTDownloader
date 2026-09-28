@@ -31,6 +31,7 @@ class MetadataProcessConfig:
     custom_proxy_url: str
     require_deno: bool = True
     cookie_profile: CookieProfile | None = None
+    cookie_enabled: bool = False
 
 
 def metadata_process_self_test_entry(
@@ -91,6 +92,7 @@ def metadata_process_entry(
             require_deno=config.require_deno,
             network_policy=network,
             cookie_profile=config.cookie_profile,
+            cookie_enabled=config.cookie_enabled,
         )
         video = service.fetch_metadata(url, cancel_event, include_thumbnail=False)
         send_connection.send(("result", video))

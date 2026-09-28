@@ -143,13 +143,19 @@ def normalize_formats(
         if display_height is not None and display_height < 144:
             continue
         fps = float(item["fps"]) if isinstance(item.get("fps"), (int, float)) else None
-        fps_bucket = round(fps) if fps is not None and fps >= 50 else 30 if fps else 0
+        # Low frame rate and unspecified FPS share the same visible tier because
+        # neither produces a frame-rate suffix in the UI.
+        fps_bucket = (0 if height is None else round(fps) if fps is not None and fps >= 50 else 30)
         # Bilibili marks all 1080P60 encodings as quality 116, while the
         # extractor reports per-encoding measured rates such as 58.82/62.5.
         # Keep real fps and all native IDs; only this site's display tier is
         # grouped by its explicit quality marker.
-        site_quality = int(item["quality"]) if extractor_key.casefold() == "bilibili" and isinstance(item.get("quality"), (int, float)) else None
-        if height == 1080 and site_quality == 116:
+        raw_site_quality = int(item["quality"]) if extractor_key.casefold() == "bilibili" and isinstance(item.get("quality"), (int, float)) else None
+        # The previously accepted Bilibili rule identifies its 1080P60 tier
+        # by quality=116. Other quality/bitrate IDs at the same resolution do
+        # not create extra UI rows when they resolve to the same label.
+        site_quality = 116 if height == 1080 and raw_site_quality == 116 else None
+        if site_quality == 116:
             fps_bucket = 60
         orientation_width = width if height is None or (width is not None and height > width) else None
         grouped.setdefault((height, orientation_width, fps_bucket, site_quality), []).append(item)

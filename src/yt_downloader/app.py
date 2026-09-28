@@ -276,6 +276,7 @@ class AppController:
             custom_proxy_url=self.settings.custom_proxy_url,
             require_deno=True,
             cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
+            cookie_enabled=bool(self.settings.use_cookies),
         ))
 
     def _save_cookie_profiles(self, profiles):

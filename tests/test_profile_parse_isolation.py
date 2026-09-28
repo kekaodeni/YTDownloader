@@ -58,6 +58,7 @@ def test_profile_does_not_change_cookie_mode_profile_or_metadata_process_config(
 
     assert settings.use_cookies is True
     assert auto.cookie_profile == av1.cookie_profile == COOKIE_PROFILE
+    assert auto.cookie_enabled is av1.cookie_enabled is True
     assert auto.proxy_mode == av1.proxy_mode
     assert auto.custom_proxy_url == av1.custom_proxy_url
     assert not hasattr(auto, 'codec_preference')

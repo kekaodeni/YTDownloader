@@ -10,7 +10,7 @@ from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration, format_eta, format_speed
 from yt_downloader.core.formats import apply_codec_preference
-from yt_downloader.core.models import CodecPreference, DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
+from yt_downloader.core.models import AuthState, CodecPreference, DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TaskStatus, VideoInfo
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.ui.quick_state import RowModel, ViewState
 
@@ -79,7 +79,8 @@ class DownloadPresenter(ViewState):
                          subtitleHint='', subtitleAutoHint='', subtitleManualStatus='人工字幕：暂无',
                          subtitleAutoStatus='自动字幕：暂无', subtitleEmbedHint='',
                          playlist=False, selectedCount=0, playlistCount=0,
-                         cookieEnabled=False, cookieHint='')
+                         cookieEnabled=False, cookieHint='', cookieAuthStatus='',
+                         cookieAuthWarning='', cookieAuthInvalid=False)
         self.images = images
         self.video: VideoInfo | None = None
         from yt_downloader.services.ffmpeg_service import FfmpegService
@@ -130,7 +131,8 @@ class DownloadPresenter(ViewState):
     def _invalidate_media(self):
         self.video = None
         self._active_cookie_profile = None
-        self.update(ready=False, title='', formats=[])
+        self.update(ready=False, title='', formats=[], cookieAuthStatus='',
+                    cookieAuthWarning='', cookieAuthInvalid=False)
         self._subtitle_state(reset_selection=True)
 
     @Slot(bool)
@@ -284,6 +286,18 @@ class DownloadPresenter(ViewState):
     def show_video(self, video, *, preferred_quality='recommended', profile=None):
         self.video = video
         self._format_codec_preference = CodecPreference(profile.codec_preference) if profile else CodecPreference.AUTO
+        is_bilibili = str(video.extractor_key or '').casefold().startswith('bilibili')
+        auth_state = (AuthState(video.auth_state)
+                      if is_bilibili and self._state['cookieEnabled'] else AuthState.NOT_APPLICABLE)
+        auth_messages = {
+            AuthState.VALID: ('B站 Cookie：登录有效', ''),
+            AuthState.INVALID: (
+                'B站 Cookie：登录已失效',
+                '⚠ Cookie 已失效或账号未登录，当前按游客权限解析，部分会员画质或内容可能不可用。'),
+            AuthState.UNKNOWN: ('B站 Cookie：登录状态无法验证', ''),
+            AuthState.NOT_APPLICABLE: ('', ''),
+        }
+        auth_status, auth_warning = auth_messages[auth_state]
         self._selected_entries.clear()
         self._entries.replace([dict(id=str(index), index=index, title=entry.title,
                                    url=entry.url, thumbnail=entry.thumbnail, unavailable=entry.unavailable,
@@ -302,7 +316,9 @@ class DownloadPresenter(ViewState):
             compatibility_hint = '该网站由 yt-dlp 支持，但尚未经过 YTDownloader 完整验证。'
         else:
             compatibility_hint = ''
-        self.update(compatibilityHint=compatibility_hint,
+        self.update(cookieAuthStatus=auth_status, cookieAuthWarning=auth_warning,
+                    cookieAuthInvalid=auth_state is AuthState.INVALID,
+                    compatibilityHint=compatibility_hint,
                     mediaHint=('仅显示前 1000 项，请明确选择需要的项目。' if video.entries_truncated else '请选择需要的项目；不会自动下载整个列表或频道。') if video.media_type == 'playlist' else '', technical='')
         self.update(ready=True, title=video.title, meta=f'{video.channel}  ·  {format_duration(video.duration)}',
                     thumbnail=self.images.add(video.thumbnail_bytes) if video.thumbnail_bytes else '',

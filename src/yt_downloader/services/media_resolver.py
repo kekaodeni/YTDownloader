@@ -18,6 +18,7 @@ from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.services.media_metadata import resolve_metadata
 from yt_downloader.services.media_errors import classify_metadata_error
 from yt_downloader.core.models import ResolvedMedia
+from yt_downloader.services.auth_state import detect_auth_state
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
@@ -66,6 +67,7 @@ class MediaResolver:
         require_deno: bool = True,
         network_policy: NetworkPolicy | None = None,
         cookie_profile=None,
+        cookie_enabled: bool = False,
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
@@ -75,6 +77,7 @@ class MediaResolver:
         self.require_deno = require_deno
         self.network_policy = network_policy
         self.cookie_profile = cookie_profile
+        self.cookie_enabled = bool(cookie_enabled)
 
     def fetch_metadata(
         self,
@@ -128,6 +131,9 @@ class MediaResolver:
                     extracted = dict(extracted)
                     extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
                 info = ydl.sanitize_info(extracted)
+                auth_state = detect_auth_state(
+                    ydl, normalized, str(info.get('extractor_key') or info.get('extractor') or ''),
+                    cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
             media = resolve_metadata(info, normalized)
@@ -159,7 +165,7 @@ class MediaResolver:
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
 
-            return replace(media, thumbnail_bytes=thumbnail_bytes)
+            return replace(media, thumbnail_bytes=thumbnail_bytes, auth_state=auth_state)
         except OperationCancelled:
             raise
         except AppError:

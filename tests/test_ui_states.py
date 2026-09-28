@@ -227,17 +227,24 @@ def test_profile_initializes_each_new_task_without_mutating_default(quick_window
     source = request.video
     from yt_downloader.core.formats import normalize_formats
     formats = [
-        {'format_id': f'{codec}-{height}', 'ext': 'mp4', 'width': 1280 if height == 720 else 1920,
-         'height': height, 'fps': 30, 'vcodec': codec_value, 'acodec': 'none'}
-        for height in (720, 1080)
-        for codec, codec_value in (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'))
+        {'format_id': f'{codec}-{height}-{quality}', 'ext': 'mp4',
+         'width': {720: 1280, 1080: 1920, 2160: 3840}[height], 'height': height,
+         'fps': fps, 'quality': quality, 'vcodec': codec_value, 'acodec': 'none'}
+        for height, quality, fps, codecs in (
+            (2160, 120, 30, (('av1', 'av01.0.12M.08'),)),
+            (1080, 116, 60, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'), ('hevc', 'hvc1.1.6.L120'))),
+            (1080, 80, 30, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'))),
+            (720, 64, 30, (('avc', 'avc1.64001F'),)),
+        )
+        for codec, codec_value in codecs
     ]
-    video = replace(source, formats=tuple(normalize_formats(formats)))
+    video = replace(source, extractor_key='BiliBili', formats=tuple(normalize_formats(formats, extractor_key='BiliBili')))
     profile = DownloadProfile('p-high', '最高画质', quality_tier='highest', codec_preference='av1')
 
     page.show_video(video, profile=profile)
     assert page.state['formatIndex'] == 0
-    assert page.available_formats[page.state['formatIndex']].video_format_id == 'av1-1080'
+    assert page.state['formats'] == ['2160p 4K', '1080p 60 FPS', '1080p', '720p']
+    assert page.available_formats[page.state['formatIndex']].video_format_id == 'av1-2160-120'
     assert page.state['qualityAuto'] is False
     page.selectFormat(1)  # Current-task override.
     assert page.state['formatIndex'] == 1

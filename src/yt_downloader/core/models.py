@@ -37,6 +37,13 @@ class ParseState(StrEnum):
     TIMED_OUT = "TIMED_OUT"
 
 
+class AuthState(StrEnum):
+    VALID = "VALID"
+    INVALID = "INVALID"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
 class TotalSource(StrEnum):
     UNKNOWN = "UNKNOWN"
     METADATA_FILESIZE = "METADATA_FILESIZE"
@@ -191,6 +198,7 @@ class ResolvedMedia:
     video_only_formats: tuple[FormatOption, ...] = ()
     entries: tuple[PlaylistEntry, ...] = ()
     entries_truncated: bool = False
+    auth_state: AuthState = AuthState.NOT_APPLICABLE
 
     @property
     def media_key(self) -> str:

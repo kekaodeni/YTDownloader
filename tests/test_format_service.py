@@ -16,6 +16,8 @@ def test_bilibili_1080p60_quality_groups_encoder_measurements_without_loss():
         {"format_id": "30280", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "quality": 0},
         {"format_id": "30116", "ext": "mp4", "width": 1920, "height": 1080,
          "fps": 62.5, "quality": 116, "vcodec": "avc1.640032", "acodec": "none"},
+        {"format_id": "30117", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 59.94, "quality": 116, "vcodec": "avc1.640032", "acodec": "none"},
         {"format_id": "100028", "ext": "mp4", "width": 1920, "height": 1080,
          "fps": 60.15, "quality": 116, "vcodec": "av01.0.12M.08", "acodec": "none"},
         {"format_id": "30106", "ext": "mp4", "width": 1920, "height": 1080,
@@ -25,9 +27,40 @@ def test_bilibili_1080p60_quality_groups_encoder_measurements_without_loss():
     ]
     media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats}, "https://www.bilibili.com/video/BV1SL411q7xR/")
     assert [option.label for option in media.formats] == ["1080p 60 FPS", "1080p"]
-    assert set(media.formats[0].candidate_video_format_ids) == {"30116", "100028", "30106"}
+    assert set(media.formats[0].candidate_video_format_ids) == {"30116", "30117", "100028", "30106"}
     assert media.formats[0].video_format_id in media.formats[0].candidate_video_format_ids
     assert media.formats[0].audio_format_id == "30280"
+    assert len([option.label for option in media.formats]) == len({option.label for option in media.formats})
+
+
+def test_bilibili_1080p_quality_and_high_bitrate_share_one_visible_bucket():
+    formats = [
+        {"format_id": format_id, "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 30, "quality": quality, "vcodec": codec, "acodec": "none"}
+        for format_id, quality, codec in (
+            ("30080", 80, "avc1.640033"), ("30077", 80, "hvc1.1.6.L150"),
+            ("30112", 112, "avc1.640033"), ("30102", 112, "hvc1.1.6.L150"),
+        )
+    ]
+
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1G4hD61EqA/")
+
+    assert [option.label for option in media.formats] == ["1080p"]
+    assert set(media.formats[0].candidate_video_format_ids) == {"30080", "30077", "30112", "30102"}
+    assert len({option.label for option in media.formats}) == len(media.formats)
+
+
+def test_unknown_resolution_variants_do_not_create_duplicate_visible_labels():
+    formats = [
+        {"format_id": "unknown-a", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "fps": 30},
+        {"format_id": "unknown-b", "ext": "mp4", "vcodec": "av01", "acodec": "none", "fps": 60},
+    ]
+
+    options = normalize_formats(formats)
+
+    assert [option.label for option in options] == ["未知清晰度"]
+    assert set(options[0].candidate_video_format_ids) == {"unknown-a", "unknown-b"}
 
 
 def test_other_sites_do_not_merge_genuine_59_and_62_fps_tiers():
