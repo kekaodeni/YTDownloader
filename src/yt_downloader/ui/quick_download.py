@@ -338,7 +338,7 @@ class DownloadPresenter(ViewState):
         options = self.available_formats
         if options:
             if preferred_quality == 'highest':
-                selected = max(range(len(options)), key=lambda i: (options[i].display_height or 0, options[i].fps or 0, options[i].estimated_size or 0))
+                selected = max(range(len(options)), key=lambda i: options[i].quality_sort_key)
             elif preferred_quality in {'2160p', '1440p', '1080p', '720p'}:
                 selected = next((i for i, option in enumerate(options)
                                  if option.display_height == int(preferred_quality[:-1])), 0)

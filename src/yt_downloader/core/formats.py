@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, Iterable, Mapping
 
 from .models import CodecFormatVariant, CodecPreference, FormatOption, SizeKind
 from yt_downloader.services.format_resolver import YtDlpFormatResolver
+
+
+@dataclass(frozen=True, slots=True)
+class _BilibiliQualityTier:
+    nominal_height: int
+    rank: int
+    label: str
+    fps_mode: str = "none"
+
+
+# These are Bilibili's user-facing DASH quality IDs. Keep them separate from
+# the raw width/height/fps reported for each encoded candidate.
+# Other IDs are passed through dynamically by yt-dlp. HDR/Dolby Vision flags
+# (125/126) do not define a fixed nominal resolution, so they use raw fallback.
+_BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
+    6: _BilibiliQualityTier(240, 10, "240p"),
+    16: _BilibiliQualityTier(360, 20, "360p"),
+    32: _BilibiliQualityTier(480, 30, "480p"),
+    64: _BilibiliQualityTier(720, 40, "720p"),
+    74: _BilibiliQualityTier(720, 50, "720p 60 FPS", "fixed60"),
+    80: _BilibiliQualityTier(1080, 60, "1080p"),
+    112: _BilibiliQualityTier(1080, 70, "1080p 高码率"),
+    116: _BilibiliQualityTier(1080, 80, "1080p 60 FPS", "fixed60"),
+    120: _BilibiliQualityTier(2160, 90, "2160p 4K", "measured"),
+}
 
 
 def _size(
@@ -42,7 +67,9 @@ def _quality_label(width: int | None, height: int | None, fps: float | None) -> 
     return f"{vertical_resolution}p{suffix}{fps_text}{orientation}"
 
 
-def _option_for_selection(resolved, candidates, duration, height, site_quality):
+def _option_for_selection(
+    resolved, candidates, duration, quality_tier=None, orientation=None, site_quality=None,
+):
     video = dict(resolved.video)
     video_id = str(video.get("format_id") or "")
     if not video_id:
@@ -77,10 +104,22 @@ def _option_for_selection(resolved, candidates, duration, height, site_quality):
               else "unknown" if video.get("acodec") is None
               else "none")
     )
-    label = (
-        "1080p 高码率" if height == 1080 and site_quality == 112
-        else _quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps)
-    )
+    height = int(video["height"]) if isinstance(video.get("height"), (int, float)) else None
+    is_portrait = (height is not None and width is not None and height > width
+                   if orientation is None else orientation)
+    semantic_fps = None
+    if quality_tier and quality_tier.fps_mode == "fixed60":
+        semantic_fps = 60.0
+    elif quality_tier and quality_tier.fps_mode == "measured" and fps is not None and fps >= 50:
+        semantic_fps = 60.0
+    if quality_tier:
+        label = quality_tier.label
+        if quality_tier.fps_mode == "measured" and semantic_fps:
+            label += " 60 FPS"
+        if is_portrait:
+            label += " 竖屏"
+    else:
+        label = _quality_label(width, height, fps)
     return FormatOption(
         label=label,
         height=height, fps=fps, vcodec=str(video.get("vcodec") or "unknown"), acodec=acodec,
@@ -93,6 +132,11 @@ def _option_for_selection(resolved, candidates, duration, height, site_quality):
         video_size_is_estimate=video_size_is_estimate, audio_size=audio_size,
         audio_size_is_estimate=audio_size_is_estimate, video_protocol=str(video.get("protocol") or ""),
         audio_protocol=str(audio.get("protocol") or "") if audio else "",
+        site_quality=site_quality,
+        semantic_height=quality_tier.nominal_height if quality_tier else None,
+        semantic_fps=semantic_fps,
+        quality_rank=quality_tier.rank if quality_tier else None,
+        semantic_portrait=is_portrait if quality_tier else None,
         size_kind=(SizeKind.UNKNOWN if estimated is None else SizeKind.ESTIMATED
                    if size_is_estimate else SizeKind.EXACT),
     )
@@ -110,7 +154,8 @@ def apply_codec_preference(option: FormatOption, preference: CodecPreference) ->
                    audio_format_id=variant.audio_format_id, format_selector=variant.format_selector,
                    vcodec=variant.vcodec, acodec=variant.acodec, container=variant.container,
                    final_ext=variant.final_ext, estimated_size=variant.estimated_size,
-                   requires_merge=variant.requires_merge, fps=variant.fps,
+                   requires_merge=variant.requires_merge, width=variant.width, height=variant.height,
+                   fps=variant.fps,
                    video_size=variant.video_size, video_size_is_estimate=variant.video_size_is_estimate,
                    audio_size=variant.audio_size, audio_size_is_estimate=variant.audio_size_is_estimate,
                    video_protocol=variant.video_protocol, audio_protocol=variant.audio_protocol,
@@ -139,40 +184,54 @@ def normalize_formats(
     # vcodec=none but leave acodec unknown. yt-dlp can still select it.
     audios = [item for item in formats if item.get("vcodec") == "none" and item.get("acodec") != "none"]
 
-    grouped: dict[tuple[int | None, int | None, int, int | None], list[dict[str, Any]]] = {}
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for item in videos:
         height = int(item["height"]) if isinstance(item.get("height"), (int, float)) else None
         width = int(item["width"]) if isinstance(item.get("width"), (int, float)) else None
         display_height = _display_height(width, height)
-        if display_height is not None and display_height < 144:
-            continue
         fps = float(item["fps"]) if isinstance(item.get("fps"), (int, float)) else None
         # Low frame rate and unspecified FPS share the same visible tier because
         # neither produces a frame-rate suffix in the UI.
         fps_bucket = (0 if height is None else round(fps) if fps is not None and fps >= 50 else 30)
-        # Bilibili's qualities 80, 112, and 116 are distinct 1080p tiers.
-        # Within quality 116, encoder measurements (58.82/59.94/60.15/62.5)
-        # describe the same 1080p60 tier, so group them by the site marker.
-        raw_site_quality = int(item["quality"]) if extractor_key.casefold() == "bilibili" and isinstance(item.get("quality"), (int, float)) else None
-        site_quality = raw_site_quality if height == 1080 and raw_site_quality in {80, 112, 116} else None
-        if site_quality == 116:
-            fps_bucket = 60
-        orientation_width = width if height is None or (width is not None and height > width) else None
-        grouped.setdefault((height, orientation_width, fps_bucket, site_quality), []).append(item)
+        is_bilibili = extractor_key.casefold().startswith("bilibili")
+        raw_site_quality = (int(item["quality"])
+                            if is_bilibili
+                            and isinstance(item.get("quality"), (int, float)) else None)
+        quality_tier = _BILIBILI_QUALITY_TIERS.get(raw_site_quality)
+        if quality_tier:
+            portrait = width is not None and height is not None and height > width
+            key = ("bilibili", raw_site_quality, portrait)
+        else:
+            if display_height is not None and display_height < 144:
+                continue
+            orientation_width = width if height is None or (width is not None and height > width) else None
+            key = ("generic", height, orientation_width, fps_bucket,
+                   raw_site_quality if is_bilibili else None)
+        grouped.setdefault(key, []).append(item)
 
     options: list[FormatOption] = []
     resolver = resolver or YtDlpFormatResolver()
-    for (height, _orientation_width, _fps_bucket, site_quality), candidates in grouped.items():
+    for group_key, candidates in grouped.items():
+        if group_key[0] == "bilibili":
+            site_quality = group_key[1]
+            quality_tier = _BILIBILI_QUALITY_TIERS[site_quality]
+            orientation = group_key[2]
+        else:
+            site_quality = group_key[4]
+            quality_tier = None
+            orientation = None
         resolved = resolver.resolve(candidates, audios, CodecPreference.AUTO)
         if resolved is None:
             continue
-        option = _option_for_selection(resolved, candidates, duration, height, site_quality)
+        option = _option_for_selection(resolved, candidates, duration, quality_tier, orientation, site_quality)
         if option is None:
             continue
         variants = []
         for preference in (CodecPreference.AV1, CodecPreference.VP9, CodecPreference.H264):
             alternate = resolver.resolve(candidates, audios, preference)
-            alternate_option = _option_for_selection(alternate, candidates, duration, height, site_quality) if alternate else None
+            alternate_option = (_option_for_selection(
+                alternate, candidates, duration, quality_tier, orientation, site_quality,
+            ) if alternate else None)
             if alternate_option is None or alternate_option.video_format_id == option.video_format_id:
                 continue
             variants.append(CodecFormatVariant(
@@ -181,7 +240,8 @@ def normalize_formats(
                 vcodec=alternate_option.vcodec, acodec=alternate_option.acodec,
                 container=alternate_option.container, final_ext=alternate_option.final_ext,
                 estimated_size=alternate_option.estimated_size, requires_merge=alternate_option.requires_merge,
-                fps=alternate_option.fps, video_size=alternate_option.video_size,
+                width=alternate_option.width, height=alternate_option.height, fps=alternate_option.fps,
+                video_size=alternate_option.video_size,
                 video_size_is_estimate=alternate_option.video_size_is_estimate,
                 audio_size=alternate_option.audio_size, audio_size_is_estimate=alternate_option.audio_size_is_estimate,
                 video_protocol=alternate_option.video_protocol, audio_protocol=alternate_option.audio_protocol,
@@ -189,15 +249,16 @@ def normalize_formats(
                 size_kind=alternate_option.size_kind))
         options.append(replace(option, codec_variants=tuple(variants)))
 
-    options.sort(
-        key=lambda option: (
-            option.display_height is not None,
-            option.display_height or 0,
-            option.fps or 0,
-            option.label.endswith("高码率"),
-        ),
-        reverse=True,
-    )
+    label_counts: dict[str, int] = {}
+    for option in options:
+        label_counts[option.label] = label_counts.get(option.label, 0) + 1
+    options = [
+        replace(option, label=f"{option.label} (QN {option.site_quality})")
+        if label_counts[option.label] > 1 and option.site_quality is not None and option.quality_rank is None
+        else option
+        for option in options
+    ]
+    options.sort(key=lambda option: option.quality_sort_key, reverse=True)
     if options:
         compatible = [
             option for option in options
@@ -206,7 +267,8 @@ def normalize_formats(
         ]
         recommended = max(
             compatible,
-            key=lambda option: (option.display_height or 0, -abs((option.fps or 0) - 30)),
+            key=lambda option: (option.display_height or 0, option.quality_rank or 0,
+                                -abs((option.display_fps or 0) - 30)),
         ) if compatible else options[0]
         options = [replace(option, is_recommended=option is recommended) for option in options]
     return options

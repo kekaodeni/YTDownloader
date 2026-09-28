@@ -110,6 +110,8 @@ class CodecFormatVariant:
     final_ext: str
     estimated_size: int | None
     requires_merge: bool
+    width: int | None
+    height: int | None
     fps: float | None
     video_size: int | None
     video_size_is_estimate: bool
@@ -150,14 +152,37 @@ class FormatOption:
     audio_extension: str = ''
     candidate_video_format_ids: tuple[str, ...] = ()
     codec_variants: tuple[CodecFormatVariant, ...] = ()
+    site_quality: int | None = None
+    semantic_height: int | None = None
+    semantic_fps: float | None = None
+    quality_rank: int | None = None
+    semantic_portrait: bool | None = None
 
     @property
     def display_height(self) -> int | None:
+        if self.semantic_height is not None:
+            return self.semantic_height
         if self.height is None:
             return None
         if self.width is not None and self.height > self.width:
             return self.width
         return self.height
+
+    @property
+    def display_fps(self) -> float | None:
+        if self.quality_rank is not None:
+            return self.semantic_fps
+        return self.fps
+
+    @property
+    def quality_sort_key(self) -> tuple[int, int, float, int]:
+        """Rank a choice by its user-facing tier while retaining raw media fields."""
+        return (
+            self.display_height or 0,
+            self.quality_rank or 0,
+            self.display_fps or 0,
+            self.estimated_size or 0,
+        )
 
     @property
     def technical_summary(self) -> str:

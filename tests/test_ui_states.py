@@ -227,14 +227,19 @@ def test_profile_initializes_each_new_task_without_mutating_default(quick_window
     source = request.video
     from yt_downloader.core.formats import normalize_formats
     formats = [
-        {'format_id': f'{codec}-{height}-{quality}', 'ext': 'mp4',
-         'width': {720: 1280, 1080: 1920, 2160: 3840}[height], 'height': height,
-         'fps': fps, 'quality': quality, 'vcodec': codec_value, 'acodec': 'none'}
-        for height, quality, fps, codecs in (
-            (2160, 120, 30, (('av1', 'av01.0.12M.08'),)),
-            (1080, 116, 60, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'), ('hevc', 'hvc1.1.6.L120'))),
-            (1080, 80, 30, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'))),
-            (720, 64, 30, (('avc', 'avc1.64001F'),)),
+        {'format_id': f'{codec}-{quality}', 'ext': 'mp4',
+         'width': width, 'height': height, 'fps': fps, 'quality': quality,
+         'vcodec': codec_value, 'acodec': 'none'}
+        for quality, width, height, fps, codecs in (
+            (120, 3360, 1890, 59.94, (('av1', 'av01.0.12M.08'),)),
+            (116, 3555, 2000, 60.0, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'), ('hevc', 'hvc1.1.6.L120'))),
+            (112, 1576, 886, 30.0, (('avc', 'avc1.640028'),)),
+            (80, 1576, 886, 30.0, (('avc', 'avc1.640028'), ('av1', 'av01.0.08M.08'))),
+            (74, 1280, 590, 59.94, (('avc', 'avc1.640028'),)),
+            (64, 1280, 590, 30.0, (('avc', 'avc1.64001F'),)),
+            (32, 702, 394, 30.0, (('avc', 'avc1.64001F'),)),
+            (16, 524, 294, 30.0, (('avc', 'avc1.64001E'),)),
+            (6, 426, 240, 30.0, (('avc', 'avc1.640015'),)),
         )
         for codec, codec_value in codecs
     ]
@@ -243,8 +248,11 @@ def test_profile_initializes_each_new_task_without_mutating_default(quick_window
 
     page.show_video(video, profile=profile)
     assert page.state['formatIndex'] == 0
-    assert page.state['formats'] == ['2160p 4K', '1080p 60 FPS', '1080p', '720p']
-    assert page.available_formats[page.state['formatIndex']].video_format_id == 'av1-2160-120'
+    assert page.state['formats'] == [
+        '2160p 4K 60 FPS', '1080p 60 FPS', '1080p 高码率', '1080p',
+        '720p 60 FPS', '720p', '480p', '360p', '240p',
+    ]
+    assert page.available_formats[page.state['formatIndex']].video_format_id == 'av1-120'
     assert page.state['qualityAuto'] is False
     page.selectFormat(1)  # Current-task override.
     assert page.state['formatIndex'] == 1

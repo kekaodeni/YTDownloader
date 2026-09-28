@@ -71,6 +71,116 @@ def test_bilibili_quality_80_112_116_labels_and_tiers_are_distinct():
     assert len(labels) == len(media.formats)
 
 
+def test_bilibili_semantic_quality_ignores_nonstandard_encoded_dimensions():
+    # Redacted dimensions from BV1KBaa6JEZV. Bilibili's qn, rather than the
+    # encoder's coded height, defines each user-visible tier.
+    formats = [
+        {"format_id": format_id, "ext": "mp4", "width": width, "height": height,
+         "fps": fps, "quality": quality, "vcodec": codec, "acodec": "none"}
+        for format_id, quality, width, height, fps, codec in (
+            ("q120-av1", 120, 3360, 1890, 59.94, "av01.0.12M.08"),
+            ("q120-avc", 120, 3360, 1890, 60.0, "avc1.640032"),
+            ("q116-av1-58", 116, 1576, 886, 58.82, "av01.0.09M.08"),
+            ("q116-hevc-59", 116, 1594, 896, 59.94, "hev1.1.6.L150"),
+            ("q116-avc-60", 116, 1920, 1080, 60.15, "avc1.640032"),
+            ("q116-avc-62", 116, 1576, 886, 62.5, "avc1.640032"),
+            ("q112-avc", 112, 1576, 886, 30.0, "avc1.640032"),
+            ("q80-avc", 80, 1576, 886, 30.0, "avc1.640032"),
+            ("q74-avc", 74, 1280, 590, 59.94, "avc1.640028"),
+            ("q64-avc", 64, 1280, 590, 30.0, "avc1.640028"),
+            ("q32-avc", 32, 702, 394, 30.0, "avc1.64001F"),
+            ("q16-avc", 16, 524, 294, 30.0, "avc1.64001E"),
+            ("q6-avc", 6, 426, 240, 30.0, "avc1.640015"),
+        )
+    ]
+
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+
+    assert [option.label for option in media.formats] == [
+        "2160p 4K 60 FPS", "1080p 60 FPS", "1080p 高码率", "1080p",
+        "720p 60 FPS", "720p", "480p", "360p", "240p",
+    ]
+    q116 = next(option for option in media.formats if option.label == "1080p 60 FPS")
+    assert set(q116.candidate_video_format_ids) == {
+        "q116-av1-58", "q116-hevc-59", "q116-avc-60", "q116-avc-62",
+    }
+    assert q116.site_quality == 116
+    assert q116.semantic_height == q116.display_height == 1080
+    assert q116.semantic_fps == q116.display_fps == 60
+    raw_by_id = {item["format_id"]: item for item in formats}
+    selected_q116_raw = raw_by_id[q116.video_format_id]
+    assert (q116.width, q116.height, q116.fps) == (
+        selected_q116_raw["width"], selected_q116_raw["height"], selected_q116_raw["fps"],
+    )
+    h264_option = apply_codec_preference(q116, CodecPreference.H264)
+    h264_raw = raw_by_id[h264_option.video_format_id]
+    assert (h264_option.width, h264_option.height, h264_option.fps) == (
+        h264_raw["width"], h264_raw["height"], h264_raw["fps"],
+    )
+    assert (h264_option.site_quality, h264_option.semantic_height, h264_option.semantic_fps) == (116, 1080, 60)
+    q120 = media.formats[0]
+    assert q120.site_quality == 120
+    selected_q120_raw = raw_by_id[q120.video_format_id]
+    assert (q120.width, q120.height, q120.fps) == (
+        selected_q120_raw["width"], selected_q120_raw["height"], selected_q120_raw["fps"],
+    )
+    assert (q120.width, q120.height) == (3360, 1890)
+    assert q120.semantic_height == q120.display_height == 2160
+    assert q120.semantic_fps == q120.display_fps == 60
+    assert {format_id for option in media.formats for format_id in option.candidate_video_format_ids} == {
+        item["format_id"] for item in formats
+    }
+    assert len({option.label for option in media.formats}) == len(media.formats)
+
+
+def test_bilibili_unknown_quality_and_other_extractors_keep_generic_resolution_labels():
+    bilibili = resolve_metadata({"extractor_key": "BiliBili", "formats": [
+        {"format_id": "unknown-bili-q", "ext": "mp4", "width": 1576, "height": 886,
+         "fps": 30, "quality": 66, "vcodec": "avc1.640032", "acodec": "none"},
+    ]}, "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+    generic = resolve_metadata({"extractor_key": "Generic", "formats": [
+        {"format_id": "generic-q120", "ext": "mp4", "width": 3360, "height": 1890,
+         "fps": 59.94, "quality": 120, "vcodec": "avc1.640032", "acodec": "none"},
+    ]}, "https://example.org/video")
+
+    assert bilibili.formats[0].label == "886p"
+    assert bilibili.formats[0].site_quality == 66
+    assert bilibili.formats[0].semantic_height is None
+    assert generic.formats[0].label == "1890p 2K 60 FPS"
+    assert generic.formats[0].site_quality is None
+
+
+def test_bilibili_quality_bucket_keeps_landscape_and_portrait_semantics_separate():
+    formats = [
+        {"format_id": "q80-landscape", "ext": "mp4", "width": 1576, "height": 886,
+         "fps": 30, "quality": 80, "vcodec": "avc1.640032", "acodec": "none"},
+        {"format_id": "q80-portrait", "ext": "mp4", "width": 886, "height": 1576,
+         "fps": 30, "quality": 80, "vcodec": "avc1.640032", "acodec": "none"},
+    ]
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+
+    assert {option.label: option.candidate_video_format_ids for option in media.formats} == {
+        "1080p": ("q80-landscape",),
+        "1080p 竖屏": ("q80-portrait",),
+    }
+
+
+def test_unknown_bilibili_quality_collision_keeps_labels_unique_without_guessing():
+    formats = [
+        {"format_id": "q80", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 30, "quality": 80, "vcodec": "avc1.640032", "acodec": "none"},
+        {"format_id": "q66", "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": 30, "quality": 66, "vcodec": "hev1.1.6.L150", "acodec": "none"},
+    ]
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1KBaa6JEZV/")
+
+    assert {option.label for option in media.formats} == {"1080p", "1080p (QN 66)"}
+    assert len({option.label for option in media.formats}) == len(media.formats)
+
+
 def test_unknown_resolution_variants_do_not_create_duplicate_visible_labels():
     formats = [
         {"format_id": "unknown-a", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "fps": 30},
