@@ -33,7 +33,7 @@ def test_bilibili_1080p60_quality_groups_encoder_measurements_without_loss():
     assert len([option.label for option in media.formats]) == len({option.label for option in media.formats})
 
 
-def test_bilibili_1080p_quality_and_high_bitrate_share_one_visible_bucket():
+def test_bilibili_1080p_quality_and_high_bitrate_are_distinct_visible_buckets():
     formats = [
         {"format_id": format_id, "ext": "mp4", "width": 1920, "height": 1080,
          "fps": 30, "quality": quality, "vcodec": codec, "acodec": "none"}
@@ -46,9 +46,29 @@ def test_bilibili_1080p_quality_and_high_bitrate_share_one_visible_bucket():
     media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
                              "https://www.bilibili.com/video/BV1G4hD61EqA/")
 
-    assert [option.label for option in media.formats] == ["1080p"]
-    assert set(media.formats[0].candidate_video_format_ids) == {"30080", "30077", "30112", "30102"}
+    by_label = {option.label: set(option.candidate_video_format_ids) for option in media.formats}
+    assert by_label == {
+        "1080p": {"30080", "30077"},
+        "1080p 高码率": {"30112", "30102"},
+    }
     assert len({option.label for option in media.formats}) == len(media.formats)
+
+
+def test_bilibili_quality_80_112_116_labels_and_tiers_are_distinct():
+    formats = [
+        {"format_id": format_id, "ext": "mp4", "width": 1920, "height": 1080,
+         "fps": fps, "quality": quality, "vcodec": codec, "acodec": "none"}
+        for format_id, quality, fps, codec in (
+            ("q80-avc", 80, 30, "avc1.640033"),
+            ("q112-avc", 112, 30, "avc1.640033"),
+            ("q116-avc", 116, 59.94, "avc1.640033"),
+        )
+    ]
+    media = resolve_metadata({"extractor_key": "BiliBili", "formats": formats},
+                             "https://www.bilibili.com/video/BV1SL411q7xR/")
+    labels = {option.label for option in media.formats}
+    assert labels == {"1080p", "1080p 高码率", "1080p 60 FPS"}
+    assert len(labels) == len(media.formats)
 
 
 def test_unknown_resolution_variants_do_not_create_duplicate_visible_labels():

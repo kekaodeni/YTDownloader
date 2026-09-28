@@ -77,8 +77,12 @@ def _option_for_selection(resolved, candidates, duration, height, site_quality):
               else "unknown" if video.get("acodec") is None
               else "none")
     )
+    label = (
+        "1080p 高码率" if height == 1080 and site_quality == 112
+        else _quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps)
+    )
     return FormatOption(
-        label=_quality_label(width, height, 60.0 if height == 1080 and site_quality == 116 else fps),
+        label=label,
         height=height, fps=fps, vcodec=str(video.get("vcodec") or "unknown"), acodec=acodec,
         container=final_ext.upper() if final_ext != "webm" else "WebM", final_ext=final_ext,
         format_selector=selector, estimated_size=estimated, requires_merge=bool(audio_id),
@@ -146,15 +150,11 @@ def normalize_formats(
         # Low frame rate and unspecified FPS share the same visible tier because
         # neither produces a frame-rate suffix in the UI.
         fps_bucket = (0 if height is None else round(fps) if fps is not None and fps >= 50 else 30)
-        # Bilibili marks all 1080P60 encodings as quality 116, while the
-        # extractor reports per-encoding measured rates such as 58.82/62.5.
-        # Keep real fps and all native IDs; only this site's display tier is
-        # grouped by its explicit quality marker.
+        # Bilibili's qualities 80, 112, and 116 are distinct 1080p tiers.
+        # Within quality 116, encoder measurements (58.82/59.94/60.15/62.5)
+        # describe the same 1080p60 tier, so group them by the site marker.
         raw_site_quality = int(item["quality"]) if extractor_key.casefold() == "bilibili" and isinstance(item.get("quality"), (int, float)) else None
-        # The previously accepted Bilibili rule identifies its 1080P60 tier
-        # by quality=116. Other quality/bitrate IDs at the same resolution do
-        # not create extra UI rows when they resolve to the same label.
-        site_quality = 116 if height == 1080 and raw_site_quality == 116 else None
+        site_quality = raw_site_quality if height == 1080 and raw_site_quality in {80, 112, 116} else None
         if site_quality == 116:
             fps_bucket = 60
         orientation_width = width if height is None or (width is not None and height > width) else None
@@ -194,6 +194,7 @@ def normalize_formats(
             option.display_height is not None,
             option.display_height or 0,
             option.fps or 0,
+            option.label.endswith("高码率"),
         ),
         reverse=True,
     )
