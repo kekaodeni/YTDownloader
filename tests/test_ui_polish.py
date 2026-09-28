@@ -1,4 +1,5 @@
 from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QAccessible
 from PySide6.QtTest import QTest
 import pytest
 
@@ -34,12 +35,15 @@ def test_history_management_toolbar_has_one_tri_state_select_all(quick_window, q
     assert check.property('text') == '全选'
     assert check.property('checkState').value == 0
     assert check.property('enabled')  # Non-empty history is selectable.
+    delete = find_item(quick_window, 'historyDeleteSelected')
+    assert not delete.property('enabled')
 
     page.toggle('one')
     run_frames(qapp)
     assert check.property('checkState').value == 1
     assert page.state['checkedCount'] == 1
     assert page.state['managementText'] == '已选择 1 项'
+    assert delete.property('enabled')
 
     page.selectAll(True)
     run_frames(qapp)
@@ -82,10 +86,77 @@ def test_history_management_toolbar_has_one_tri_state_select_all(quick_window, q
     assert not check.property('enabled')
 
 
-@pytest.mark.parametrize('mode', ['light', 'dark'])
-def test_history_select_all_uses_secondary_toolbar_button_chrome(quick_window, qapp, tmp_path, mode):
+def test_history_management_toolbar_groups_selection_and_hides_item_actions(quick_window, qapp, tmp_path):
     page = quick_window.history_page
-    page.set_records([_record(tmp_path, 'one', TaskStatus.COMPLETED)])
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two', 'three')])
+    quick_window._select_page(1)
+    run_frames(qapp)
+    item_actions = ('historyItemOpen', 'historyItemFolder', 'historyItemCopy',
+                    'historyItemCover', 'historyItemRetry')
+    assert all(find_item(quick_window, name).isVisible() for name in item_actions)
+    assert not find_item(quick_window, 'historyManagementToolbar').isVisible()
+
+    page.manage(True)
+    run_frames(qapp)
+    toolbar = find_item(quick_window, 'historyManagementToolbar')
+    selection_group = find_item(quick_window, 'historySelectionGroup')
+    action_group = find_item(quick_window, 'historyActionGroup')
+    select_all = find_item(quick_window, 'historySelectAll')
+    selected_count = find_item(quick_window, 'historySelectedCount')
+    delete = find_item(quick_window, 'historyDeleteSelected')
+    clear = find_item(quick_window, 'historyClear')
+    done = find_item(quick_window, 'historyManageToggle')
+    assert toolbar.isVisible()
+    assert selection_group.x() < action_group.x()
+    assert abs(selection_group.x()) < 1
+    assert abs(action_group.x() + action_group.width() - toolbar.width()) < 1
+    assert selected_count.property('text') == '已选择 0 项'
+    assert abs(selected_count.y() + selected_count.height() / 2 - select_all.y() - select_all.height() / 2) < 1
+    assert not delete.property('enabled')
+    assert all(not find_item(quick_window, name).isVisible() for name in item_actions)
+    assert all(button.isVisible() for button in (select_all, delete, clear, done))
+    assert max(button.y() + button.height() / 2 for button in (select_all, delete, clear, done)) - min(
+        button.y() + button.height() / 2 for button in (select_all, delete, clear, done)) < 1
+
+    page.toggle('one')
+    run_frames(qapp)
+    assert selected_count.property('text') == '已选择 1 项'
+    assert delete.property('enabled')
+
+    page.selectAll(True)
+    run_frames(qapp)
+    assert selected_count.property('text') == '已选择 3 项'
+    assert select_all.property('checkState').value == 2
+
+    page.manage(False)
+    run_frames(qapp)
+    assert not toolbar.isVisible()
+    assert all(find_item(quick_window, name).isVisible() for name in item_actions)
+
+
+def test_history_management_toolbar_wraps_without_overlapping_at_narrow_width(quick_window, qapp, tmp_path):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two', 'three')])
+    quick_window._select_page(1)
+    page.manage(True)
+    quick_window.root.resize(620, 760)
+    run_frames(qapp)
+
+    toolbar = find_item(quick_window, 'historyManagementToolbar')
+    selection_group = find_item(quick_window, 'historySelectionGroup')
+    action_group = find_item(quick_window, 'historyActionGroup')
+    left = selection_group.mapToItem(toolbar, QPointF(0, 0))
+    right = action_group.mapToItem(toolbar, QPointF(0, 0))
+    assert left.x() + selection_group.width() <= toolbar.width()
+    assert right.x() + action_group.width() <= toolbar.width()
+    assert right.y() >= left.y() + selection_group.height() or right.x() >= left.x() + selection_group.width()
+    assert toolbar.height() >= max(left.y() + selection_group.height(), right.y() + action_group.height())
+
+
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+def test_history_select_all_uses_project_selection_control(quick_window, qapp, tmp_path, mode):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two', 'three')])
     quick_window._select_page(1)
     quick_window.theme.set_mode(mode)
     page.manage(True)
@@ -93,36 +164,59 @@ def test_history_select_all_uses_secondary_toolbar_button_chrome(quick_window, q
 
     check = find_item(quick_window, 'historySelectAll')
     delete = find_item(quick_window, 'historyDeleteSelected')
-    background = find_item(quick_window, 'historySelectAllBackground')
+    count = find_item(quick_window, 'historySelectedCount')
+    indicator = find_item(quick_window, 'historySelectAllIndicator')
+    partial_mark = find_item(quick_window, 'historySelectAllPartialMark')
+    check_mark = find_item(quick_window, 'historySelectAllCheckMark')
+    row_indicator = find_item(quick_window, 'historyCheckboxIndicator-one')
     assert check.height() == delete.height() == 38
-    assert abs(delete.x() - check.x() - check.width() - 6) < 1
-    assert background.property('radius') == 8
-    assert background.property('color').name().lower() == quick_window.theme.state['surface'].lower()
+    assert check.property('tristate')
+    assert check.property('appearance') is None
+    assert count.property('text') == '已选择 0 项'
+    assert count.x() - check.x() - check.width() == 14
+    assert find_item(quick_window, 'historySelectionGroup').x() < find_item(quick_window, 'historyActionGroup').x()
+    assert indicator.width() == row_indicator.width() == 18
+    assert indicator.property('radius') == row_indicator.property('radius') == 5
+    assert not partial_mark.property('visible') and not check_mark.property('visible')
+    assert indicator.property('color').name().lower() == quick_window.theme.state['surface'].lower()
 
-    page.selectAll(True)
-    run_frames(qapp)
-    assert check.property('checkState').value == 2
-    assert background.property('color').name().lower() == quick_window.theme.state['surface'].lower()
-
-    point = check.mapToScene(QPointF(check.width() / 2, check.height() / 2)).toPoint()
+    point = check.mapToScene(QPointF(indicator.x() + indicator.width() / 2, check.height() / 2)).toPoint()
     QTest.mouseMove(quick_window.root, QPointF(0, 0).toPoint())
     run_frames(qapp, 60)
     QTest.mouseMove(quick_window.root, point)
     run_frames(qapp, 180)
-    assert background.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
+    assert indicator.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
 
-    QTest.mousePress(quick_window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
-    run_frames(qapp, 180)
-    assert background.property('color').name().lower() == quick_window.theme.state['stroke'].lower()
-    QTest.mouseRelease(quick_window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
-    check.forceActiveFocus()
-    run_frames(qapp, 60)
+    page.toggle('one')
+    run_frames(qapp)
+    assert check.property('checkState').value == 1
+    assert count.property('text') == '已选择 1 项'
+    assert partial_mark.property('visible') and not check_mark.property('visible')
+    assert indicator.property('color').name().lower() == quick_window.theme.state['accent'].lower()
+    assert partial_mark.property('color').name().lower() == quick_window.theme.state['onAccent'].lower()
+
+    page.selectAll(True)
+    run_frames(qapp)
+    assert check.property('checkState').value == 2
+    assert count.property('text') == '已选择 3 项'
+    assert check_mark.property('visible') and not partial_mark.property('visible')
+    assert indicator.property('color').name().lower() == quick_window.theme.state['accent'].lower()
+    assert check_mark.property('color').name().lower() == quick_window.theme.state['onAccent'].lower()
+
+    find_item(quick_window, 'historyList').forceActiveFocus()
+    for _ in range(20):
+        QTest.keyClick(quick_window.root, Qt.Key_Tab)
+        run_frames(qapp, 20)
+        if check.property('activeFocus'):
+            break
     assert check.property('activeFocus')
+    assert check.property('visualFocus')
 
     page.set_records([])
     run_frames(qapp)
     assert not check.property('enabled')
-    assert background.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
+    assert check.property('checkState').value == 0
+    assert indicator.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
 
 
 def test_history_row_and_checkbox_selection_keep_select_all_in_sync(quick_window, qapp, tmp_path):
@@ -152,6 +246,51 @@ def test_history_row_and_checkbox_selection_keep_select_all_in_sync(quick_window
     page.set_records([])
     run_frames(qapp)
     assert top_check.property('checkState').value == 0
+
+
+def test_history_select_all_keyboard_and_accessible_state(quick_window, qapp, tmp_path):
+    page = quick_window.history_page
+    page.set_records([_record(tmp_path, key, TaskStatus.COMPLETED) for key in ('one', 'two')])
+    quick_window._select_page(1)
+    page.manage(True)
+    run_frames(qapp)
+    select_all = find_item(quick_window, 'historySelectAll')
+
+    find_item(quick_window, 'historyList').forceActiveFocus()
+    for _ in range(20):
+        QTest.keyClick(quick_window.root, Qt.Key_Tab)
+        run_frames(qapp, 20)
+        if select_all.property('activeFocus'):
+            break
+    assert select_all.property('activeFocus')
+    accessible = QAccessible.queryAccessibleInterface(select_all)
+    count_accessible = QAccessible.queryAccessibleInterface(find_item(quick_window, 'historySelectedCount'))
+    assert accessible.text(QAccessible.Text.Name) == '全选'
+    assert accessible.text(QAccessible.Text.Description) == '未选中'
+    assert count_accessible.text(QAccessible.Text.Name) == '已选择 0 项'
+
+    page.toggle('one')
+    run_frames(qapp)
+    assert accessible.text(QAccessible.Text.Description) == '部分选中'
+    assert count_accessible.text(QAccessible.Text.Name) == '已选择 1 项'
+
+    QTest.keyClick(quick_window.root, Qt.Key_Space)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 2
+    assert select_all.property('checkState').value == 2
+    assert accessible.text(QAccessible.Text.Description) == '已全选'
+    assert count_accessible.text(QAccessible.Text.Name) == '已选择 2 项'
+
+    QTest.keyClick(quick_window.root, Qt.Key_Return)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 0
+    assert select_all.property('checkState').value == 0
+    assert accessible.text(QAccessible.Text.Description) == '未选中'
+
+    QTest.keyClick(quick_window.root, Qt.Key_Enter)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 2
+    assert select_all.property('checkState').value == 2
 
 
 def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_window, qapp):

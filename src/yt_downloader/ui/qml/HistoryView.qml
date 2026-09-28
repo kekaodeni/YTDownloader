@@ -9,70 +9,103 @@ Item {
         RowLayout { objectName: "historyHeader"; Layout.fillWidth: true; spacing: 6
             UiText { text: "历史记录"; role: "PageTitle" }
             Item { Layout.fillWidth: true }
-            CheckBox {
-                id: selectAllCheck
-                objectName: "historySelectAll"
-                visible: history.state.managing
-                text: "全选"
-                enabled: history.state.selectableCount > 0
-                tristate: true
-                checkState: history.state.selectAllState
-                nextCheckState: function() { return history.state.selectAllState }
-                onClicked: history.selectAll(history.state.selectAllState !== Qt.Checked)
-                hoverEnabled: true
-                leftPadding: 14; rightPadding: 14; topPadding: 0; bottomPadding: 0; spacing: 8
-                implicitWidth: indicator.width + spacing + contentItem.implicitWidth + leftPadding + rightPadding
-                implicitHeight: 38
-                Layout.alignment: Qt.AlignVCenter
-                font.family: theme.fontFamily("Button", "全选")
-                font.pointSize: theme.fontSize("Button")
-                font.weight: theme.fontWeight("Button")
-                Accessible.name: "全选"
-                scale: down && !shell.state.reduceMotion ? 0.985 : 1
-                Behavior on scale { SmoothedAnimation { duration: 90; velocity: -1 } }
-                indicator: Rectangle {
-                    x: selectAllCheck.leftPadding
-                    y: (selectAllCheck.height - height) / 2
-                    width: 18; height: 18; radius: 5
-                    color: !selectAllCheck.enabled ? theme.state.subtle : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
-                    border.width: selectAllCheck.visualFocus ? 2 : 1
-                    border.color: selectAllCheck.visualFocus ? theme.state.accent : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : theme.state.stroke
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✓"
-                        visible: selectAllCheck.checkState === Qt.Checked
-                        color: theme.state.onAccent
-                        font.pixelSize: 12
-                        font.weight: Font.Bold
-                    }
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 9; height: 2; radius: 1
-                        visible: selectAllCheck.checkState === Qt.PartiallyChecked
-                        color: theme.state.onAccent
-                    }
-                }
-                contentItem: UiText {
-                    leftPadding: selectAllCheck.indicator.width + selectAllCheck.spacing
-                    text: selectAllCheck.text
-                    color: selectAllCheck.enabled ? theme.state.text : theme.state.disabled
-                    verticalAlignment: Text.AlignVCenter
-                    font: selectAllCheck.font
-                }
-                background: Rectangle {
-                    objectName: "historySelectAllBackground"
-                    radius: 8
-                    color: !selectAllCheck.enabled ? theme.state.subtle : selectAllCheck.down ? theme.state.stroke : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
-                    border.width: selectAllCheck.visualFocus ? 2 : 1
-                    border.color: selectAllCheck.visualFocus ? theme.state.accent : theme.state.stroke
-                    Behavior on color { ColorAnimation { duration: shell.state.reduceMotion ? 0 : 120 } }
-                }
-            }
-            UiButton { objectName: "historyDeleteSelected"; visible: history.state.managing; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
-            UiButton { objectName: "historyClear"; visible: history.state.managing; text: "清空历史"; onClicked: history.clearTerminal() }
-            UiButton { objectName: "historyManageToggle"; text: history.state.managing ? "完成" : "管理"; appearance: history.state.managing ? "primary" : "normal"; onClicked: history.manage(!history.state.managing) }
+            UiButton { objectName: "historyManageButton"; visible: !history.state.managing; text: "管理"; onClicked: history.manage(true) }
         }
         UiText { Layout.fillWidth: true; text: "通过本软件下载的内容，都在这里。"; role: "Secondary"; color: theme.state.secondary }
+        Flow {
+            id: managementToolbar
+            objectName: "historyManagementToolbar"
+            Layout.fillWidth: true
+            spacing: 10
+            visible: history.state.managing
+            RowLayout {
+                id: selectionGroup
+                objectName: "historySelectionGroup"
+                width: implicitWidth; height: 38; spacing: 14
+                CheckBox {
+                    id: selectAllCheck
+                    objectName: "historySelectAll"
+                    text: "全选"
+                    tristate: true
+                    checkState: history.state.selectAllState
+                    nextCheckState: function() { return history.state.selectAllState }
+                    enabled: history.state.selectableCount > 0
+                    function activateSelectAll() { history.selectAll(history.state.selectAllState !== Qt.Checked) }
+                    onClicked: activateSelectAll()
+                    Keys.onReturnPressed: function(event) { event.accepted = true; activateSelectAll() }
+                    Keys.onEnterPressed: function(event) { event.accepted = true; activateSelectAll() }
+                    hoverEnabled: true
+                    leftPadding: 8; rightPadding: 8; topPadding: 0; bottomPadding: 0; spacing: 8
+                    implicitWidth: indicator.width + spacing + contentItem.implicitWidth + leftPadding + rightPadding
+                    implicitHeight: 38
+                    Layout.alignment: Qt.AlignVCenter
+                    font.family: theme.fontFamily("Button", "全选")
+                    font.pointSize: theme.fontSize("Button")
+                    font.weight: theme.fontWeight("Button")
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: "全选"
+                    Accessible.description: checkState === Qt.Checked ? "已全选" : checkState === Qt.PartiallyChecked ? "部分选中" : "未选中"
+                    indicator: Rectangle {
+                        objectName: "historySelectAllIndicator"
+                        x: selectAllCheck.leftPadding
+                        y: (selectAllCheck.height - height) / 2
+                        width: 18; height: 18; radius: 5
+                        color: !selectAllCheck.enabled ? theme.state.subtle
+                            : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent
+                            : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
+                        border.width: selectAllCheck.visualFocus ? 2 : 1
+                        border.color: selectAllCheck.visualFocus ? theme.state.accent
+                            : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : theme.state.stroke
+                        Text {
+                            objectName: "historySelectAllCheckMark"
+                            anchors.centerIn: parent
+                            text: "✓"
+                            visible: selectAllCheck.checkState === Qt.Checked
+                            color: theme.state.onAccent
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                        }
+                        Text {
+                            objectName: "historySelectAllPartialMark"
+                            anchors.centerIn: parent
+                            text: "−"
+                            visible: selectAllCheck.checkState === Qt.PartiallyChecked
+                            color: theme.state.onAccent
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                        }
+                    }
+                    contentItem: UiText {
+                        leftPadding: selectAllCheck.indicator.width + selectAllCheck.spacing
+                        text: selectAllCheck.text
+                        color: selectAllCheck.enabled ? theme.state.text : theme.state.disabled
+                        verticalAlignment: Text.AlignVCenter
+                        font: selectAllCheck.font
+                    }
+                }
+                UiText {
+                    id: selectedCount
+                    objectName: "historySelectedCount"
+                    text: history.state.managementText
+                    role: "Caption"
+                    color: theme.state.secondary
+                    Accessible.name: text
+                    Layout.alignment: Qt.AlignVCenter
+                }
+            }
+            Item {
+                width: Math.max(0, managementToolbar.width - selectionGroup.implicitWidth - actionGroup.implicitWidth - managementToolbar.spacing * 2)
+                height: 1
+            }
+            RowLayout {
+                id: actionGroup
+                objectName: "historyActionGroup"
+                width: implicitWidth; height: 38; spacing: 10
+                UiButton { objectName: "historyDeleteSelected"; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
+                UiButton { objectName: "historyClear"; text: "清空历史"; onClicked: history.clearTerminal() }
+                UiButton { objectName: "historyManageToggle"; text: "完成"; appearance: "primary"; onClicked: history.manage(false) }
+            }
+        }
         ListView {
             id: list
             objectName: "historyList"
@@ -200,15 +233,12 @@ Item {
                 UiText { width: parent.width; text: "完成下载后，你可以在这里打开文件或设置视频封面。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             }
         }
-        ColumnLayout { Layout.fillWidth: true; visible: history.state.managing; spacing: 8
-            UiText { text: history.state.managementText; role: "Caption"; color: theme.state.secondary }
-        }
-        Flow { Layout.fillWidth: true; spacing: 8
-            UiButton { text: "打开文件"; enabled: history.state.fileExists; onClicked: history.action("open") }
-            UiButton { text: "打开文件夹"; enabled: history.state.fileExists; onClicked: history.action("folder") }
-            UiButton { text: "复制链接"; enabled: history.state.selectedId.length > 0; onClicked: history.action("copy") }
-            UiButton { text: "设置视频封面"; enabled: history.state.fileExists; onClicked: history.action("cover") }
-            UiButton { text: "重试"; enabled: history.state.selectedId.length > 0; onClicked: history.action("retry") }
+        Flow { Layout.fillWidth: true; spacing: 8; visible: !history.state.managing
+            UiButton { objectName: "historyItemOpen"; text: "打开文件"; enabled: history.state.fileExists; onClicked: history.action("open") }
+            UiButton { objectName: "historyItemFolder"; text: "打开文件夹"; enabled: history.state.fileExists; onClicked: history.action("folder") }
+            UiButton { objectName: "historyItemCopy"; text: "复制链接"; enabled: history.state.selectedId.length > 0; onClicked: history.action("copy") }
+            UiButton { objectName: "historyItemCover"; text: "设置视频封面"; enabled: history.state.fileExists; onClicked: history.action("cover") }
+            UiButton { objectName: "historyItemRetry"; text: "重试"; enabled: history.state.selectedId.length > 0; onClicked: history.action("retry") }
         }
     }
     UiMenu {
