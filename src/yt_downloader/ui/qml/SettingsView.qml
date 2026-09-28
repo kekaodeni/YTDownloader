@@ -142,7 +142,7 @@ Item {
         objectName: "downloadProfileEditor"
         parent: Overlay.overlay; modal: true; focus: true; closePolicy: Popup.NoAutoClose
         width: Math.min(560, parent ? parent.width - 32 : 560)
-        height: Math.min(680, parent ? parent.height - 36 : 680)
+        height: Math.min(720, parent ? parent.height - 36 : 720)
         x: parent ? (parent.width - width) / 2 : 0
         y: parent ? (parent.height - height) / 2 : 0
         padding: 22
@@ -173,14 +173,18 @@ Item {
                 SettingField { Layout.fillWidth: true; label: "视频编码"
                     UiCombo { objectName: "profileCodec"; Layout.fillWidth: true; accessibleName: "预设视频编码"; model: ["自动推荐", "AV1", "VP9", "H.264"]; property var values: ["auto", "av1", "vp9", "h264"]; currentIndex: values.indexOf(settings.state.profileDraftCodec); onActivated: settings.editProfileField("codec_preference", values[currentIndex]) }
                 }
-                SettingField { Layout.fillWidth: true; label: "音频格式"
-                    UiCombo { objectName: "profileAudioCodec"; Layout.fillWidth: true; accessibleName: "预设音频格式"; model: ["原始音频", "M4A", "MP3", "Opus", "FLAC"]; property var values: ["original", "m4a", "mp3", "opus", "flac"]; currentIndex: values.indexOf(settings.state.profileDraftAudioCodec); onActivated: settings.editProfileField("audio_codec", values[currentIndex]) }
+                GridLayout { Layout.fillWidth: true; columns: 2; columnSpacing: 12; rowSpacing: 0
+                    SettingField { Layout.fillWidth: true; label: "音频格式"
+                        UiCombo { objectName: "profileAudioCodec"; Layout.fillWidth: true; accessibleName: "预设音频格式"; model: ["原始音频", "M4A", "MP3", "Opus", "FLAC"]; property var values: ["original", "m4a", "mp3", "opus", "flac"]; currentIndex: values.indexOf(settings.state.profileDraftAudioCodec); onActivated: settings.editProfileField("audio_codec", values[currentIndex]) }
+                    }
+                    SettingField { Layout.fillWidth: true; label: "转码音频质量"
+                        UiCombo { objectName: "profileAudioQuality"; Layout.fillWidth: true; accessibleName: "预设音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; property var values: ["original", "320", "256", "192", "128"]; currentIndex: values.indexOf(settings.state.profileDraftAudioQuality); onActivated: settings.editProfileField("audio_quality", values[currentIndex]) }
+                    }
                 }
-                SettingField { Layout.fillWidth: true; label: "转码音频质量"
-                    UiCombo { objectName: "profileAudioQuality"; Layout.fillWidth: true; accessibleName: "预设音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; property var values: ["original", "320", "256", "192", "128"]; currentIndex: values.indexOf(settings.state.profileDraftAudioQuality); onActivated: settings.editProfileField("audio_quality", values[currentIndex]) }
+                RowLayout { Layout.fillWidth: true; spacing: 20
+                    UiSwitch { objectName: "profileSubtitleEnabled"; text: "下载字幕"; checked: settings.state.profileDraftSubtitleEnabled; onToggled: settings.editProfileField("subtitle_enabled", checked) }
+                    UiSwitch { objectName: "profileSubtitleAuto"; text: "包含自动生成字幕"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleAuto; onToggled: settings.editProfileField("subtitle_auto", checked) }
                 }
-                UiSwitch { objectName: "profileSubtitleEnabled"; text: "下载字幕"; checked: settings.state.profileDraftSubtitleEnabled; onToggled: settings.editProfileField("subtitle_enabled", checked) }
-                UiSwitch { objectName: "profileSubtitleAuto"; text: "包含自动生成字幕"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleAuto; onToggled: settings.editProfileField("subtitle_auto", checked) }
                 SettingField { Layout.fillWidth: true; label: "字幕格式"
                     UiCombo { objectName: "profileSubtitleFormat"; Layout.fillWidth: true; accessibleName: "预设字幕格式"; model: ["SRT", "VTT"]; property var values: ["srt", "vtt"]; currentIndex: values.indexOf(settings.state.profileDraftSubtitleFormat); enabled: settings.state.profileDraftSubtitleEnabled; onActivated: settings.editProfileField("subtitle_format", values[currentIndex]) }
                 }
