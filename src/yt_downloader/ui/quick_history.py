@@ -2,7 +2,7 @@
 from PySide6.QtCore import QObject, Property, QUrl, Qt, Signal, Slot
 
 from yt_downloader.core.formatting import format_bytes
-from yt_downloader.core.models import STATUS_TEXT, TaskStatus
+from yt_downloader.core.models import TASK_STATUS_MESSAGE_IDS, TaskStatus
 from yt_downloader.ui.quick_state import RowModel, ViewState
 
 TERMINAL = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
@@ -18,16 +18,18 @@ class HistoryPresenter(ViewState):
     delete_many_requested = Signal(object)
     clear_terminal_requested = Signal()
 
-    def __init__(self, dialogs, parent=None):
+    def __init__(self, dialogs, parent=None, translator=None):
         super().__init__(parent, managing=False, selectedId='', selectedIndex=-1,
                          fileExists=False, canDelete=False, checkedCount=0, selectableCount=0,
                          selectAllState=Qt.CheckState.Unchecked.value, managementText='')
         self.dialogs = dialogs
+        self._translator = translator
         self.records = []
         self._checked = set()
         self._model = RowModel(self)
         self._images = None
         self._thumbnail_sources = {}
+        self._management_result = None
 
     @Property(QObject, constant=True)
     def model(self):
@@ -80,6 +82,11 @@ class HistoryPresenter(ViewState):
         self._refresh()
         self.select(self._state['selectedId'])
 
+    def refresh_localized(self, *_):
+        self._refresh()
+        if self._management_result is not None:
+            self._set_management_result(*self._management_result)
+
     def _refresh(self):
         selectable_count = sum(r.status in TERMINAL for r in self.records)
         checked_count = len(self._checked)
@@ -90,13 +97,14 @@ class HistoryPresenter(ViewState):
         )
         self._model.replace([dict(id=r.task_id, title=r.title,
                                  subtitle=f'{r.quality_label}  ·  {format_bytes(r.file_size)}',
-                                 status=STATUS_TEXT[r.status], date=r.created_at,
+                                 statusKey=TASK_STATUS_MESSAGE_IDS[r.status], statusCode=r.status.value, date=r.created_at,
                                  thumbnail=self._thumbnail_sources.get(r.task_id) or (QUrl.fromLocalFile(str(r.thumbnail_path)).toString() if r.thumbnail_path and r.thumbnail_path.is_file() else ''),
                                  checked=r.task_id in self._checked, deletable=r.status in TERMINAL)
                              for r in self.records])
         self.update(checkedCount=checked_count, selectableCount=selectable_count,
                     selectAllState=select_all_state,
-                    managementText=f'已选择 {checked_count} 项')
+                    managementText=(self._translator.text('history.selected_count', {'count': checked_count})
+                                    if self._translator else f'已选择 {checked_count} 项'))
 
     def selected_record(self):
         return next((r for r in self.records if r.task_id == self._state['selectedId']), None)
@@ -108,6 +116,22 @@ class HistoryPresenter(ViewState):
                     selectedIndex=self.records.index(record) if record else -1,
                     fileExists=bool(record and record.file_path.is_file()),
                     canDelete=bool(record and record.status in TERMINAL))
+
+    @Slot(str)
+    def prepareContext(self, task_id):
+        """Focus the context target and align management selection with it."""
+        record = next((r for r in self.records if r.task_id == task_id), None)
+        if not record:
+            return
+        if self._state['managing']:
+            if record.status in TERMINAL:
+                if task_id not in self._checked:
+                    self._checked = {task_id}
+                    self._refresh()
+            else:
+                self._checked.clear()
+                self._refresh()
+        self.select(task_id)
 
     @Slot(bool)
     def manage(self, enabled):
@@ -151,15 +175,27 @@ class HistoryPresenter(ViewState):
         elif action == 'cover':
             self.thumbnail_requested.emit(record)
         elif action == 'delete' and record.status in TERMINAL:
-            self.dialogs.confirm('删除历史记录', f'确定删除“{record.title}”的历史记录吗？\n只删除记录，已经下载的视频文件会保留。',
-                                 '删除记录', lambda accepted: self.delete_requested.emit(record) if accepted else None)
+            if self._state['managing'] and record.task_id in self._checked:
+                self.deleteChecked()
+                return
+            title = self._translator.text('history.delete_dialog_title') if self._translator else '删除历史记录'
+            body = (self._translator.text('history.delete_record_body', {'title': record.title})
+                    if self._translator else f'确定删除“{record.title}”的历史记录吗？\n只删除记录，已经下载的视频文件会保留。')
+            button = self._translator.text('history.delete_record_button') if self._translator else '删除记录'
+            self.dialogs.confirm(title, body, button,
+                                 lambda accepted: self.delete_requested.emit(record) if accepted else None)
 
     @Slot()
     def deleteChecked(self):
         ids = tuple(r.task_id for r in self.records if r.task_id in self._checked)
         if ids:
-            self.dialogs.confirm('删除所选历史记录', f'确定删除所选的 {len(ids)} 条历史记录吗？\n只删除终态记录，不删除视频文件。',
-                                 '删除', lambda accepted: self.delete_many_requested.emit(ids) if accepted else None)
+            title = (self._translator.text('history.delete_selected_dialog_title')
+                     if self._translator else '删除所选历史记录')
+            body = (self._translator.text('history.delete_selected_dialog_body', {'count': len(ids)})
+                    if self._translator else f'确定删除所选的 {len(ids)} 条历史记录吗？\n只删除终态记录，不删除视频文件。')
+            button = self._translator.text('history.delete_button') if self._translator else '删除'
+            self.dialogs.confirm(title, body, button,
+                                 lambda accepted: self.delete_many_requested.emit(ids) if accepted else None)
 
     @Slot()
     def clearTerminal(self):
@@ -167,7 +203,17 @@ class HistoryPresenter(ViewState):
                              '删除', lambda accepted: self.clear_terminal_requested.emit() if accepted else None)
 
     def show_management_result(self, deleted_count, retained_count):
-        self.update(managementText=f'已删除 {deleted_count} 项；保留 {retained_count} 项不可删除记录' if retained_count else f'已删除 {deleted_count} 项')
+        self._management_result = (deleted_count, retained_count)
+        self._set_management_result(deleted_count, retained_count)
+
+    def _set_management_result(self, deleted_count, retained_count):
+        if self._translator:
+            key = 'history.management_result' if retained_count else 'history.deleted_count'
+            params = {'deleted': deleted_count, 'retained': retained_count} if retained_count else {'deleted': deleted_count}
+            message = self._translator.text(key, params)
+        else:
+            message = f'已删除 {deleted_count} 项；保留 {retained_count} 项不可删除记录' if retained_count else f'已删除 {deleted_count} 项'
+        self.update(managementText=message)
 
     def batch_delete_succeeded(self, deleted_count, retained_count):
         """Leave selection mode only after the repository confirms deletion."""

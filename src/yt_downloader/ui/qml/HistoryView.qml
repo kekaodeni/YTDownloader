@@ -7,11 +7,11 @@ Item {
     ColumnLayout {
         anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32; spacing: 18
         RowLayout { objectName: "historyHeader"; Layout.fillWidth: true; spacing: 6
-            UiText { text: "历史记录"; role: "PageTitle" }
+            UiText { text: i18n.messages["history.title"]; role: "PageTitle" }
             Item { Layout.fillWidth: true }
-            UiButton { objectName: "historyManageButton"; visible: !history.state.managing; text: "管理"; onClicked: history.manage(true) }
+            UiButton { objectName: "historyManageButton"; visible: !history.state.managing; text: i18n.messages["history.manage"]; onClicked: history.manage(true) }
         }
-        UiText { Layout.fillWidth: true; text: "通过本软件下载的内容，都在这里。"; role: "Secondary"; color: theme.state.secondary }
+        UiText { Layout.fillWidth: true; text: i18n.messages["history.intro"]; role: "Secondary"; color: theme.state.secondary }
         Flow {
             id: managementToolbar
             objectName: "historyManagementToolbar"
@@ -25,7 +25,7 @@ Item {
                 CheckBox {
                     id: selectAllCheck
                     objectName: "historySelectAll"
-                    text: "全选"
+                    text: i18n.messages["history.select_all"]
                     tristate: true
                     checkState: history.state.selectAllState
                     nextCheckState: function() { return history.state.selectAllState }
@@ -43,8 +43,8 @@ Item {
                     font.pointSize: theme.fontSize("Button")
                     font.weight: theme.fontWeight("Button")
                     Accessible.role: Accessible.CheckBox
-                    Accessible.name: "全选"
-                    Accessible.description: checkState === Qt.Checked ? "已全选" : checkState === Qt.PartiallyChecked ? "部分选中" : "未选中"
+                    Accessible.name: i18n.messages["history.select_all"]
+                    Accessible.description: checkState === Qt.Checked ? i18n.messages["history.selection.all"] : checkState === Qt.PartiallyChecked ? i18n.messages["history.selection.partial"] : i18n.messages["history.selection.unselected"]
                     indicator: Rectangle {
                         objectName: "historySelectAllIndicator"
                         x: selectAllCheck.leftPadding
@@ -101,9 +101,9 @@ Item {
                 id: actionGroup
                 objectName: "historyActionGroup"
                 width: implicitWidth; height: 38; spacing: 10
-                UiButton { objectName: "historyDeleteSelected"; text: "删除所选"; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
-                UiButton { objectName: "historyClear"; text: "清空历史"; onClicked: history.clearTerminal() }
-                UiButton { objectName: "historyManageToggle"; text: "完成"; appearance: "primary"; onClicked: history.manage(false) }
+                UiButton { objectName: "historyDeleteSelected"; text: i18n.messages["history.delete_selected"]; appearance: "danger"; enabled: history.state.checkedCount > 0; onClicked: history.deleteChecked() }
+                UiButton { objectName: "historyClear"; text: i18n.messages["history.clear"]; onClicked: history.clearTerminal() }
+                UiButton { objectName: "historyManageToggle"; text: i18n.messages["common.done"]; appearance: "primary"; onClicked: history.manage(false) }
             }
         }
         ListView {
@@ -152,7 +152,7 @@ Item {
                 border.width: rowSelected && list.activeFocus ? 1 : 0
                 border.color: theme.state.accent
                 Accessible.role: Accessible.ListItem
-                Accessible.name: item.title + "，" + item.status
+                Accessible.name: item.title + "，" + i18n.messages[item.statusKey]
                 HoverHandler {
                     id: hover
                     cursorShape: history.state.managing && item.deletable ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -160,7 +160,7 @@ Item {
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: function(point, button) {
-                        history.select(item.id); list.forceActiveFocus()
+                        history.prepareContext(item.id); list.forceActiveFocus()
                         contextMenu.popup(historyRow, point.position.x, point.position.y)
                     }
                 }
@@ -186,7 +186,7 @@ Item {
                         Layout.preferredWidth: 24; Layout.preferredHeight: 24
                         Layout.alignment: Qt.AlignVCenter
                         padding: 0
-                        Accessible.name: "选择 " + item.title
+                        Accessible.name: i18n.messages["action.select_item"].replace("{title}", item.title)
                         onClicked: history.toggle(item.id)
                         indicator: Rectangle {
                             objectName: "historyCheckboxIndicator-" + item.id
@@ -217,39 +217,39 @@ Item {
                             width: Math.min(parent.width, parent.height * sourceAspectRatio)
                             height: width / sourceAspectRatio
                             imageFillMode: Image.PreserveAspectFit
-                            source: item.thumbnail; placeholder: "视频"
+                            source: item.thumbnail; placeholder: i18n.messages["thumbnail.video"]
                         }
                     }
                     ColumnLayout { Layout.fillWidth: true; spacing: 6
                         UiText { objectName: "historyTitle-" + item.id; Layout.fillWidth: true; text: item.title; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
                         UiText { objectName: "historySubtitle-" + item.id; Layout.fillWidth: true; text: item.subtitle; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
-                        UiText { objectName: "historyStatusMobile-" + item.id; visible: root.width < 620; text: item.status; role: "Caption"; color: theme.state.secondary }
+                        UiText { objectName: "historyStatusMobile-" + item.id; visible: root.width < 620; text: i18n.messages[item.statusKey]; role: "Caption"; color: theme.state.secondary }
                     }
-                    UiText { objectName: "historyStatus-" + item.id; visible: root.width >= 620; text: item.status; role: "Caption"; color: theme.state.secondary }
+                    UiText { objectName: "historyStatus-" + item.id; visible: root.width >= 620; text: i18n.messages[item.statusKey]; role: "Caption"; color: theme.state.secondary }
                 }
             }
             Column { anchors.centerIn: parent; width: parent.width; spacing: 10; visible: history.model.count === 0
-                UiText { width: parent.width; text: "还没有下载记录"; role: "SectionTitle"; horizontalAlignment: Text.AlignHCenter }
-                UiText { width: parent.width; text: "完成下载后，你可以在这里打开文件或设置视频封面。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+                UiText { width: parent.width; text: i18n.messages["history.empty.title"]; role: "SectionTitle"; horizontalAlignment: Text.AlignHCenter }
+                UiText { width: parent.width; text: i18n.messages["history.empty.body"]; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             }
         }
         Flow { Layout.fillWidth: true; spacing: 8; visible: !history.state.managing
-            UiButton { objectName: "historyItemOpen"; text: "打开文件"; enabled: history.state.fileExists; onClicked: history.action("open") }
-            UiButton { objectName: "historyItemFolder"; text: "打开文件夹"; enabled: history.state.fileExists; onClicked: history.action("folder") }
-            UiButton { objectName: "historyItemCopy"; text: "复制链接"; enabled: history.state.selectedId.length > 0; onClicked: history.action("copy") }
-            UiButton { objectName: "historyItemCover"; text: "设置视频封面"; enabled: history.state.fileExists; onClicked: history.action("cover") }
-            UiButton { objectName: "historyItemRetry"; text: "重试"; enabled: history.state.selectedId.length > 0; onClicked: history.action("retry") }
+            UiButton { objectName: "historyItemOpen"; text: i18n.messages["action.open_file"]; enabled: history.state.fileExists; onClicked: history.action("open") }
+            UiButton { objectName: "historyItemFolder"; text: i18n.messages["action.open_folder"]; enabled: history.state.fileExists; onClicked: history.action("folder") }
+            UiButton { objectName: "historyItemCopy"; text: i18n.messages["action.copy_link"]; enabled: history.state.selectedId.length > 0; onClicked: history.action("copy") }
+            UiButton { objectName: "historyItemCover"; text: i18n.messages["action.set_video_cover"]; enabled: history.state.fileExists; onClicked: history.action("cover") }
+            UiButton { objectName: "historyItemRetry"; text: i18n.messages["action.retry"]; enabled: history.state.selectedId.length > 0; onClicked: history.action("retry") }
         }
     }
     UiMenu {
         id: contextMenu; objectName: "historyMenu"
         onClosed: list.forceActiveFocus()
-        UiMenuItem { text: "打开文件"; icon.source: assetsBase + "icons/open_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("open") }
-        UiMenuItem { text: "打开文件夹"; icon.source: assetsBase + "icons/folder_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("folder") }
-        UiMenuItem { text: "复制链接"; icon.source: assetsBase + "icons/link_regular.svg"; onTriggered: history.action("copy") }
-        UiMenuItem { text: "重新下载"; icon.source: assetsBase + "icons/retry_regular.svg"; onTriggered: history.action("retry") }
-        UiMenuItem { text: "设置视频封面"; icon.source: assetsBase + "icons/image_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("cover") }
+        UiMenuItem { text: i18n.messages["action.open_file"]; icon.source: assetsBase + "icons/open_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("open") }
+        UiMenuItem { text: i18n.messages["action.open_folder"]; icon.source: assetsBase + "icons/folder_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("folder") }
+        UiMenuItem { text: i18n.messages["action.copy_link"]; icon.source: assetsBase + "icons/link_regular.svg"; onTriggered: history.action("copy") }
+        UiMenuItem { text: i18n.messages["action.redownload"]; icon.source: assetsBase + "icons/retry_regular.svg"; onTriggered: history.action("retry") }
+        UiMenuItem { text: i18n.messages["action.set_video_cover"]; icon.source: assetsBase + "icons/image_regular.svg"; enabled: history.state.fileExists; onTriggered: history.action("cover") }
         UiMenuSeparator { }
-        UiMenuItem { text: "删除记录"; destructive: true; icon.source: assetsBase + "icons/delete_regular.svg"; enabled: history.state.canDelete; onTriggered: history.action("delete") }
+        UiMenuItem { objectName: "historyContextDelete"; text: history.state.managing && history.state.checkedCount > 1 ? i18n.messages["history.delete_selected"] : i18n.messages["action.delete_record"]; destructive: true; icon.source: assetsBase + "icons/delete_regular.svg"; enabled: history.state.canDelete; onTriggered: history.action("delete") }
     }
 }

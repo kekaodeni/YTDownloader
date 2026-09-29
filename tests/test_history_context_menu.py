@@ -1,3 +1,4 @@
+from dataclasses import replace
 from PySide6.QtCore import Qt, QPointF, QObject
 from PySide6.QtTest import QTest
 import pytest
@@ -111,6 +112,71 @@ def test_context_menu_selects_pointer_record_and_has_all_actions(quick_window,tm
     menu = find_item(quick_window,'historyMenu')
     assert menu.property('visible')
     assert menu.property('count') == 7
+
+
+def test_management_context_delete_on_selected_row_deletes_complete_selection(quick_window,tmp_path,qapp,qtbot):
+    page = prepare(quick_window,tmp_path,qapp)
+    page.set_records([
+        _record(tmp_path,'first',TaskStatus.COMPLETED),
+        _record(tmp_path,'second',TaskStatus.FAILED),
+        _record(tmp_path,'third',TaskStatus.COMPLETED),
+    ])
+    run_frames(qapp)
+    page.manage(True)
+    page.toggle('first'); page.toggle('second')
+
+    click_item(quick_window,find_item(quick_window,'history-first'),Qt.RightButton)
+    run_frames(qapp)
+    assert page.state['checkedCount'] == 2
+    assert page.model.get(0)['checked'] and page.model.get(1)['checked']
+    assert find_item(quick_window,'historyContextDelete').property('text') == '删除所选'
+    before = len(quick_window.dialogs.sessions)
+    deleted = []
+    page.delete_many_requested.connect(deleted.append)
+    page.action('delete')
+    assert len(quick_window.dialogs.sessions) == before + 1
+    quick_window.dialogs.sessions[-1].answer(True)
+    assert deleted == [('first','second')]
+
+
+def test_management_context_click_on_unselected_row_makes_it_the_only_delete_target(quick_window,tmp_path,qapp):
+    page = prepare(quick_window,tmp_path,qapp)
+    page.set_records([
+        _record(tmp_path,'first',TaskStatus.COMPLETED),
+        _record(tmp_path,'second',TaskStatus.FAILED),
+        _record(tmp_path,'third',TaskStatus.COMPLETED),
+    ])
+    run_frames(qapp)
+    page.manage(True)
+    page.toggle('first'); page.toggle('second')
+
+    click_item(quick_window,find_item(quick_window,'history-third'),Qt.RightButton)
+    run_frames(qapp)
+    assert page.state['selectedId'] == 'third'
+    assert page.state['checkedCount'] == 1
+    assert [row['id'] for row in page.model.rows if row['checked']] == ['third']
+    assert find_item(quick_window,'historyContextDelete').property('text') == '删除记录'
+    deleted = []
+    page.delete_many_requested.connect(deleted.append)
+    page.action('delete')
+    quick_window.dialogs.sessions[-1].answer(True)
+    assert deleted == [('third',)]
+
+
+def test_single_item_context_action_targets_pointer_record_with_multiple_selected(quick_window,tmp_path,qapp):
+    page = prepare(quick_window,tmp_path,qapp)
+    first = replace(_record(tmp_path,'first',TaskStatus.COMPLETED),url='https://example.test/first')
+    second = replace(_record(tmp_path,'second',TaskStatus.FAILED),url='https://example.test/second')
+    page.set_records([first,second]); run_frames(qapp)
+    page.manage(True); page.toggle('first'); page.toggle('second')
+
+    click_item(quick_window,find_item(quick_window,'history-first'),Qt.RightButton)
+    run_frames(qapp)
+    copied = []
+    page.copy_link_requested.connect(copied.append)
+    page.action('copy')
+    assert copied == ['https://example.test/first']
+    assert page.state['checkedCount'] == 2
 
 def test_delete_requires_confirmation_and_is_disabled_for_active_task(quick_window,tmp_path,qtbot):
     page = quick_window.history_page; deleted = []
