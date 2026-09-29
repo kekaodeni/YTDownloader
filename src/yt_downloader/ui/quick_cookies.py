@@ -18,23 +18,46 @@ from yt_downloader.ui.quick_state import ViewState
 class CookiePresenter(ViewState):
     save_requested = Signal(object)
     delete_requested = Signal(object)
-    pick_requested = Signal()
+    pickRequested = Signal()
     editor_requested = Signal(object)
     profiles_changed = Signal(object)
 
-    def __init__(self, parent=None):
-        super().__init__(parent, profiles=['不使用'], profileIndex=0,
+    def __init__(self, parent=None, translator=None):
+        if translator is None:
+            from yt_downloader.ui.localization import Translator
+            translator = Translator('zh-CN', parent)
+        super().__init__(parent, profiles=[translator.text('cookie.profile_none')], profileIndex=0,
                          source='none', browser='chrome', browserProfile='', name='', domain='',
-                         fileLabel='未选择文件', message='', authRequired=False,
+                         fileLabel=translator.text('cookie.file_not_selected'), message='', authRequired=False,
                          modeOptions=[
-                             {'id': 'none', 'label': '不使用', 'description': '适合绝大多数公开内容'},
-                             {'id': 'browser', 'label': '从浏览器读取', 'description': '使用你已经登录的网站状态'},
-                             {'id': 'file', 'label': '使用 cookies.txt', 'description': '使用本地 Netscape Cookie 文件'},
+                             {'id': 'none', 'label': translator.text('cookie.profile_none'), 'description': translator.text('cookie.mode_none_description')},
+                             {'id': 'browser', 'label': translator.text('cookie.source_browser'), 'description': translator.text('cookie.mode_browser_description')},
+                             {'id': 'file', 'label': translator.text('cookie.source_file'), 'description': translator.text('cookie.mode_file_description')},
                          ], profileCards=[])
+        self._translator = translator
+        self._message_key = ''
+        self._message_source = ''
         self.profiles = ()
         self._file_path = ''
         self._editor_session = None
         self._save_failed = False
+        translator.languageChanged.connect(self._refresh_localized)
+
+    def _t(self, key):
+        return self._translator.text(key)
+
+    def _refresh_localized(self, _locale=None):
+        modes = [
+            {'id': 'none', 'label': self._t('cookie.profile_none'), 'description': self._t('cookie.mode_none_description')},
+            {'id': 'browser', 'label': self._t('cookie.source_browser'), 'description': self._t('cookie.mode_browser_description')},
+            {'id': 'file', 'label': self._t('cookie.source_file'), 'description': self._t('cookie.mode_file_description')},
+        ]
+        self.update(modeOptions=modes, profiles=[self._t('cookie.profile_none'), *(profile.name for profile in self.profiles)],
+                    fileLabel=self._t('cookie.file_not_selected') if not self._file_path else '…/' + Path(self._file_path).name)
+        if self._message_key:
+            self.update(message=self._t(self._message_key))
+        elif self._message_source:
+            self.update(message=self._translator.sourceText(self._message_source))
 
     @property
     def selected_profile(self):
@@ -47,14 +70,13 @@ class CookiePresenter(ViewState):
         index = next((i + 1 for i, profile in enumerate(self.profiles)
                       if selected and profile.id == selected.id), 0)
         cards = [self._profile_card(profile) for profile in self.profiles]
-        self.update(profiles=['不使用', *(profile.name for profile in self.profiles)],
+        self.update(profiles=[self._t('cookie.profile_none'), *(profile.name for profile in self.profiles)],
                     profileCards=cards, profileIndex=index)
         self.profiles_changed.emit(self.profiles)
 
-    @staticmethod
-    def _profile_card(profile):
+    def _profile_card(self, profile):
         if profile.source_type == 'browser':
-            summary = (profile.browser or '浏览器').capitalize()
+            summary = (profile.browser or self._t('cookie.default_name_browser')).capitalize()
         else:
             summary = 'cookies.txt'
         if profile.domain_hint:
@@ -76,7 +98,7 @@ class CookiePresenter(ViewState):
                     name=profile.name if profile else '',
                     browser=profile.browser or 'chrome' if profile else 'chrome',
                     browserProfile=profile.browser_profile if profile else '', domain=profile.domain_hint if profile else '',
-                    fileLabel='…/' + Path(self._file_path).name if self._file_path else '未选择文件')
+                    fileLabel='…/' + Path(self._file_path).name if self._file_path else self._t('cookie.file_not_selected'))
 
     @Slot(str, str)
     def edit(self, name, value):
@@ -90,8 +112,10 @@ class CookiePresenter(ViewState):
     def newProfile(self):
         self._file_path = ''
         self.selectProfile(0)
+        self._message_key = ''
+        self._message_source = ''
         self.update(source='browser', name='', domain='', browser='chrome', browserProfile='',
-                    fileLabel='未选择文件', message='')
+                    fileLabel=self._t('cookie.file_not_selected'), message='')
         self.editor_requested.emit(None)
 
     @Slot(int)
@@ -117,16 +141,20 @@ class CookiePresenter(ViewState):
             try:
                 cookie_options(CookieProfile('test', 'test', 'file', cookie_file=file_path))
             except ValueError as error:
-                self.update(message=str(error))
+                self._set_message_source(str(error))
                 return False
-            self.update(message='Cookie 文件格式有效；开启后可用于解析和下载。')
+            self._message_key = 'cookie.file_valid'
+            self._message_source = ''
+            self.update(message=self._t(self._message_key))
         elif source == 'browser':
             try:
                 cookie_options(CookieProfile('test', 'test', 'browser', browser=browser))
             except ValueError as error:
-                self.update(message=str(error))
+                self._set_message_source(str(error))
                 return False
-            self.update(message='将使用当前浏览器的登录状态；开启后在解析和下载时读取。')
+            self._message_key = 'cookie.browser_valid'
+            self._message_source = ''
+            self.update(message=self._t(self._message_key))
         return True
 
     @Slot(str)
@@ -141,11 +169,11 @@ class CookiePresenter(ViewState):
         browser = str(values.get('browser', 'chrome'))
         domain = str(values.get('domain', '')).strip().lower()
         if not re.fullmatch(r'[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z0-9]+', domain):
-            raise ValueError('请填写适用网站域名，例如 bilibili.com 或 x.com。')
+            raise ValueError(self._t('cookie.invalid_domain'))
         file_path = str(values.get('file_path', self._file_path)) if source == 'file' else ''
         now = datetime.now(timezone.utc).isoformat()
-        default_name = (f"{domain or '网站'} - {(browser or '浏览器').capitalize()}"
-                        if source == 'browser' else 'cookies.txt 配置')
+        default_name = (f"{domain or self._t('cookie.default_name_site')} - {(browser or self._t('cookie.default_name_browser')).capitalize()}"
+                        if source == 'browser' else self._t('cookie.default_file_profile'))
         return CookieProfile(old.id if old else uuid.uuid4().hex,
                              str(values.get('name', '')).strip() or default_name,
                              source, browser, file_path, domain,
@@ -159,7 +187,7 @@ class CookiePresenter(ViewState):
             profile = self._build_profile(values, old)
             cookie_options(profile)
         except ValueError as error:
-            self.update(message=str(error))
+            self._set_message_source(str(error))
             return False
         profiles = tuple(item for item in self.profiles if item.id != profile.id) + (profile,)
         self._save_failed = False
@@ -168,7 +196,14 @@ class CookiePresenter(ViewState):
 
     def mark_save_failed(self):
         self._save_failed = True
-        self.update(message='Cookie 配置保存失败，原配置已保留。')
+        self._message_key = 'cookie.profile_save_failed'
+        self._message_source = ''
+        self.update(message=self._t(self._message_key))
+
+    def _set_message_source(self, message):
+        self._message_key = ''
+        self._message_source = str(message)
+        self.update(message=self._translator.sourceText(self._message_source))
 
     @Slot()
     def saveProfile(self):
@@ -189,4 +224,6 @@ class CookiePresenter(ViewState):
     def apply_saved_profiles(self, profiles):
         self.set_profiles(profiles)
         self.selectProfile(0)
-        self.update(message='Cookie 配置已保存。')
+        self._message_key = 'cookie.profile_saved'
+        self._message_source = ''
+        self.update(message=self._t(self._message_key))

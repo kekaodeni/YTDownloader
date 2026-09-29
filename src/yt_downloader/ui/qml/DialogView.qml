@@ -30,6 +30,7 @@ Dialog {
     Component.onCompleted: if (s.open) open()
     Connections {
         target: popup.session
+        ignoreUnknownSignals: true
         function onChanged() {
             if (popup.session.state.open && !popup.visible) {
                 popup.restoreFocus = popup.parent && popup.parent.Window.window ? popup.parent.Window.window.activeFocusItem : null
@@ -49,19 +50,20 @@ Dialog {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
             UiText { Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
-            UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: "请只使用你自己的 Cookie，不要把 cookies.txt 分享给他人。YTDownloader 不会将 Cookie 上传到 GitHub，也不会写入下载历史。"; wrapMode: Text.Wrap; color: theme.state.secondary }
+            UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: i18n.messages["cookie.privacy_short"]; wrapMode: Text.Wrap; color: theme.state.secondary }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12
-                UiButton { objectName: "errorDetails"; text: popup.detailsOpen ? "收起错误详情" : "错误详情"; appearance: "quiet"; onClicked: popup.detailsOpen = !popup.detailsOpen }
+                UiButton { objectName: "errorDetails"; text: popup.detailsOpen ? i18n.messages["error.hide_details"] : i18n.messages["error.details"]; appearance: "quiet"; onClicked: popup.detailsOpen = !popup.detailsOpen }
                 ScrollView {
                     Layout.fillWidth: true; Layout.preferredHeight: 180; visible: popup.detailsOpen
                         TextArea { text: popup.s.details || ""; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; color: theme.state.text; selectionColor: theme.state.selection; selectedTextColor: theme.state.text; font.family: theme.fontFamily("Caption", text); font.pointSize: theme.fontSize("Caption"); font.weight: theme.fontWeight("Caption"); background: Rectangle { color: theme.state.subtle; radius: 8 } }
                 }
+                UiButton { objectName: "errorCopyReport"; text: i18n.messages["error.copy_report"]; appearance: "quiet"; visible: popup.detailsOpen; onClicked: popup.session.copyReport() }
             }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "update"; spacing: 12
-                UiText { objectName: "updateVersions"; Layout.fillWidth: true; text: "当前版本 " + (popup.s.currentVersion || "") + "  →  " + (popup.s.targetVersion || "") + "    ·    " + (popup.s.packageSize || ""); wrapMode: Text.Wrap; textFormat: Text.PlainText }
-                UiCombo { objectName: "updateLanguage"; accessibleName: "更新说明语言"; model: ["中文", "English"]; currentIndex: popup.s.language === "en" ? 1 : 0; onActivated: popup.session.setLanguage(currentIndex === 1 ? "en" : "zh-CN") }
+                UiText { objectName: "updateVersions"; Layout.fillWidth: true; text: i18n.messages["update.version_comparison"].replace("{current}", popup.s.currentVersion || "").replace("{target}", popup.s.targetVersion || "").replace("{size}", popup.s.packageSize || ""); wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                UiCombo { objectName: "updateLanguage"; accessibleName: i18n.messages["update.notes_language"]; model: [i18n.languages[0].name, i18n.languages[2].name]; currentIndex: popup.s.language === "en" ? 1 : 0; onActivated: popup.session.setLanguage(currentIndex === 1 ? "en" : "zh-CN") }
                 ScrollView {
                     objectName: "updateNotesScroll"
                     Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, Math.max(70, popup.height * 0.24))
@@ -87,28 +89,28 @@ Dialog {
                         placeholder: popup.s.previewText || ""
                     }
                 }
-                Slider { Layout.fillWidth: true; from: 0; to: popup.s.duration || 0; value: popup.s.timestamp || 0; stepSize: 1; enabled: popup.s.controlsEnabled || false; Accessible.name: "封面时间"; onMoved: popup.session.setTimestamp(value) }
+                Slider { Layout.fillWidth: true; from: 0; to: popup.s.duration || 0; value: popup.s.timestamp || 0; stepSize: 1; enabled: popup.s.controlsEnabled || false; Accessible.name: i18n.messages["cover.time"]; onMoved: popup.session.setTimestamp(value) }
                 RowLayout { Layout.fillWidth: true
-                    UiText { text: "时间（秒）"; role: "Caption" }
-                    UiField { Layout.fillWidth: true; text: (popup.s.timestamp || 0).toFixed(1); enabled: popup.s.controlsEnabled || false; Accessible.name: "封面时间（秒）"; validator: DoubleValidator { bottom: 0; top: popup.s.duration || 0; decimals: 1; locale: "C" } onEditingFinished: if (acceptableInput) popup.session.setTimestamp(Number(text)) }
+                    UiText { text: i18n.messages["cover.time_seconds"]; role: "Caption" }
+                    UiField { Layout.fillWidth: true; text: (popup.s.timestamp || 0).toFixed(1); enabled: popup.s.controlsEnabled || false; Accessible.name: i18n.messages["cover.time_seconds"]; validator: DoubleValidator { bottom: 0; top: popup.s.duration || 0; decimals: 1; locale: "C" } onEditingFinished: if (acceptableInput) popup.session.setTimestamp(Number(text)) }
                 }
             }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "cookie"; spacing: 10
-                UiText { Layout.fillWidth: true; text: "配置名称仅供你识别，例如 B站 Firefox；网站匹配不依赖名称。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiText { text: "Cookie 来源"; role: "Caption" }
-                UiCombo { objectName: "cookieSourceCombo"; Layout.fillWidth: true; model: ["从浏览器读取", "cookies.txt"]; currentIndex: popup.s.source === "file" ? 1 : 0; onActivated: popup.session.setSource(currentIndex === 1 ? "file" : "browser") }
-                UiText { text: "配置名称"; role: "Caption" }
+                UiText { Layout.fillWidth: true; text: i18n.messages["cookie.profile_name_help"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { text: i18n.messages["cookie.source"]; role: "Caption" }
+                UiCombo { objectName: "cookieSourceCombo"; Layout.fillWidth: true; model: [i18n.messages["cookie.source_browser"], i18n.messages["cookie.source_file"]]; currentIndex: popup.s.source === "file" ? 1 : 0; onActivated: popup.session.setSource(currentIndex === 1 ? "file" : "browser") }
+                UiText { text: i18n.messages["cookie.profile_name"]; role: "Caption" }
                 UiField { objectName: "cookieName"; Layout.fillWidth: true; text: popup.s.name || ""; onTextChanged: popup.session.setField("name", text) }
-                UiText { text: "适用网站域名"; role: "Caption" }
-                UiField { objectName: "cookieDomain"; Layout.fillWidth: true; text: popup.s.domain || ""; onTextChanged: popup.session.setField("domain", text); placeholderText: "例如 bilibili.com 或 x.com，无需完整视频链接" }
+                UiText { text: i18n.messages["cookie.domain"]; role: "Caption" }
+                UiField { objectName: "cookieDomain"; Layout.fillWidth: true; text: popup.s.domain || ""; onTextChanged: popup.session.setField("domain", text); placeholderText: i18n.messages["cookie.domain_placeholder"] }
                 UiCombo { objectName: "cookieBrowser"; visible: popup.s.source === "browser"; Layout.fillWidth: true; model: ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Chromium"]; property var values: ["chrome", "edge", "firefox", "brave", "opera", "chromium"]; currentIndex: Math.max(0, values.indexOf(popup.s.browser)); onActivated: popup.session.setField("browser", values[currentIndex]) }
-                UiField { objectName: "cookieBrowserProfile"; visible: popup.s.source === "browser"; Layout.fillWidth: true; text: popup.s.browserProfile || ""; placeholderText: "Default（可选）"; Accessible.name: "浏览器配置文件"; onTextChanged: popup.session.setField("browserProfile", text) }
+                UiField { objectName: "cookieBrowserProfile"; visible: popup.s.source === "browser"; Layout.fillWidth: true; text: popup.s.browserProfile || ""; placeholderText: i18n.messages["cookie.browser_profile_optional"]; Accessible.name: i18n.messages["cookie.browser_profile"]; onTextChanged: popup.session.setField("browserProfile", text) }
                 RowLayout { Layout.fillWidth: true; visible: popup.s.source === "file"
-                    UiText { Layout.fillWidth: true; text: popup.s.fileLabel || "未选择文件"; role: "Caption"; elide: Text.ElideLeft }
-                    UiButton { objectName: "cookieBrowse"; text: "浏览"; onClicked: popup.session.browse() }
+                    UiText { Layout.fillWidth: true; text: popup.s.fileLabel || i18n.messages["cookie.file_not_selected"]; role: "Caption"; elide: Text.ElideLeft }
+                    UiButton { objectName: "cookieBrowse"; text: i18n.messages["common.browse"]; onClicked: popup.session.browse() }
                 }
-                UiText { Layout.fillWidth: true; text: popup.s.source === "file" ? "选择 Netscape 格式的 cookies.txt；文件相当于登录凭据，请勿分享。" : "请先在选定浏览器登录目标网站；yt-dlp 会在解析和下载时读取该登录状态。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiText { Layout.fillWidth: true; text: popup.s.source === "file" ? i18n.messages["cookie.file_help"] : i18n.messages["cookie.browser_help"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 UiText { Layout.fillWidth: true; text: popup.s.message || ""; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
             }
         }
@@ -118,20 +120,28 @@ Dialog {
         Flow {
             id: actions
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 8
-            UiButton { text: "复制错误报告"; visible: popup.s.kind === "error"; onClicked: popup.session.copyReport() }
-            UiButton { text: "重试"; visible: popup.s.kind === "error" && (popup.s.hasRetry || false); onClicked: popup.session.retry() }
-            UiButton { text: "打开文件夹"; visible: popup.s.kind === "confirm" && (popup.s.hasFolder || false); onClicked: popup.session.openFolder() }
+            Repeater {
+                model: popup.s.kind === "error" ? (popup.s.errorActions || []) : []
+                delegate: UiButton {
+                    required property var modelData
+                    text: modelData.label
+                    appearance: modelData.primary ? "primary" : "normal"
+                    onClicked: popup.session.runAction(modelData.id)
+                }
+            }
+            UiButton { text: i18n.messages["action.retry"]; visible: popup.s.kind === "error" && (popup.s.hasRetry || false) && !(popup.s.errorActions || []).length; onClicked: popup.session.retry() }
+            UiButton { text: i18n.messages["action.open_folder"]; visible: popup.s.kind === "confirm" && (popup.s.hasFolder || false); onClicked: popup.session.openFolder() }
             UiButton { text: popup.s.acceptText || ""; appearance: "danger"; visible: popup.s.kind === "confirm"; onClicked: popup.session.answer(true) }
-            UiButton { text: "预览"; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.previewEnabled || false; onClicked: popup.session.generatePreview() }
-            UiButton { text: popup.s.applyText || "写入视频封面"; appearance: "primary"; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.applyEnabled || false; onClicked: popup.session.apply() }
-            UiButton { text: "资源管理器封面支持"; visible: popup.s.kind === "cover" && (popup.s.explorerNeedsSupport || false); onClicked: popup.session.openExplorerSupport() }
-            UiButton { text: "完整发布说明"; visible: popup.s.kind === "update" && (popup.s.canRelease || false); onClicked: popup.session.action("release") }
-            UiButton { objectName: "updateDownload"; text: popup.s.downloadText || "下载并安装"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canDownload || false); onClicked: popup.session.action("download") }
-            UiButton { text: popup.s.cancelEnabled ? "取消下载" : "正在取消…"; enabled: popup.s.cancelEnabled || false; visible: popup.s.kind === "update" && (popup.s.canCancel || false); onClicked: popup.session.action("cancel") }
-            UiButton { objectName: "updateInstall"; text: "立即安装并重启"; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
-            UiButton { objectName: "cookieTest"; text: "测试配置"; visible: popup.s.kind === "cookie"; onClicked: popup.session.test() }
-            UiButton { objectName: "cookieSave"; text: "保存"; appearance: "primary"; visible: popup.s.kind === "cookie"; onClicked: popup.session.save() }
-            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : "关闭"; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
+            UiButton { text: i18n.messages["common.preview"]; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.previewEnabled || false; onClicked: popup.session.generatePreview() }
+            UiButton { text: popup.s.applyText || i18n.messages["action.set_video_cover"]; appearance: "primary"; visible: popup.s.kind === "cover" && !popup.s.completed; enabled: popup.s.applyEnabled || false; onClicked: popup.session.apply() }
+            UiButton { text: i18n.messages["cover.explorer_support"]; visible: popup.s.kind === "cover" && (popup.s.explorerNeedsSupport || false); onClicked: popup.session.openExplorerSupport() }
+            UiButton { text: i18n.messages["update.release_notes"]; visible: popup.s.kind === "update" && (popup.s.canRelease || false); onClicked: popup.session.action("release") }
+            UiButton { objectName: "updateDownload"; text: popup.s.downloadText || i18n.messages["update.download_install"]; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canDownload || false); onClicked: popup.session.action("download") }
+            UiButton { text: popup.s.cancelEnabled ? i18n.messages["update.cancel_download"] : i18n.messages["task.status.cancelling"]; enabled: popup.s.cancelEnabled || false; visible: popup.s.kind === "update" && (popup.s.canCancel || false); onClicked: popup.session.action("cancel") }
+            UiButton { objectName: "updateInstall"; text: i18n.messages["update.install_restart"]; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
+            UiButton { objectName: "cookieTest"; text: i18n.messages["cookie.test"]; visible: popup.s.kind === "cookie"; onClicked: popup.session.test() }
+            UiButton { objectName: "cookieSave"; text: i18n.messages["common.save"]; appearance: "primary"; visible: popup.s.kind === "cookie"; onClicked: popup.session.save() }
+            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : i18n.messages["common.close"]; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
         }
     }
 }

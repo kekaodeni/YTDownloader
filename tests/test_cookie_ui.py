@@ -63,12 +63,37 @@ def test_valid_and_unknown_bilibili_auth_states_are_not_mislabeled_as_invalid(qu
     run_frames(qapp)
     assert '登录有效' in page.state['cookieAuthStatus']
     assert page.state['cookieAuthWarning'] == ''
-
     page.show_video(replace(source, extractor_key='BiliBili', auth_state=AuthState.UNKNOWN))
     run_frames(qapp)
     assert '无法验证' in page.state['cookieAuthStatus']
     assert page.state['cookieAuthWarning'] == ''
 
+
+def test_youtube_success_with_configured_cookie_reports_parse_evidence(qapp, tmp_path):
+    from dataclasses import replace
+    from yt_downloader.core.models import CookieProfile
+    from test_download_service import _request
+    from yt_downloader.ui.quick_download import DownloadPresenter
+
+    class Images:
+        def add(self, _value): return ''
+
+    page = DownloadPresenter(str(tmp_path), Images())
+    page.set_cookie_state((CookieProfile('youtube', 'YouTube Firefox', 'browser',
+                                         browser='firefox', domain_hint='youtube.com'),))
+    page.setCookieEnabled(True)
+    page.set_url('https://www.youtube.com/watch?v=fixture')
+    page.requestParse()
+    assert 'YouTube Cookie：已配置' in page.state['cookieAuthStatus']
+    page.show_video(replace(_request(tmp_path).video, cookie_used=True))
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：已使用 · 解析成功'
+    page.set_cookie_parse_error('AUTH_REQUIRED', '此内容需要登录状态。')
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：登录失效或未登录'
+    assert page.state['cookieAuthInvalid']
+    assert page.state['cookieAuthWarning'] == '此内容需要登录状态。'
+    page.set_url('https://vimeo.com/123')
+    assert page.state['cookieAuthStatus'] == ''
+    assert not page.state['cookieAuthInvalid']
 
 def test_cookie_modes_and_saved_profiles_are_explicit(qapp):
     from yt_downloader.ui.quick_cookies import CookiePresenter

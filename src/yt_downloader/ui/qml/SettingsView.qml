@@ -6,32 +6,32 @@ Item {
     objectName: "settingsPage"
     ColumnLayout {
         anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32; spacing: 20
-        UiText { text: "设置"; role: "PageTitle" }
+        UiText { text: i18n.messages["nav.settings"]; role: "PageTitle" }
         UiScroll {
             id: scroll; objectName: "settingsScroll"; Layout.fillWidth: true; Layout.fillHeight: true
             contentHeight: body.implicitHeight + 20
             ColumnLayout {
                 id: body; width: scroll.width - 12; spacing: 20
-                UiText { text: "下载"; role: "SectionTitle" }
+                UiText { text: i18n.messages["nav.download"]; role: "SectionTitle" }
                 ColumnLayout {
                     id: downloadProfilesSection; objectName: "downloadProfilesSection"
                     Layout.fillWidth: true; spacing: 10
-                    UiText { text: "下载预设"; role: "SectionTitle" }
-                    SettingField { Layout.fillWidth: true; label: "默认下载预设"
+                    UiText { text: i18n.messages["settings.profiles"]; role: "SectionTitle" }
+                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.default_profile"]
                         UiCombo {
                             objectName: "defaultDownloadProfile"; Layout.fillWidth: true
-                            accessibleName: "默认下载预设"
+                            accessibleName: i18n.messages["settings.default_profile"]
                             model: settings.state.profileOptions.map(function(profile) { return profile.name })
                             currentIndex: Math.max(0, settings.state.profileOptions.findIndex(function(profile) { return profile.id === settings.state.defaultProfileId }))
                             onActivated: settings.setDefaultProfile(settings.state.profileOptions[currentIndex].id)
                         }
                     }
-                    UiText { Layout.fillWidth: true; text: "用于设置新解析任务的初始下载参数。解析后仍可针对当前视频单独调整。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                    UiText { objectName: "profileExplainer"; Layout.fillWidth: true; text: i18n.messages["settings.profile_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                     RowLayout { Layout.fillWidth: true; spacing: 8
-                        UiText { Layout.fillWidth: true; text: "自定义预设"; role: "SectionTitle" }
-                        UiButton { objectName: "newDownloadProfile"; text: "+ 新建预设"; appearance: "normal"; onClicked: settings.newProfile() }
+                        UiText { Layout.fillWidth: true; text: i18n.messages["settings.custom_profiles"]; role: "SectionTitle" }
+                        UiButton { objectName: "newDownloadProfile"; text: i18n.messages["settings.new_profile"]; appearance: "normal"; onClicked: settings.newProfile() }
                     }
-                    UiText { objectName: "emptyDownloadProfiles"; Layout.fillWidth: true; visible: settings.state.customProfiles.length === 0; text: "暂无自定义预设。"; role: "Caption"; color: theme.state.muted }
+                    UiText { objectName: "emptyDownloadProfiles"; Layout.fillWidth: true; visible: settings.state.customProfiles.length === 0; text: i18n.messages["settings.empty_profiles"]; role: "Caption"; color: theme.state.muted }
                     Repeater {
                         model: settings.state.customProfiles
                         delegate: Rectangle {
@@ -44,34 +44,34 @@ Item {
                                     UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
                                     UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
                                 }
-                                UiButton { objectName: "editProfile-" + modelData.id; text: "编辑"; onClicked: settings.editProfile(modelData.id) }
-                                UiButton { objectName: "deleteProfile-" + modelData.id; text: "删除"; appearance: "danger"; onClicked: settings.deleteProfile(modelData.id) }
+                                UiButton { objectName: "editProfile-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: settings.editProfile(modelData.id) }
+                                UiButton { objectName: "deleteProfile-" + modelData.id; text: i18n.messages["action.delete_record"]; appearance: "danger"; onClicked: settings.deleteProfile(modelData.id) }
                             }
                         }
                     }
                 }
                 SettingField {
-                    Layout.fillWidth: true; label: "默认下载目录"
+                    Layout.fillWidth: true; label: i18n.messages["settings.default_folder"]
                     RowLayout { Layout.fillWidth: true
-                        UiField { objectName: "defaultDirectory"; Layout.fillWidth: true; text: settings.state.download_directory; Accessible.name: "默认下载目录"; onTextChanged: settings.edit("download_directory", text) }
-                        UiButton { text: "浏览"; onClicked: settings.browse_requested("download_directory") }
+                        UiField { objectName: "defaultDirectory"; Layout.fillWidth: true; text: settings.state.download_directory; Accessible.name: i18n.messages["settings.default_folder"]; onTextChanged: if (text !== settings.state.download_directory) settings.setSetting("download_directory", text) }
+                        UiButton { text: i18n.messages["common.browse"]; onClicked: settings.browse_requested("download_directory") }
                     }
                 }
                 GridLayout {
                     Layout.fillWidth: true; columns: root.width >= 720 ? 2 : 1; columnSpacing: 16; rowSpacing: 16
-                    SettingField { Layout.fillWidth: true; label: "同时下载任务数"
-                        UiCombo { Layout.fillWidth: true; accessibleName: "同时下载任务数"; model: ["1", "2（默认）", "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.edit("max_concurrent_downloads", currentIndex + 1) }
+                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.concurrent_tasks"]
+                        UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.concurrent_tasks"]; model: ["1", i18n.messages["settings.concurrent_default"], "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.setSetting("max_concurrent_downloads", currentIndex + 1) }
                     }
-                    SettingField { Layout.fillWidth: true; label: "分片并发"
-                        UiCombo { Layout.fillWidth: true; accessibleName: "分片并发数"; model: ["自动", "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.edit("concurrent_fragments", values[currentIndex]) }
+                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.fragment_count"]
+                        UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.fragment_count"]; model: [i18n.messages["settings.fragments_auto"], "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.setSetting("concurrent_fragments", values[currentIndex]) }
                     }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: "账户与 Cookie"; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: "需要登录的网站可保存浏览器或 cookies.txt 的来源。下载页开启“使用 Cookie”时，按链接所在网站匹配配置。"; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { objectName: "cookiePrivacyHelp"; text: "查看 Cookie 用途与隐私说明"; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "normal"; onClicked: dialogs.info("Cookie 的用途与隐私说明", "Cookie 可代表网站登录状态，属于敏感凭据。浏览器来源由 yt-dlp 在解析或下载时读取；cookies.txt 文件仍保留在你选择的位置。请只配置自己有权访问的网站，不要分享 Cookie 文件。关闭下载页的“使用 Cookie”后，本次任务匿名访问。") }
-                UiText { text: "已保存的 Cookie 配置"; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: "暂无配置"; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
+                UiText { text: i18n.messages["settings.account_cookie"]; role: "SectionTitle" }
+                UiText { Layout.fillWidth: true; text: i18n.messages["settings.cookie_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiButton { objectName: "cookiePrivacyHelp"; text: i18n.messages["settings.cookie_privacy"]; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "normal"; onClicked: dialogs.info(i18n.messages["cookie.privacy_title"], i18n.messages["cookie.privacy_body"]) }
+                UiText { text: i18n.messages["settings.saved_cookies"]; role: "SectionTitle" }
+                UiText { Layout.fillWidth: true; text: i18n.messages["common.none_configured"]; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
                 Flow { objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10
                     Repeater { model: cookies.state.profileCards
                         delegate: Rectangle { required property var modelData; required property int index
@@ -81,50 +81,57 @@ Item {
                                     UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
                                     UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
                                 }
-                                UiButton { objectName: "cookieEdit-" + modelData.id; text: "编辑"; onClicked: cookies.editProfile(index) }
-                                UiButton { objectName: "cookieDelete-" + modelData.id; text: "删除"; appearance: "danger"; onClicked: cookies.requestDelete(index) }
+                                UiButton { objectName: "cookieEdit-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: cookies.editProfile(index) }
+                                UiButton { objectName: "cookieDelete-" + modelData.id; text: i18n.messages["action.delete_record"]; appearance: "danger"; onClicked: cookies.requestDelete(index) }
                             }
                         }
                     }
                 }
-                UiButton { objectName: "newCookieProfile"; text: "+ 新建 Cookie 配置"; onClicked: cookies.newProfile() }
-                UiText { Layout.fillWidth: true; text: cookies.state.message; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { text: "返回并重新解析"; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
+                UiButton { objectName: "newCookieProfile"; text: i18n.messages["settings.cookie_new"]; onClicked: cookies.newProfile() }
+                UiText { objectName: "cookieFeedback"; Layout.fillWidth: true; text: i18n.sourceText(cookies.state.message); role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiButton { text: i18n.messages["settings.return_reparse"]; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: "网络"; role: "SectionTitle" }
-                SettingField { Layout.fillWidth: true; label: "网络连接"
-                    UiCombo { Layout.fillWidth: true; accessibleName: "网络代理模式"; model: ["系统代理", "直连", "自定义代理"]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.edit("proxy_mode", values[currentIndex]) }
+                UiText { text: i18n.messages["settings.network"]; role: "SectionTitle" }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.network_connection"]
+                    UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.proxy_mode"]; model: [i18n.messages["settings.proxy_system"], i18n.messages["settings.proxy_direct"], i18n.messages["settings.proxy_custom"]]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.setSetting("proxy_mode", values[currentIndex]) }
                 }
-                SettingField { Layout.fillWidth: true; label: "自定义代理"; description: "支持 HTTP、HTTPS、SOCKS4、SOCKS5 和 SOCKS5H。"
-                    UiField { objectName: "proxyInput"; Layout.fillWidth: true; enabled: settings.state.proxy_mode === "custom"; text: settings.state.custom_proxy_url; placeholderText: "例如 http://127.0.0.1:8080"; Accessible.name: "自定义代理地址"; onTextChanged: settings.edit("custom_proxy_url", text) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.proxy_custom"]; description: i18n.messages["settings.proxy_description"]
+                    UiField { objectName: "proxyInput"; Layout.fillWidth: true; enabled: settings.state.proxy_mode === "custom"; text: settings.state.custom_proxy_url; placeholderText: i18n.messages["settings.proxy_placeholder"]; Accessible.name: i18n.messages["settings.proxy_address"]; onTextChanged: settings.setSetting("custom_proxy_url", text) }
                 }
                 RowLayout { Layout.fillWidth: true
-                    UiButton { text: settings.state.networkBusy ? "正在测试…" : "测试连接"; enabled: !settings.state.networkBusy; onClicked: settings.testNetwork() }
-                    UiText { Layout.fillWidth: true; text: settings.state.networkText; color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
+                    UiButton { text: settings.state.networkBusy ? i18n.messages["settings.testing"] : i18n.messages["settings.test_connection"]; enabled: !settings.state.networkBusy; onClicked: settings.testNetwork() }
+                    UiText { objectName: "networkFeedback"; Layout.fillWidth: true; text: i18n.sourceText(settings.state.networkText); color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: "外观"; role: "SectionTitle" }
-                SettingField { Layout.fillWidth: true; label: "主题"
-                    UiCombo { objectName: "themeCombo"; Layout.fillWidth: true; accessibleName: "界面主题"; model: ["跟随系统", "浅色", "深色"]; property var values: ["system", "light", "dark"]; currentIndex: Math.max(0, values.indexOf(settings.state.theme)); onActivated: settings.edit("theme", values[currentIndex]) }
+                UiText { text: i18n.messages["settings.appearance"]; role: "SectionTitle" }
+                SettingField { objectName: "languageField"; Layout.fillWidth: true; label: i18n.messages["settings.language"]
+                    UiCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"]
+                        model: i18n.languages.map(function(language) { return language.name })
+                        currentIndex: Math.max(0, i18n.languages.findIndex(function(language) { return language.locale === settings.state.language }))
+                        onActivated: settings.setSetting("language", i18n.languages[currentIndex].locale)
+                    }
                 }
-                UiSwitch { objectName: "reduceMotion"; text: "减少界面动态效果"; checked: settings.state.reduce_motion; onToggled: settings.edit("reduce_motion", checked) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.theme"]
+                    UiCombo { objectName: "themeCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.theme"]; model: [i18n.messages["settings.theme_system"], i18n.messages["settings.theme_light"], i18n.messages["settings.theme_dark"]]; property var values: ["system", "light", "dark"]; currentIndex: Math.max(0, values.indexOf(settings.state.theme)); onActivated: settings.setSetting("theme", values[currentIndex]) }
+                }
+                UiSwitch { objectName: "reduceMotion"; text: i18n.messages["settings.reduce_motion"]; checked: settings.state.reduce_motion; onToggled: settings.setSetting("reduce_motion", checked) }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: "更新"; role: "SectionTitle" }
-                UiText { text: "稳定通道"; role: "Secondary"; color: theme.state.secondary }
-                UiSwitch { objectName: "autoCheckUpdates"; text: "自动检查更新"; checked: settings.state.auto_check_updates; onToggled: settings.edit("auto_check_updates", checked) }
+                UiText { text: i18n.messages["settings.updates"]; role: "SectionTitle" }
+                UiText { text: i18n.messages["settings.stable_channel"]; role: "Secondary"; color: theme.state.secondary }
+                UiSwitch { objectName: "autoCheckUpdates"; text: i18n.messages["settings.auto_updates"]; checked: settings.state.auto_check_updates; onToggled: settings.setSetting("auto_check_updates", checked) }
                 Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: "工具与诊断"; role: "SectionTitle" }
+                UiText { text: i18n.messages["settings.tools"]; role: "SectionTitle" }
                 UiText { Layout.fillWidth: true; text: "yt-dlp  " + settings.state.ytdlpVersion; role: "Secondary"; color: theme.state.secondary }
-                UiText { Layout.fillWidth: true; text: "FFmpeg  " + settings.state.ffmpegDescription; role: "Caption"; color: theme.state.muted; wrapMode: Text.WrapAnywhere }
-                SettingField { Layout.fillWidth: true; label: "FFmpeg 目录"
+                UiText { Layout.fillWidth: true; text: "FFmpeg  " + (settings.state.ffmpegDescription || i18n.messages["settings.ffmpeg_unavailable"]); role: "Caption"; color: theme.state.muted; wrapMode: Text.WrapAnywhere }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.ffmpeg_directory"]
                     RowLayout { Layout.fillWidth: true
-                        UiField { Layout.fillWidth: true; text: settings.state.ffmpeg_directory; placeholderText: "留空时使用随软件分发的 FFmpeg"; Accessible.name: "FFmpeg 目录"; onTextChanged: settings.edit("ffmpeg_directory", text) }
-                        UiButton { text: "修复路径"; onClicked: settings.browse_requested("ffmpeg_directory") }
+                        UiField { Layout.fillWidth: true; text: settings.state.ffmpeg_directory; placeholderText: i18n.messages["settings.ffmpeg_placeholder"]; Accessible.name: i18n.messages["settings.ffmpeg_directory"]; onTextChanged: settings.setSetting("ffmpeg_directory", text) }
+                        UiButton { text: i18n.messages["settings.repair_path"]; onClicked: settings.browse_requested("ffmpeg_directory") }
                     }
                 }
                 Flow { Layout.fillWidth: true; spacing: 8
-                    UiButton { text: "打开日志目录"; onClicked: settings.open_logs_requested() }
-                    UiButton { text: "复制系统信息"; onClicked: settings.copy_system_info_requested() }
+                    UiButton { text: i18n.messages["settings.logs"]; onClicked: settings.open_logs_requested() }
+                    UiButton { text: i18n.messages["settings.copy_system"]; onClicked: settings.copy_system_info_requested() }
                 }
             }
         }
@@ -132,8 +139,8 @@ Item {
             Layout.fillWidth: true; implicitHeight: saveRow.implicitHeight + 20
             visible: settings.state.saveVisible; color: theme.state.surface; radius: 10; border.color: theme.state.stroke
             RowLayout { id: saveRow; anchors.fill: parent; anchors.margins: 10
-                UiText { Layout.fillWidth: true; text: settings.state.saveText; role: "Caption"; wrapMode: Text.Wrap }
-                UiButton { text: "立即保存"; onClicked: settings.save() }
+                UiText { objectName: "saveFeedback"; Layout.fillWidth: true; text: i18n.sourceText(settings.state.saveText); role: "Caption"; wrapMode: Text.Wrap }
+                UiButton { text: i18n.messages["settings.save_now"]; onClicked: settings.save() }
             }
         }
     }
@@ -174,7 +181,7 @@ Item {
                     anchors.left: parent.left; anchors.right: parent.right
                     anchors.leftMargin: 24; anchors.rightMargin: 24
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "自定义下载预设"; role: "SectionTitle"
+                    text: i18n.messages["settings.custom_profile_editor"]; role: "SectionTitle"
                 }
             }
             ScrollView {
@@ -184,35 +191,35 @@ Item {
                 Layout.leftMargin: 24; Layout.rightMargin: 24
                 clip: true; contentWidth: availableWidth
                 ColumnLayout { width: profileEditorBody.availableWidth; spacing: 14
-                SettingField { Layout.fillWidth: true; label: "名称"
-                    UiField { objectName: "profileNameInput"; Layout.fillWidth: true; text: settings.state.profileDraftName; placeholderText: "例如：2160p 下载"; onTextEdited: settings.editProfileField("name", text) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.name"]
+                    UiField { objectName: "profileNameInput"; Layout.fillWidth: true; text: settings.state.profileDraftName; placeholderText: i18n.messages["settings.profile_name_placeholder"]; onTextEdited: settings.editProfileField("name", text) }
                 }
-                SettingField { Layout.fillWidth: true; label: "下载内容"
-                    UiCombo { objectName: "profileContentMode"; Layout.fillWidth: true; accessibleName: "预设下载内容"; model: ["视频 + 音频", "仅视频", "仅音频"]; property var values: ["video_audio", "video_only", "audio_only"]; currentIndex: values.indexOf(settings.state.profileDraftContentMode); onActivated: settings.editProfileField("content_mode", values[currentIndex]) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.download_content"]
+                    UiCombo { objectName: "profileContentMode"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.download_content"]; model: [i18n.messages["settings.content_video_audio"], i18n.messages["settings.content_video"], i18n.messages["settings.content_audio"]]; property var values: ["video_audio", "video_only", "audio_only"]; currentIndex: values.indexOf(settings.state.profileDraftContentMode); onActivated: settings.editProfileField("content_mode", values[currentIndex]) }
                 }
-                SettingField { Layout.fillWidth: true; label: "画质"
-                    UiCombo { objectName: "profileQuality"; Layout.fillWidth: true; accessibleName: "预设画质"; model: ["自动推荐", "最高质量", "2160p", "1440p", "1080p", "720p"]; property var values: ["recommended", "highest", "2160p", "1440p", "1080p", "720p"]; currentIndex: values.indexOf(settings.state.profileDraftQuality); onActivated: settings.editProfileField("quality_tier", values[currentIndex]) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["download.quality"]
+                    UiCombo { objectName: "profileQuality"; Layout.fillWidth: true; accessibleName: i18n.messages["download.quality"]; model: [i18n.messages["settings.quality_recommended"], i18n.messages["settings.quality_highest"], "2160p", "1440p", "1080p", "720p"]; property var values: ["recommended", "highest", "2160p", "1440p", "1080p", "720p"]; currentIndex: values.indexOf(settings.state.profileDraftQuality); onActivated: settings.editProfileField("quality_tier", values[currentIndex]) }
                 }
-                SettingField { Layout.fillWidth: true; label: "视频编码"
-                    UiCombo { objectName: "profileCodec"; Layout.fillWidth: true; accessibleName: "预设视频编码"; model: ["自动推荐", "AV1", "VP9", "H.264"]; property var values: ["auto", "av1", "vp9", "h264"]; currentIndex: values.indexOf(settings.state.profileDraftCodec); onActivated: settings.editProfileField("codec_preference", values[currentIndex]) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.video_codec"]
+                    UiCombo { objectName: "profileCodec"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.video_codec"]; model: [i18n.messages["settings.codec_auto"], "AV1", "VP9", "H.264"]; property var values: ["auto", "av1", "vp9", "h264"]; currentIndex: values.indexOf(settings.state.profileDraftCodec); onActivated: settings.editProfileField("codec_preference", values[currentIndex]) }
                 }
                 GridLayout { Layout.fillWidth: true; columns: 2; columnSpacing: 12; rowSpacing: 0
-                    SettingField { Layout.fillWidth: true; label: "音频格式"
-                        UiCombo { objectName: "profileAudioCodec"; Layout.fillWidth: true; accessibleName: "预设音频格式"; model: ["原始音频", "M4A", "MP3", "Opus", "FLAC"]; property var values: ["original", "m4a", "mp3", "opus", "flac"]; currentIndex: values.indexOf(settings.state.profileDraftAudioCodec); onActivated: settings.editProfileField("audio_codec", values[currentIndex]) }
+                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.audio_format"]
+                        UiCombo { objectName: "profileAudioCodec"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.audio_format"]; model: [i18n.messages["settings.audio_original"], "M4A", "MP3", "Opus", "FLAC"]; property var values: ["original", "m4a", "mp3", "opus", "flac"]; currentIndex: values.indexOf(settings.state.profileDraftAudioCodec); onActivated: settings.editProfileField("audio_codec", values[currentIndex]) }
                     }
-                    SettingField { Layout.fillWidth: true; label: "转码音频质量"
-                        UiCombo { objectName: "profileAudioQuality"; Layout.fillWidth: true; accessibleName: "预设音频质量"; model: ["原始", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; property var values: ["original", "320", "256", "192", "128"]; currentIndex: values.indexOf(settings.state.profileDraftAudioQuality); onActivated: settings.editProfileField("audio_quality", values[currentIndex]) }
+                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.audio_quality"]
+                        UiCombo { objectName: "profileAudioQuality"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.audio_quality"]; model: [i18n.messages["settings.audio_original_short"], "320 kbps", "256 kbps", "192 kbps", "128 kbps"]; property var values: ["original", "320", "256", "192", "128"]; currentIndex: values.indexOf(settings.state.profileDraftAudioQuality); onActivated: settings.editProfileField("audio_quality", values[currentIndex]) }
                     }
                 }
                 RowLayout { Layout.fillWidth: true; spacing: 20
-                    UiSwitch { objectName: "profileSubtitleEnabled"; text: "下载字幕"; checked: settings.state.profileDraftSubtitleEnabled; onToggled: settings.editProfileField("subtitle_enabled", checked) }
-                    UiSwitch { objectName: "profileSubtitleAuto"; text: "包含自动生成字幕"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleAuto; onToggled: settings.editProfileField("subtitle_auto", checked) }
+                    UiSwitch { objectName: "profileSubtitleEnabled"; text: i18n.messages["settings.subtitle_download"]; checked: settings.state.profileDraftSubtitleEnabled; onToggled: settings.editProfileField("subtitle_enabled", checked) }
+                    UiSwitch { objectName: "profileSubtitleAuto"; text: i18n.messages["settings.subtitle_auto"]; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleAuto; onToggled: settings.editProfileField("subtitle_auto", checked) }
                 }
-                SettingField { Layout.fillWidth: true; label: "字幕格式"
-                    UiCombo { objectName: "profileSubtitleFormat"; Layout.fillWidth: true; accessibleName: "预设字幕格式"; model: ["SRT", "VTT"]; property var values: ["srt", "vtt"]; currentIndex: values.indexOf(settings.state.profileDraftSubtitleFormat); enabled: settings.state.profileDraftSubtitleEnabled; onActivated: settings.editProfileField("subtitle_format", values[currentIndex]) }
+                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.subtitle_format"]
+                    UiCombo { objectName: "profileSubtitleFormat"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.subtitle_format"]; model: ["SRT", "VTT"]; property var values: ["srt", "vtt"]; currentIndex: values.indexOf(settings.state.profileDraftSubtitleFormat); enabled: settings.state.profileDraftSubtitleEnabled; onActivated: settings.editProfileField("subtitle_format", values[currentIndex]) }
                 }
-                UiSwitch { objectName: "profileSubtitleEmbed"; text: "嵌入视频"; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleEmbed; onToggled: settings.editProfileField("subtitle_embed", checked) }
-                UiText { objectName: "profileEditorMessage"; Layout.fillWidth: true; visible: text.length > 0; text: settings.state.profileMessage; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                UiSwitch { objectName: "profileSubtitleEmbed"; text: i18n.messages["settings.subtitle_embed"]; enabled: settings.state.profileDraftSubtitleEnabled; checked: settings.state.profileDraftSubtitleEmbed; onToggled: settings.editProfileField("subtitle_embed", checked) }
+                UiText { objectName: "profileEditorMessage"; Layout.fillWidth: true; visible: text.length > 0; text: i18n.sourceText(settings.state.profileMessage); role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                 }
             }
             RowLayout {
@@ -222,8 +229,8 @@ Item {
                 Layout.topMargin: 20; Layout.bottomMargin: 24
                 spacing: 8
                 Item { Layout.fillWidth: true }
-                UiButton { objectName: "profileEditorCancel"; text: "取消"; onClicked: settings.closeProfileEditor() }
-                UiButton { objectName: "saveProfile"; text: "保存"; appearance: "primary"; onClicked: settings.saveProfile() }
+                UiButton { objectName: "profileEditorCancel"; text: i18n.messages["common.cancel"]; onClicked: settings.closeProfileEditor() }
+                UiButton { objectName: "saveProfile"; text: i18n.messages["common.save"]; appearance: "primary"; onClicked: settings.saveProfile() }
             }
         }
     }

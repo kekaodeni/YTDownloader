@@ -16,8 +16,9 @@ class DialogBridge(ViewState):
     sessionsChanged = Signal()
     directory_requested = Signal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, translator=None):
         super().__init__(parent)
+        self._translator = translator
         self._sessions = []
         self._directory_callbacks = {}
         self._serial = 0
@@ -84,6 +85,27 @@ class DialogSession(ViewState):
         super().__init__(bridge, kind=kind, title=title, open=False, modal=modal,
                          message='', closeEnabled=True, **values)
         self.bridge = bridge
+        self._translator = bridge._translator
+        self._source_texts = {key: str(value) for key, value in self._state.items()
+                              if key in {'title', 'message', 'acceptText', 'cancelText', 'dismissText', 'downloadText', 'progressText', 'fileLabel', 'durationText', 'previewText', 'applyText'}
+                              and isinstance(value, str)}
+        if self._translator is not None:
+            self._translator.languageChanged.connect(self._refresh_localized)
+            self._refresh_localized()
+
+    def update(self, **values):
+        localizable = {'title', 'message', 'acceptText', 'cancelText', 'dismissText', 'downloadText', 'progressText', 'fileLabel', 'durationText', 'previewText', 'applyText'}
+        for key in localizable.intersection(values):
+            if isinstance(values[key], str):
+                self._source_texts[key] = values[key]
+                if self._translator is not None:
+                    values[key] = self._translator.sourceText(values[key])
+        super().update(**values)
+
+    def _refresh_localized(self, _locale=None):
+        if self._translator is not None:
+            super().update(**{key: self._translator.sourceText(value)
+                              for key, value in self._source_texts.items()})
 
     def show(self):
         self.bridge.show(self)
@@ -179,12 +201,42 @@ class CookieEditorSession(DialogSession):
 
 
 class ErrorSession(DialogSession):
-    def __init__(self, error, report, parent, *, title_text='下载失败', retry_callback=None):
+    ACTION_LABELS = {
+        'OPEN_COOKIE_MANAGER': 'download.manage_cookie',
+        'REPARSE': 'download.reparse',
+        'RETRY': 'action.retry',
+        'CHECK_APP_UPDATE': 'update.action_check',
+        'CLOSE': 'common.close',
+    }
+
+    def __init__(self, error, report, parent, *, title_text='下载失败', retry_callback=None,
+                 actions=(), action_callbacks=None):
         super().__init__(parent.dialogs, kind='error', title=title_text, modal=True,
                          details=error.technical_message, hasRetry=retry_callback is not None)
-        self.update(message=error.user_message)
+        self.error = error
+        self._title_source = title_text
+        self._message_source = error.user_message
         self.report = report
         self.retry_callback = retry_callback
+        self.action_callbacks = dict(action_callbacks or {})
+        self._error_actions = tuple(actions)
+        if self._translator is not None:
+            self._translator.languageChanged.connect(self._refresh_error_localized)
+        self._refresh_error_localized()
+
+    def _refresh_error_localized(self, _locale=None):
+        if self._translator is None:
+            title = self._title_source
+            message = self._message_source
+            labels = {action: action for action in self._error_actions}
+        else:
+            title = self._translator.text(self.error.title_message_id) if self.error.title_message_id else self._translator.sourceText(self._title_source)
+            message = self._translator.text(self.error.body_message_id) if self.error.body_message_id else self._translator.sourceText(self._message_source)
+            labels = {action: self._translator.text(self.ACTION_LABELS.get(action, 'common.close'))
+                      for action in self._error_actions}
+        super().update(title=title, message=message,
+                       errorActions=[{'id': action, 'label': labels[action], 'primary': index == 0}
+                                     for index, action in enumerate(self._error_actions)])
 
     @Slot()
     def copyReport(self):
@@ -195,6 +247,14 @@ class ErrorSession(DialogSession):
         if self._state['open'] and self.retry_callback:
             self.close()
             self.retry_callback()
+
+    @Slot(str)
+    def runAction(self, action_id):
+        callback = self.action_callbacks.get(str(action_id))
+        if not self._state['open'] or callback is None:
+            return
+        self.close()
+        callback()
 
 
 class UpdateSession(DialogSession):
@@ -214,7 +274,45 @@ class UpdateSession(DialogSession):
                          dismissText='取消')
         self.manifest = manifest
         self.capability = capability
+        self._latest_progress = None
+        self._update_state = UpdateState.AVAILABLE
         self.set_state(UpdateState.AVAILABLE)
+
+    def _progress_values(self, progress=None):
+        translator = self._translator
+        if progress is None:
+            values = {
+                'percent': '0%', 'downloaded': '0 B',
+                'total': self._state.get('packageSize', '—'),
+                'speed': translator.text('common.calculating') if translator else '计算中',
+                'eta': translator.text('common.calculating') if translator else '计算中',
+            }
+            return 0.0, translator.text('update.progress_text', values) if translator else (
+                f"{values['percent']} · {values['downloaded']} / {values['total']} · {values['speed']} · 剩余 {values['eta']}")
+        fraction = min(1.0, max(0.0, progress.downloaded_bytes / max(1, progress.total_bytes)))
+        values = {
+            'percent': f'{fraction:.0%}',
+            'downloaded': format_bytes(progress.downloaded_bytes),
+            'total': format_bytes(progress.total_bytes),
+            'speed': format_speed(progress.speed) if progress.speed is not None else translator.text('common.calculating') if translator else '计算中',
+            'eta': format_eta(progress.eta) if progress.eta is not None else translator.text('common.calculating') if translator else '计算中',
+        }
+        if translator:
+            return fraction, translator.text('update.progress_text', values)
+        return fraction, f"{values['percent']} · {values['downloaded']} / {values['total']} · {values['speed']} · 剩余 {values['eta']}"
+
+    def _refresh_localized(self, _locale=None):
+        super()._refresh_localized(_locale)
+        if not hasattr(self, '_update_state') or self._translator is None:
+            return
+        if self._latest_progress is not None:
+            fraction, text = self._progress_values(self._latest_progress)
+            from yt_downloader.ui.quick_state import ViewState
+            ViewState.update(self, progress=fraction, progressText=text)
+        elif self._update_state is UpdateState.DOWNLOADING:
+            fraction, text = self._progress_values()
+            from yt_downloader.ui.quick_state import ViewState
+            ViewState.update(self, progress=fraction, progressText=text)
 
     @Slot(str)
     def setLanguage(self, language):
@@ -227,19 +325,23 @@ class UpdateSession(DialogSession):
             super().reject()
 
     def set_progress(self, progress):
-        fraction = min(1.0, max(0.0, progress.downloaded_bytes / max(1, progress.total_bytes)))
-        speed = format_speed(progress.speed) if progress.speed is not None else '计算中'
-        eta = format_eta(progress.eta) if progress.eta is not None else '计算中'
-        self.update(progress=fraction, progressText=f'{fraction:.0%} · {format_bytes(progress.downloaded_bytes)} / {format_bytes(progress.total_bytes)} · {speed} · 剩余 {eta}')
+        self._latest_progress = progress
+        fraction, progress_text = self._progress_values(progress)
+        from yt_downloader.ui.quick_state import ViewState
+        ViewState.update(self, progress=fraction, progressText=progress_text)
 
     def set_state(self, state, *, operation=''):
+        if state is UpdateState.DOWNLOADING and self._update_state is not UpdateState.DOWNLOADING:
+            self._latest_progress = None
+        self._update_state = state
         install = self.capability is UpdateCapability.AUTO_INSTALL
         download = self.capability is not UpdateCapability.CHECK_ONLY
         values = dict(canDownload=False, canInstall=False, canCancel=False, cancelEnabled=True,
                       closeEnabled=True, canRelease=True, progressVisible=False, dismissText='关闭')
         if state is UpdateState.DOWNLOADING:
-            values.update(message='正在下载更新，可关闭此窗口并稍后在关于页面查看进度。', progressVisible=True, canCancel=True,
-                          progress=0.0, progressText=f'0% · 0 B / {self._state["packageSize"]} · 计算中')
+            values.update(message='正在下载更新，可关闭此窗口并稍后在关于页面查看进度。', progressVisible=True, canCancel=True)
+            fraction, progress_text = self._progress_values(self._latest_progress)
+            values.update(progress=fraction, progressText=progress_text)
         elif state is UpdateState.CANCELLING:
             values.update(message='正在取消…', progressVisible=True, canCancel=True, cancelEnabled=False)
         elif state is UpdateState.VERIFYING:

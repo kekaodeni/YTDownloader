@@ -10,7 +10,7 @@ ApplicationWindow {
     width: 1200; height: 800; minimumWidth: 500; minimumHeight: 560
     visible: false
     title: "YT Downloader"
-    font.family: theme.fontFamily("Body", "中文")
+    font.family: theme.fontFamily("Body", i18n.messages["nav.download"])
     font.pointSize: theme.fontSize("Body")
     font.weight: theme.fontWeight("Body")
     color: theme.state.canvas
@@ -24,8 +24,7 @@ ApplicationWindow {
     palette.highlightedText: theme.state.text
     onClosing: function(event) { if (!shell.state.allowClose) { event.accepted = false; shell.requestClose() } }
     readonly property bool compact: width < 900
-    FileDialog { id: cookiePicker; title: "选择 Netscape cookies.txt"; fileMode: FileDialog.OpenFile; nameFilters: ["Cookie 文件 (*.txt)", "所有文件 (*)"]; onAccepted: cookies.fileSelected(selectedFile.toString()) }
-    Connections { target: cookies; function onPick_requested() { cookiePicker.open() } }
+    FileDialog { id: cookiePicker; objectName: "cookiePicker"; title: i18n.messages["cookie.picker_title"]; fileMode: FileDialog.OpenFile; nameFilters: [i18n.messages["cookie.file_filter"], i18n.messages["common.all_files_filter"]]; onAccepted: cookies.fileSelected(selectedFile.toString()) }
     RowLayout {
         visible: !shell.state.recoveryVisible
         anchors.fill: parent; spacing: 0
@@ -39,7 +38,7 @@ ApplicationWindow {
                 id: branding; x: 16; y: 28; spacing: 12
                 Image { width: 36; height: 36; source: assetsBase + "app-icon.png"; sourceSize.width: 72; sourceSize.height: 72 }
                 UiText { text: "YT Downloader"; font.weight: Font.DemiBold; visible: !window.compact }
-                UiText { text: "视频下载"; role: "Caption"; color: theme.state.muted; visible: !window.compact }
+                UiText { text: i18n.messages["app.subtitle"]; role: "Caption"; color: theme.state.muted; visible: !window.compact }
             }
             Item {
                 id: navigation
@@ -55,14 +54,14 @@ ApplicationWindow {
                 Column {
                     width: parent.width; spacing: 5
                     Repeater {
-                        model: [{label:"下载", icon:"arrow_download"}, {label:"历史记录", icon:"history"}, {label:"设置", icon:"settings"}, {label:"关于", icon:"info"}]
+                        model: [{key:"nav.download", icon:"arrow_download"}, {key:"nav.history", icon:"history"}, {key:"nav.settings", icon:"settings"}, {key:"nav.about", icon:"info"}]
                         UiButton {
                             required property var modelData
                             required property int index
                             objectName: "nav-" + index
                             implicitWidth: navigation.width; width: navigation.width; height: 44
-                            text: window.compact ? "" : modelData.label
-                            hint: modelData.label
+                            text: window.compact ? "" : i18n.messages[modelData.key]
+                            hint: i18n.messages[modelData.key]
                             appearance: "nav"; selected: shell.state.page === index
                             icon.source: assetsBase + "icons/" + modelData.icon + (selected ? "_filled.svg" : "_regular.svg")
                             leftPadding: window.compact ? 14 : 12
@@ -83,8 +82,8 @@ ApplicationWindow {
                 visible: shell.state.updateVisible; color: theme.state.selection
                 RowLayout { id: notice; anchors.fill: parent; anchors.margins: 8
                     UiText { Layout.fillWidth: true; text: shell.state.updateText; role: "Caption"; wrapMode: Text.Wrap }
-                    UiButton { text: "查看更新"; appearance: "quiet"; onClicked: shell.show_update_requested() }
-                    UiButton { text: "关闭"; appearance: "quiet"; onClicked: shell.hideUpdate() }
+                    UiButton { text: i18n.messages["common.view_update"]; appearance: "quiet"; onClicked: shell.show_update_requested() }
+                    UiButton { text: i18n.messages["common.close"]; appearance: "quiet"; onClicked: shell.hideUpdate() }
                 }
             }
             Item {
@@ -100,9 +99,9 @@ ApplicationWindow {
         visible: shell.state.recoveryVisible
         anchors.centerIn: parent; width: Math.min(parent.width - 64, 540); spacing: 24
         UiText { Layout.fillWidth: true; text: shell.state.recoveryText; role: "SectionTitle"; wrapMode: Text.Wrap }
-        UiText { Layout.fillWidth: true; text: shell.state.recoveryBusy ? "验证更新事务后，应用将退出，由独立恢复程序恢复安装。" : "备份和诊断文件已保留。"; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap }
+        UiText { Layout.fillWidth: true; text: shell.state.recoveryBusy ? i18n.messages["recovery.update_in_progress"] : i18n.messages["recovery.files_retained"]; role: "Secondary"; color: theme.state.secondary; wrapMode: Text.Wrap }
         UiProgress { Layout.fillWidth: true; indeterminate: true; visible: shell.state.recoveryBusy }
-        UiButton { text: "查看详情"; visible: !shell.state.recoveryBusy; onClicked: shell.recovery_details_requested() }
+        UiButton { text: i18n.messages["common.view_details"]; visible: !shell.state.recoveryBusy; onClicked: shell.recovery_details_requested() }
     }
     Instantiator {
         model: dialogs.model
@@ -111,7 +110,7 @@ ApplicationWindow {
     FolderDialog {
         id: folder
         property string requestKey: ""
-        title: "选择目录"
+        title: i18n.messages["dialog.choose_directory"]
         onAccepted: dialogs.directorySelected(requestKey, selectedFolder.toString())
         onRejected: dialogs.directorySelected(requestKey, "")
     }

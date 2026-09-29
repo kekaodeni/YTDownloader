@@ -36,4 +36,4 @@ markers = [
 ]
 
 [tool.setuptools.package-data]
-"yt_downloader.ui" = ["qml/*.qml"]
+"yt_downloader.ui" = ["qml/*.qml", "translations.json"]

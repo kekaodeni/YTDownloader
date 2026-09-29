@@ -1,5 +1,6 @@
 """The existing settings editor's autosave and preview contract, without widgets."""
 from dataclasses import asdict
+import re
 import uuid
 
 from PySide6.QtCore import QTimer, Signal, Slot
@@ -17,16 +18,15 @@ class SettingsPresenter(ViewState):
     open_logs_requested = Signal()
     copy_system_info_requested = Signal()
     browse_requested = Signal(str)
+    language_changed = Signal(str)
 
-    def __init__(self, settings, *, ytdlp_version, ffmpeg_description, parent=None):
+    def __init__(self, settings, *, ytdlp_version, ffmpeg_description, translator=None, parent=None):
         values = asdict(settings)
         values.pop('default_download_profile_id', None)
         values.pop('custom_download_profiles', None)
         custom_profiles = tuple(settings.custom_download_profiles)
-        profile_options = [self._profile_option(profile, builtin=True) for profile in BUILTIN_PROFILES]
-        profile_options.extend(self._profile_option(profile, builtin=False) for profile in custom_profiles)
         super().__init__(parent, **values, version=__version__, ytdlpVersion=ytdlp_version,
-                         profileOptions=profile_options, customProfiles=[self._profile_option(p, False) for p in custom_profiles],
+                         profileOptions=[], customProfiles=[],
                          defaultProfileId=settings.default_download_profile_id,
                          profileEditorOpen=False, profileEditorMode='new', profileEditorId='',
                          profileDraftName='', profileDraftContentMode='video_audio',
@@ -37,6 +37,11 @@ class SettingsPresenter(ViewState):
                          profileDraftSubtitleLanguages=[], profileMessage='',
                          ffmpegDescription=ffmpeg_description, saveVisible=False, saveText='',
                          networkBusy=False, networkText='', networkSuccess=False)
+        self._translator = translator
+        self._save_message_id = ''
+        self._save_error = ''
+        self._network_source = ''
+        self._profile_message_source = ''
         self._saved = settings
         self._custom_profiles = custom_profiles
         self._profile_draft = None
@@ -47,26 +52,64 @@ class SettingsPresenter(ViewState):
         self._status_hide_timer.setSingleShot(True)
         self._status_hide_timer.setInterval(1800)
         self._status_hide_timer.timeout.connect(lambda: self.update(saveVisible=False))
+        self._sync_profiles()
+
+        if translator is not None:
+            translator.languageChanged.connect(self._refresh_localized)
+
+    def _t(self, message_id, parameters=None):
+        return self._translator.text(message_id, parameters) if self._translator else message_id
+
+    def _localize_network_message(self, source):
+        if self._translator is None:
+            return source
+        matched = re.fullmatch(r'连接成功（([^）]+) 秒） · (.*)', str(source), re.DOTALL)
+        if matched:
+            return self._translator.text('settings.network_test_success', {
+                'seconds': matched.group(1),
+                'description': self._translator.sourceText(matched.group(2)),
+            })
+        return self._translator.sourceText(source)
+
+    def _refresh_localized(self, _locale=None):
+        self._sync_profiles()
+        if self._save_message_id:
+            params = {'message': self._save_error} if self._save_message_id == 'settings.save_failed' else None
+            self.update(saveText=self._t(self._save_message_id, params))
+        if self._state['networkBusy']:
+            self.update(networkText=self._t('settings.network_testing'))
+        elif self._network_source and self._translator is not None:
+            self.update(networkText=self._localize_network_message(self._network_source))
+        if self._profile_message_source and self._translator is not None:
+            self.update(profileMessage=self._translator.sourceText(self._profile_message_source))
 
     @Slot(str, 'QVariant')
     def edit(self, name, value):
         editable = {'download_directory', 'theme', 'reduce_motion', 'ffmpeg_directory',
-                    'max_concurrent_downloads', 'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'auto_check_updates'}
+                    'max_concurrent_downloads', 'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'auto_check_updates', 'language'}
         if name not in editable or self._state[name] == value:
             return
         self.update(**{name: value})
         if name == 'proxy_mode':
+            self._network_source = ''
             self.update(networkText='')
         self._status_hide_timer.stop()
-        self.update(saveVisible=True, saveText='有未保存的更改')
+        self._set_save_message('settings.unsaved')
         immediate = name not in {'download_directory', 'custom_proxy_url', 'ffmpeg_directory'}
         self._autosave_timer.start(0 if immediate else 500)
         if name == 'theme':
             self.theme_preview_requested.emit(value)
+        elif name == 'language':
+            self.language_changed.emit(str(value))
+
+    @Slot(str, 'QVariant')
+    def setSetting(self, name, value):
+        """QML-facing settings mutation entry point."""
+        self.edit(name, value)
 
     def current_settings(self):
         v = self._state
-        return AppSettings(schema_version=6, download_directory=v['download_directory'].strip(),
+        return AppSettings(schema_version=7, download_directory=v['download_directory'].strip(),
                            theme=str(v['theme']),
                            reduce_motion=bool(v['reduce_motion']), ffmpeg_directory=v['ffmpeg_directory'].strip(),
                            proxy_mode=str(v['proxy_mode']), custom_proxy_url=v['custom_proxy_url'].strip(),
@@ -74,15 +117,21 @@ class SettingsPresenter(ViewState):
                            max_concurrent_downloads=int(v['max_concurrent_downloads']),
                            auto_check_updates=bool(v['auto_check_updates']), use_cookies=bool(v['use_cookies']),
                            default_download_profile_id=str(v['defaultProfileId']),
-                           custom_download_profiles=self._custom_profiles)
+                           custom_download_profiles=self._custom_profiles,
+                           language=str(v['language']))
 
-    @staticmethod
-    def _profile_option(profile, builtin):
-        content = {'video_audio': '视频 + 音频', 'video_only': '仅视频', 'audio_only': '仅音频'}[profile.content_mode]
-        quality = {'recommended': '自动推荐', 'highest': '最高质量'}.get(profile.quality_tier, profile.quality_tier)
-        codec = {'auto': '自动编码', 'av1': 'AV1', 'vp9': 'VP9', 'h264': 'H.264'}[profile.codec_preference]
-        subtitle = ' · 下载字幕' if profile.subtitle_enabled else ''
-        return {**asdict(profile), 'builtin': builtin,
+    def _profile_option(self, profile, builtin):
+        content = self._t({'video_audio': 'settings.content_video_audio',
+                           'video_only': 'settings.content_video',
+                           'audio_only': 'settings.content_audio'}[profile.content_mode])
+        quality = {'recommended': self._t('settings.quality_recommended'),
+                   'highest': self._t('settings.quality_highest')}.get(profile.quality_tier, profile.quality_tier)
+        codec = {'auto': self._t('settings.codec_auto'), 'av1': 'AV1', 'vp9': 'VP9', 'h264': 'H.264'}[profile.codec_preference]
+        subtitle = ' · ' + self._t('settings.subtitle_download') if profile.subtitle_enabled else ''
+        name = profile.name
+        if builtin and profile.id in {'auto', 'best'}:
+            name = self._t('settings.quality_recommended' if profile.id == 'auto' else 'settings.quality_highest')
+        return {**asdict(profile), 'name': name, 'builtin': builtin,
                 'summary': f'{content} · {quality} · {codec}{subtitle}'}
 
     def _sync_profiles(self):
@@ -93,8 +142,14 @@ class SettingsPresenter(ViewState):
 
     def _schedule_save(self):
         self._status_hide_timer.stop()
-        self.update(saveVisible=True, saveText='有未保存的更改')
+        self._set_save_message('settings.unsaved')
         self._autosave_timer.start(0)
+
+    def _set_save_message(self, message_id, *, error=''):
+        self._save_message_id = message_id
+        self._save_error = error
+        params = {'message': error} if message_id == 'settings.save_failed' else None
+        self.update(saveVisible=True, saveText=self._t(message_id, params))
 
     @Slot(str)
     def setDefaultProfile(self, profile_id):
@@ -160,6 +215,7 @@ class SettingsPresenter(ViewState):
                      'subtitle_embed': 'profileDraftSubtitleEmbed', 'subtitle_format': 'profileDraftSubtitleFormat',
                      'subtitle_languages': 'profileDraftSubtitleLanguages'}[name]
         self.update(**{state_key: list(value) if name == 'subtitle_languages' else value}, profileMessage='')
+        self._profile_message_source = ''
 
     @Slot()
     def saveProfile(self):
@@ -171,7 +227,11 @@ class SettingsPresenter(ViewState):
                    for existing in self._custom_profiles):
                 raise ValueError('已有同名的自定义预设。')
         except (TypeError, ValueError) as error:
-            self.update(profileMessage=str(error))
+            message = str(error)
+            self._profile_message_source = message
+            if self._translator is not None:
+                message = self._translator.sourceText(message)
+            self.update(profileMessage=message)
             return
         updated = list(self._custom_profiles)
         index = next((i for i, item in enumerate(updated) if item.id == profile.id), None)
@@ -181,6 +241,7 @@ class SettingsPresenter(ViewState):
             updated[index] = profile
         self._custom_profiles = tuple(updated)
         self._profile_draft = None
+        self._profile_message_source = ''
         self.update(profileEditorOpen=False)
         self._sync_profiles()
         self._schedule_save()
@@ -198,23 +259,24 @@ class SettingsPresenter(ViewState):
     @Slot()
     def closeProfileEditor(self):
         self._profile_draft = None
+        self._profile_message_source = ''
         self.update(profileEditorOpen=False, profileMessage='')
 
     @Slot()
     def save(self):
         self._autosave_timer.stop()
         self._status_hide_timer.stop()
-        self.update(saveVisible=True, saveText='正在保存…')
+        self._set_save_message('settings.saving')
         self.save_requested.emit(self.current_settings())
 
     def mark_saved(self, settings):
         self._saved = settings
-        self.update(saveVisible=True, saveText='已保存')
+        self._set_save_message('settings.saved')
         self._status_hide_timer.start()
 
     def mark_save_failed(self, message):
         self._status_hide_timer.stop()
-        self.update(saveVisible=True, saveText=f'无法保存：{message}')
+        self._set_save_message('settings.save_failed', error=str(message))
 
     @Slot()
     def testNetwork(self):
@@ -226,8 +288,10 @@ class SettingsPresenter(ViewState):
     def set_network_test_busy(self, busy):
         self.update(networkBusy=busy)
         if busy:
-            self.update(networkText='正在使用当前设置测试连接…')
+            self.update(networkText=self._t('settings.network_testing'))
 
     def set_network_test_result(self, success, message):
         self.set_network_test_busy(False)
-        self.update(networkSuccess=success, networkText=message)
+        self._network_source = str(message)
+        localized = self._localize_network_message(self._network_source)
+        self.update(networkSuccess=success, networkText=localized)

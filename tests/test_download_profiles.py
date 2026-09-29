@@ -36,7 +36,7 @@ def test_legacy_default_quality_and_codec_migrate_to_semantic_profile(tmp_path):
 
     service.save(settings)
     saved = json.loads(path.read_text(encoding='utf-8'))
-    assert saved['schema_version'] == 6
+    assert saved['schema_version'] == 7
     assert saved['custom_download_profiles'][0]['quality_tier'] == '1080p'
     assert 'default_quality' not in saved
     assert 'codec_preference' not in saved

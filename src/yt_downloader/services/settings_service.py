@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from yt_downloader.core.models import AppSettings, CodecPreference, DownloadProfile
+from yt_downloader.core.models import AppSettings, CodecPreference, DownloadProfile, SUPPORTED_LOCALES
 from yt_downloader.services.download_profiles import (
     BUILTIN_PROFILE_IDS,
     profile_from_mapping,
@@ -46,8 +46,8 @@ class SettingsService:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             settings, source_schema = self._from_mapping(data)
-            self._migration_pending = source_schema < 6
-            self._migration_source_schema = source_schema if source_schema < 6 else None
+            self._migration_pending = source_schema < 7
+            self._migration_source_schema = source_schema if source_schema < 7 else None
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring invalid settings file %s: %s", self.path, exc)
@@ -57,7 +57,7 @@ class SettingsService:
         if not isinstance(data, dict):
             raise ValueError("settings root must be an object")
         source_schema = int(data.get("schema_version", 1))
-        if source_schema not in {1, 2, 3, 4, 5, 6}:
+        if source_schema not in {1, 2, 3, 4, 5, 6, 7}:
             raise ValueError("unsupported settings schema")
         theme = str(data.get("theme", "system"))
         if theme not in _THEMES:
@@ -82,7 +82,7 @@ class SettingsService:
         custom_profiles: tuple[DownloadProfile, ...] = ()
         default_profile_id = 'auto'
         # V2 deliberately uses new keys. V1 development-only keys are ignored.
-        raw_profiles = data.get('custom_download_profiles') if source_schema == 6 else None
+        raw_profiles = data.get('custom_download_profiles') if source_schema >= 6 else None
         if isinstance(raw_profiles, list):
             profiles = []
             seen_profile_ids = set()
@@ -98,7 +98,7 @@ class SettingsService:
                 seen_profile_ids.add(profile.id)
                 profiles.append(profile)
             custom_profiles = tuple(profiles)
-        raw_default_profile_id = str(data.get('default_download_profile_id') or '') if source_schema == 6 else ''
+        raw_default_profile_id = str(data.get('default_download_profile_id') or '') if source_schema >= 6 else ''
         profile_index = profiles_by_id(custom_profiles)
         if raw_default_profile_id in profile_index:
             default_profile_id = raw_default_profile_id
@@ -117,7 +117,7 @@ class SettingsService:
                 custom_profiles = (migrated,)
                 default_profile_id = migrated.id
         return AppSettings(
-            schema_version=6,
+            schema_version=7,
             download_directory=directory,
             theme=theme,
             reduce_motion=bool(data.get("reduce_motion", False)),
@@ -131,13 +131,14 @@ class SettingsService:
                          else bool(data.get('default_cookie_profile_id'))),
             default_download_profile_id=default_profile_id,
             custom_download_profiles=custom_profiles,
+            language=(str(data.get('language') or 'zh-CN') if str(data.get('language') or 'zh-CN') in SUPPORTED_LOCALES else 'zh-CN'),
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:
         self.validate(settings)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        normalized = replace(settings, schema_version=6)
+        normalized = replace(settings, schema_version=7)
         payload = json.dumps(asdict(normalized), ensure_ascii=False, indent=2) + "\n"
         source_schema = self._migration_source_schema or 2
         backup = self.path.with_name(f"settings.v{source_schema}.backup.json")
@@ -164,6 +165,8 @@ class SettingsService:
                 backup_temporary.unlink(missing_ok=True)
 
     def validate(self, settings: AppSettings) -> None:
+        if settings.language not in SUPPORTED_LOCALES:
+            raise ValueError('界面语言设置无效。')
         if settings.theme not in _THEMES:
             raise ValueError("外观主题设置无效。")
         if not settings.download_directory.strip():

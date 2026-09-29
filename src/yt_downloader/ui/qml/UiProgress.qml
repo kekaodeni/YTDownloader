@@ -11,8 +11,8 @@ Rectangle {
     color: theme.state.subtle
     clip: true
     Accessible.role: Accessible.ProgressBar
-    Accessible.name: "下载进度"
-    Accessible.description: indeterminate ? "正在处理" : Math.round(value * 100) + "%"
+    Accessible.name: i18n.messages["ui.download_progress"]
+    Accessible.description: indeterminate ? i18n.messages["ui.processing"] : Math.round(value * 100) + "%"
     Behavior on visualValue { SmoothedAnimation { duration: root.immediate || shell.state.reduceMotion ? 0 : 100; velocity: -1 } }
     Rectangle {
         id: bar

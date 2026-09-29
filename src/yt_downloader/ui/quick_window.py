@@ -20,6 +20,7 @@ from yt_downloader.ui.quick_settings import SettingsPresenter
 from yt_downloader.ui.quick_state import ViewState
 from yt_downloader.ui.quick_theme import QuickTheme
 from yt_downloader.ui.quick_cookies import CookiePresenter
+from yt_downloader.ui.localization import Translator
 
 PROJECT_URL = 'https://github.com/kekaodeni/YTDownloader'
 
@@ -41,14 +42,24 @@ class MainWindow(ViewState):
         self._closing_after_cancel = False
         self._confirming_close = False
         self.theme = theme or QuickTheme(QGuiApplication.instance())
+        self.i18n = Translator(settings.language, self)
+        self._recovery_text_source = ''
+        self._update_status_source = '尚未检查'
+        self._update_ready = False
+        self._update_banner_version = ''
+        self._project_error_source = ''
+        self.i18n.languageChanged.connect(self._refresh_localized_shell)
+        self._refresh_localized_shell()
         self.images = ImageStore()
-        self.dialogs = DialogBridge(self)
-        self.cookies = CookiePresenter(self)
+        self.dialogs = DialogBridge(self, self.i18n)
+        self.cookies = CookiePresenter(self, translator=self.i18n)
         self.dialogs.sessionsChanged.connect(self._finish_close)
-        self.download_page = DownloadPresenter(settings.download_directory, self.images, self)
-        self.history_page = HistoryPresenter(self.dialogs, self)
+        self.download_page = DownloadPresenter(settings.download_directory, self.images, self, translator=self.i18n)
+        self.history_page = HistoryPresenter(self.dialogs, self, self.i18n)
+        self.i18n.languageChanged.connect(self.history_page.refresh_localized)
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
-                                               ffmpeg_description=ffmpeg_description, parent=self)
+                                               ffmpeg_description=ffmpeg_description, translator=self.i18n, parent=self)
+        self.settings_page.language_changed.connect(self.i18n.setLanguage)
         self.cookies.editor_requested.connect(self._open_cookie_editor)
         self.cookies.profiles_changed.connect(self._sync_cookie_state)
         self.download_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
@@ -64,13 +75,14 @@ class MainWindow(ViewState):
         self.engine.addImageProvider('thumbnails', self.images)
         context = self.engine.rootContext()
         for name, value in (('shell', self), ('theme', self.theme), ('download', self.download_page),
-                            ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies)):
+                            ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies), ('i18n', self.i18n)):
             context.setContextProperty(name, value)
         context.setContextProperty('assetsBase', QUrl.fromLocalFile(str(resource_path('assets')) + '/'))
         self.engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / 'qml' / 'Main.qml')))
         if not self.engine.rootObjects():
             raise RuntimeError('无法加载界面：' + '\n'.join(self.qml_warnings))
         self.root = self.engine.rootObjects()[0]
+        self.cookies.pickRequested.connect(self._open_cookie_picker)
         # Basic controls finish their native font initialization after the
         # component tree is loaded; apply the fallback stack after that pass.
         QTimer.singleShot(80, self._apply_qml_typography)
@@ -100,7 +112,7 @@ class MainWindow(ViewState):
             else:
                 session.update(message='将使用当前浏览器的登录状态；开启后在解析和下载时读取。')
         self.cookies._editor_session = self.dialogs.cookie_editor(
-            profile, save, test, lambda: self.cookies.pick_requested.emit())
+            profile, save, test, lambda: self.cookies.pickRequested.emit())
 
     def _apply_qml_typography(self):
         if self._disposed:
@@ -118,6 +130,14 @@ class MainWindow(ViewState):
     @Slot()
     def openCookieSettings(self):
         self._select_page(2)
+
+    @Slot()
+    def _open_cookie_picker(self):
+        if self._disposed:
+            return
+        picker = self.root.findChild(QObject, 'cookiePicker')
+        if picker is not None:
+            picker.open()
 
     def dispose(self):
         # Destroy the QML object tree while all context objects are still alive.
@@ -167,11 +187,29 @@ class MainWindow(ViewState):
         return self.root.isVisible()
 
     def show_update_available(self, version):
-        self.update(updateVisible=True, updateText=f'YT Downloader {version} 已可用')
+        self._update_banner_version = str(version)
+        self.update(updateVisible=True, updateText=self.i18n.text('update.available_banner', {'version': version}))
 
     def set_update_state(self, text, *, busy=False, review=False, ready=False):
-        self.update(updateStatus=text, updateChecking=busy, updateReview=review,
-                    updateAction='查看待安装更新' if ready else '查看更新进度' if review else '检查更新')
+        self._update_status_source = str(text)
+        self._update_ready = bool(ready)
+        self.update(updateChecking=busy, updateReview=review)
+        self._refresh_localized_shell()
+
+    def set_recovery_text(self, text, **values):
+        self._recovery_text_source = str(text)
+        self.update(recoveryText=self.i18n.sourceText(self._recovery_text_source), **values)
+
+    def _refresh_localized_shell(self, _locale=None):
+        if hasattr(self, 'i18n'):
+            self.update(updateStatus=self.i18n.sourceText(self._update_status_source),
+                        updateAction=self.i18n.text('update.action_pending' if self._update_ready
+                                                    else 'update.action_progress' if self._state['updateReview']
+                                                    else 'update.action_check'),
+                        projectError=self.i18n.sourceText(self._project_error_source),
+                        recoveryText=self.i18n.sourceText(self._recovery_text_source),
+                        updateText=(self.i18n.text('update.available_banner', {'version': self._update_banner_version})
+                                    if self._update_banner_version else self._state['updateText']))
 
     @Slot()
     def updateAction(self):
@@ -234,9 +272,11 @@ class MainWindow(ViewState):
     @Slot()
     def openProject(self):
         if QDesktopServices.openUrl(QUrl(PROJECT_URL)):
+            self._project_error_source = ''
             self.update(projectError='')
         else:
-            self.update(projectError=f'无法打开默认浏览器。你可以复制此地址：{PROJECT_URL}')
+            self._project_error_source = f'无法打开默认浏览器。你可以复制此地址：{PROJECT_URL}'
+            self.update(projectError=self.i18n.sourceText(self._project_error_source))
 
     @Slot()
     def copyProject(self):

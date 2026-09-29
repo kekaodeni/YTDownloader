@@ -11,7 +11,7 @@ ComboBox {
     font.pointSize: theme.fontSize("Body")
     font.weight: theme.fontWeight("Body")
     Accessible.name: control.accessibleName
-    property string accessibleName: "选择选项"
+    property string accessibleName: i18n.messages["ui.select_option"]
     contentItem: UiText {
         text: control.displayText
         color: control.enabled ? theme.state.text : theme.state.disabled

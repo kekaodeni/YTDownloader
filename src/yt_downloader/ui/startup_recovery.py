@@ -56,8 +56,8 @@ class RecoveryStartup(QObject):
         self.worker = None
         self.error_dialog = None
         self.window.recovery_details_requested.connect(self.show_details)
-        self.window.update(recoveryVisible=True, recoveryBusy=True,
-                           recoveryText='正在恢复上一次未完成的更新…')
+        self.window.update(recoveryVisible=True, recoveryBusy=True)
+        self.window.set_recovery_text('正在恢复上一次未完成的更新…')
 
     def start(self):
         self.worker = FunctionWorker(prepare_and_launch, self.request)
@@ -67,16 +67,17 @@ class RecoveryStartup(QObject):
 
     @Slot(object)
     def prepared(self, _result):
-        self.window.update(recoveryText='恢复程序已就绪，正在安全退出…', allowClose=True)
+        self.window.set_recovery_text('恢复程序已就绪，正在安全退出…', allowClose=True)
         self.app.quit()
 
     @Slot(object)
     def failed(self, error):
         safe = redact_sensitive(str(getattr(error, 'technical_message', error)))
         self.error_dialog = ErrorSession(AppError('update_recovery_failed',
-                '更新恢复失败。安装、备份和诊断文件已保留，请查看详情。', safe),
+                '更新恢复失败。安装、备份和诊断文件已保留，请查看详情。', safe,
+                title_message_id='recovery.failed', body_message_id='recovery.failed_body'),
                 safe, self.window, title_text='更新恢复失败')
-        self.window.update(recoveryBusy=False, recoveryText='更新恢复失败', allowClose=True)
+        self.window.set_recovery_text('更新恢复失败', recoveryBusy=False, allowClose=True)
 
     @Slot()
     def show_details(self):
