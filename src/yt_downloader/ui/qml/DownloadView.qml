@@ -355,7 +355,7 @@ Item {
                                     }
                                 }
                             }
-                            UiText { Layout.fillWidth: true; text: download.state.technical; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
+                            UiText { objectName: "technicalSummary"; Layout.fillWidth: true; text: download.state.technical; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Item { Layout.fillWidth: true }

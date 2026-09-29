@@ -114,6 +114,7 @@ class DownloadPresenter(ViewState):
         self._cookie_warning_params = {}
         self._cookie_warning_external = ''
         self._translated_state = {}
+        self._format_option = None
         self._format_summary = ''
         self._format_size_key = ''
         self._format_size_params = {}
@@ -170,6 +171,8 @@ class DownloadPresenter(ViewState):
                 row = self._entries.get(index)
                 if row:
                     self._entries.put(dict(row, detail=self._collection_entry_detail(entry)))
+        if self._format_option is not None:
+            self._format_summary = self._technical_summary(self._format_option)
         if self._format_summary or self._format_size_key:
             size_text = self._t(self._format_size_key, self._format_size_params) if self._format_size_key else ''
             self.update(technical=(self._format_summary + ('  ·  ' + size_text if size_text else '')).strip())
@@ -238,6 +241,7 @@ class DownloadPresenter(ViewState):
         self.video = None
         self._active_cookie_profile = None
         self._format_summary = ''
+        self._format_option = None
         self._format_size_key = ''
         self._format_size_params = {}
         self._selected_entries.clear()
@@ -746,13 +750,23 @@ class DownloadPresenter(ViewState):
             return
         option = self.available_formats[index]
         size = format_bytes(option.estimated_size) if option.estimated_size is not None else ''
-        self._format_summary = option.technical_summary
+        self._format_option = option
+        self._format_summary = self._technical_summary(option)
         self._format_size_key = ('download.size_unknown' if option.estimated_size is None else
                                  'download.size_estimated' if option.size_is_estimate else 'download.size')
         self._format_size_params = {'size': size} if size else {}
         self.update(formatIndex=index, qualityAuto=False,
                     technical=f'{self._format_summary}  ·  {self._t(self._format_size_key, self._format_size_params)}')
         self._subtitle_state()
+
+    def _technical_summary(self, option):
+        if option.vcodec == 'none':
+            return f'{option.container} · {option.acodec.upper()} · {self._t("format.audio_only")}'
+        codec = option.vcodec.split('.', 1)[0].upper()
+        audio = (option.acodec.split('.', 1)[0].upper()
+                 if option.acodec != 'none' else self._t('format.no_audio'))
+        merge = f' · {self._t("download.requires_merge")}' if option.requires_merge else ''
+        return f'{option.container} · {codec} · {audio}{merge}'
 
     def set_default_directory(self, directory):
         self._default_directory = directory

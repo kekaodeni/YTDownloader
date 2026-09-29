@@ -137,6 +137,24 @@ def test_download_advanced_options_retranslate_live(quick_window, qapp):
     assert quick_window.i18n.messages['postprocess.title'] == 'ダウンロード後'
 
 
+def test_technical_format_summary_retranslates_merge_hint(quick_window, qapp):
+    from scripts.verify_quick_ui import sample_video
+
+    quick_window.download_page.show_video(sample_video())
+    summary = find_item(quick_window, 'technicalSummary')
+    assert '需要自动合并' in summary.property('text')
+
+    quick_window.i18n.setLanguage('ru-RU')
+    run_frames(qapp)
+    text = summary.property('text')
+    assert 'требуется автоматическое объединение' in text
+    assert not any('\u3400' <= char <= '\u9fff' for char in text)
+
+    quick_window.i18n.setLanguage('es-ES')
+    run_frames(qapp)
+    assert 'Se requiere combinar automáticamente' in summary.property('text')
+
+
 def test_download_cookie_state_and_settings_feedback_refresh_live(quick_window, qapp):
     from yt_downloader.core.models import CookieProfile
 
