@@ -182,7 +182,7 @@ def _download_error(message: str) -> tuple[str, str]:
     if "429" in lowered or "too many requests" in lowered:
         return "rate_limited", "请求过于频繁，请稍后再试。"
     if "403" in lowered or "forbidden" in lowered:
-        return "forbidden", "网站拒绝了下载请求，请稍后重试或更新 yt-dlp。"
+        return "forbidden", "网站拒绝了下载请求，可能与登录权限、访问限制或临时站点策略有关。请稍后重试。"
     if "ffmpeg" in lowered:
         return "ffmpeg_failed", "FFmpeg 处理视频失败。"
     if "requested format" in lowered:
@@ -272,8 +272,14 @@ class DownloadService:
             options = media.audio_formats if request.media_mode == 'audio_only' else media.video_only_formats if request.media_mode == 'video_only' else media.formats
             if media.media_type == 'playlist' or not options:
                 raise AppError('formats_unavailable', '此项目没有所选模式可用的格式。', 'Batch child has no matching single-media format')
-            option = next((item for item in options if item.label == request.preferred_quality),
-                          next((item for item in options if item.is_recommended), options[0]))
+            from yt_downloader.core.formats import apply_codec_preference
+            options = tuple(apply_codec_preference(option, request.codec_preference) for option in options)
+            from yt_downloader.core.quality_target import choose_quality
+            option = choose_quality(options, request.preferred_quality)
+            progress_callback(DownloadProgress(request.task_id, TaskStatus.FETCHING_METADATA,
+                                              resolved_quality=f'{option.label} · {option.container}',
+                                              resolved_thumbnail_url=media.thumbnail_url or '',
+                                              resolved_thumbnail_bytes=media.thumbnail_bytes))
             request = replace(request, video=media, format=option, resolve_before_download=False)
         request = prepare_request(request)
         output_directory = request.output_directory.expanduser().resolve()
@@ -288,7 +294,10 @@ class DownloadService:
         if self.require_tools:
             if not self.deno_path or not self.deno_path.is_file():
                 raise AppError("deno_missing", "缺少内置 Deno，无法开始下载。", "Deno not found", context)
-            if (request.format.requires_merge or request.use_native_format or request.audio_codec != 'original') and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
+            needs_ffmpeg = (request.format.requires_merge or request.use_native_format or request.audio_codec != 'original'
+                            or request.embed_thumbnail or request.embed_metadata or request.embed_chapters
+                            or bool(request.remux_container) or request.sponsorblock_mark)
+            if needs_ffmpeg and (not self.ffmpeg_path or not self.ffmpeg_path.is_file()):
                 raise AppError("ffmpeg_missing", "缺少 FFmpeg，无法合并视频与音频。", "FFmpeg not found", context)
 
         self._validate_output_directory(output_directory, request.format.estimated_size)
@@ -297,7 +306,8 @@ class DownloadService:
             directory=output_directory,
             extension=f".{request.format.final_ext}",
         )
-        destination = ensure_unique_path(output_directory / f"{safe_stem}.{request.format.final_ext}")
+        final_extension = request.remux_container or request.format.final_ext
+        destination = ensure_unique_path(output_directory / f"{safe_stem}.{final_extension}")
         artifacts = TaskArtifactRegistry(output_directory, request.task_id)
         artifacts.prepare(resume_existing=request.resume_partial)
         final_path = artifacts.download_path(request.format.final_ext)
@@ -441,8 +451,8 @@ class DownloadService:
                 raise OperationCancelled(context)
             if exit_code:
                 raise DownloadError(f"yt-dlp returned exit code {exit_code}")
-            if request.use_native_format or not final_path.is_file():
-                final_path = artifacts.find_completed_file(request.format.final_ext) or final_path
+            if request.use_native_format or request.remux_container or not final_path.is_file():
+                final_path = artifacts.find_completed_file(final_extension) or final_path
             if not final_path.is_file():
                 raise OSError(f"Expected output was not created: {final_path}")
             if request.use_native_format:

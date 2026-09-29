@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, QPointF, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yt_downloader.core.models import AppSettings, PlaylistMetadata, PlaylistEntry, SubtitleTrack, CookieProfile, DownloadRequest, DownloadResult, HistoryRecord, TaskStatus
+from yt_downloader.core.models import AppSettings, PlaylistMetadata, PlaylistEntry, SubtitleTrack, CookieProfile, DownloadRequest, DownloadProgress, HistoryRecord, TaskStatus
 from yt_downloader.ui.quick_window import MainWindow
 from verify_quick_ui import sample_video
 
@@ -170,24 +170,22 @@ def main():
             assert not find('downloadButton').property('enabled')
             find('taskList').positionViewAtBeginning()
             yield 200
-            snapshot(mode+'-playlist-summary')
+            snapshot(mode+'-collection-summary')
             page.selectAllEntries(True)
             yield 200
             assert find('downloadButton').property('enabled')
-            reveal('playlistItems')
+            reveal('collectionItems')
             yield 200
-            snapshot(mode+'-playlist-selected')
-            batch_id = mode + '-batch'
-            page.add_batch(batch_id, source, 2, 'fixture')
-            for suffix in ('ok', 'bad'):
-                page.add_task(DownloadRequest(batch_id+suffix, source, source.formats[0], Path('.'), suffix, batch_id=batch_id))
-            page.complete_task(DownloadResult(batch_id+'ok', Path('fixture.mp4'), 1, 'fixture'))
-            page.fail_task(batch_id+'bad', TaskStatus.FAILED)
-            page.batchAction(batch_id, 'expand')
+            snapshot(mode+'-collection-selected')
+            task_ids = [mode + '-collection-' + suffix for suffix in ('downloading', 'failed')]
+            for task_id in task_ids:
+                page.add_task(DownloadRequest(task_id, source, source.formats[0], Path('.'), task_id))
+            page.update_task(DownloadProgress(task_ids[0], TaskStatus.DOWNLOADING_VIDEO, 42))
+            page.fail_task(task_ids[1], TaskStatus.FAILED)
             page.update(ready=False)
             find('taskList').positionViewAtBeginning()
             yield 300
-            snapshot(mode+'-batch-errors')
+            snapshot(mode+'-collection-child-tasks')
             window._select_page(3)
             yield 400
             snapshot(mode+'-about')
@@ -253,8 +251,8 @@ def main():
             yield 200
             assert find('cookieBrowse').property('visible')
             assert not find('cookieBrowser').property('visible')
-            cookie_path = args.output / 'fixture-cookies.txt'
-            cookie_path.write_text('# Netscape HTTP Cookie File\\n', encoding='utf-8')
+            cookie_path = args.output.resolve() / 'fixture-cookies.txt'
+            cookie_path.write_text('# Netscape HTTP Cookie File\n', encoding='utf-8')
             session.set_file_path(str(cookie_path))
             session.setField('name', 'Fixture file')
             session.setField('domain', 'example.org')
@@ -305,12 +303,13 @@ def main():
             history.delete_many_requested.connect(delete_confirmed)
             window._select_page(1)
             yield 300
-            click('historyManageToggle')
+            click('historyManageButton')
             yield 200
-            toolbar = [find(name) for name in ('historySelectAll', 'historySelectNone',
-                                               'historyDeleteSelected', 'historyClear',
-                                               'historyManageToggle')]
-            assert all(button.property('visible') for button in toolbar)
+            toolbar = [find(name) for name in ('historySelectAll', 'historyDeleteSelected',
+                                               'historyClear', 'historyManageToggle')]
+            assert all(button.property('visible') for button in toolbar), [
+                (name, button.property('visible')) for name, button in zip(
+                    ('historySelectAll', 'historyDeleteSelected', 'historyClear', 'historyManageToggle'), toolbar)]
             centers = [button.y() + button.height() / 2 for button in toolbar]
             assert max(centers) - min(centers) < 1
             indicator = find('historyCheckboxIndicator-ui-' + mode + '-0')
@@ -330,13 +329,18 @@ def main():
             yield 180
             retries = []
             page.parse_requested.connect(retries.append)
-            page.setField('url', source.url)
+            retry_url = 'https://www.youtube.com/watch?v=fixture-cookie'
+            youtube_cookie = CookieProfile('youtube-fixture', 'YouTube Fixture', 'browser',
+                                           browser='firefox', domain_hint='youtube.com')
+            page.set_cookie_state((*window.cookies.profiles, youtube_cookie))
+            page.setCookieEnabled(True)
+            page.setField('url', retry_url)
             window._select_page(0)
-            window.cookies.update(authRequired=True)
+            page.set_cookie_parse_error('AUTH_REQUIRED', '此内容需要登录状态。')
             assert find('cookieRetry').property('visible')
             click('cookieRetry')
-            assert retries and retries[-1] == source.url
-            window.cookies.update(authRequired=False)
+            assert retries and retries[-1] == retry_url
+            page.update(cookieAuthStatus='', cookieAuthWarning='', cookieAuthInvalid=False)
             window.update(recoveryVisible=True, recoveryBusy=True, recoveryText='正在恢复上一次未完成的更新…')
             yield 300
             snapshot(mode+'-recovery-running')
@@ -345,7 +349,7 @@ def main():
             snapshot(mode+'-recovery-failed')
             window.update(recoveryVisible=False)
         assert not window.qml_warnings, window.qml_warnings
-        report = dict(device_pixel_ratio=window.root.devicePixelRatio(), screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'subtitle_none_disabled', 'subtitle_auto_only', 'subtitle_manual_only', 'playlist_explicit_selection', 'batch_errors', 'about', 'cookie_profile_editor_and_selection', 'history_management_and_confirmed_delete_exit', 'download_field_alignment_and_native_default', 'light_dark'])
+        report = dict(device_pixel_ratio=window.root.devicePixelRatio(), screenshots=captures, qml_warnings=[], checks=['generic_input', 'verified', 'experimental_nonblocking', 'subtitle_none_disabled', 'subtitle_auto_only', 'subtitle_manual_only', 'playlist_explicit_selection', 'collection_child_tasks', 'about', 'cookie_profile_editor_and_selection', 'history_management_and_confirmed_delete_exit', 'download_field_alignment_and_native_default', 'light_dark'])
         (args.output/'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         app.quit()

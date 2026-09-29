@@ -37,6 +37,7 @@ from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.history_service import HistoryDeleteResult, HistoryRepository
 from yt_downloader.services.network_policy import NetworkPolicy, NetworkTestResult
 from yt_downloader.services.settings_service import SettingsService
+from yt_downloader.services.video_sections import parse_clip_time
 from yt_downloader.services.media_resolver import MediaResolver
 from yt_downloader.ui.quick_window import MainWindow
 from yt_downloader.ui.progress_dispatch import ProgressEventCoalescer
@@ -150,7 +151,7 @@ class AppController:
             network_policy=self.network,
             concurrent_fragments=self.settings.concurrent_fragments,
         )
-        ffmpeg_description = str(self.ffmpeg.ffmpeg_path) if self.ffmpeg.ffmpeg_path else "未找到"
+        ffmpeg_description = str(self.ffmpeg.ffmpeg_path) if self.ffmpeg.ffmpeg_path else ""
         self.window = MainWindow(
             self.settings,
             ytdlp_version=yt_dlp.version.__version__,
@@ -212,8 +213,7 @@ class AppController:
         download.parse_requested.connect(self.fetch_metadata)
         download.parse_cancel_requested.connect(self.metadata_process.cancel)
         download.download_requested.connect(self.enqueue_download)
-        download.batch_requested.connect(self.enqueue_batch)
-        download.batch_action_requested.connect(self._batch_action)
+        download.collection_download_requested.connect(self.enqueue_collection)
         download.cancel_requested.connect(self.queue.cancel)
         download.pause_requested.connect(self.queue.pause_task)
         download.resume_requested.connect(self.queue.resume_task)
@@ -269,6 +269,9 @@ class AppController:
 
     def fetch_metadata(self, url: str) -> None:
         self._cancel_thumbnail()
+        clear_cookie_error = getattr(getattr(self.window, 'cookies', None), 'update', None)
+        if callable(clear_cookie_error):
+            clear_cookie_error(authRequired=False)
         token = self._metadata_gate.begin(url.strip())
         self.metadata_process.start(token, url, MetadataProcessConfig(
             deno_path=str(self.deno_path or ""),
@@ -314,8 +317,9 @@ class AppController:
         self._start_thumbnail(video)
 
     def _apply_metadata_result(self, video) -> None:
-        if hasattr(self.window, 'cookies'):
-            self.window.cookies.update(authRequired=False)
+        clear_cookie_error = getattr(getattr(self.window, 'cookies', None), 'update', None)
+        if callable(clear_cookie_error):
+            clear_cookie_error(authRequired=False)
         retry = self._pending_retry
         profile = self.settings.default_profile if retry is None else None
         preferred = (
@@ -522,6 +526,8 @@ class AppController:
 
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
+        if hasattr(self.window, 'download_page'):
+            self.window.download_page.set_cookie_parse_error(error.code, error.user_message)
         if error.code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
             self.window.cookies.update(authRequired=True, message=error.user_message)
         self.show_error(error)
@@ -539,6 +545,14 @@ class AppController:
                                       subtitle_enabled=state['subtitleEnabled'], subtitle_auto=state['subtitleAuto'],
                                       subtitle_embed=state['subtitleEmbed'], subtitle_format=state['subtitleFormat'],
                                       subtitle_languages=tuple(state['subtitleLanguages']),
+                                      clip_enabled=bool(state['clipEnabled']),
+                                      clip_start=parse_clip_time(state['clipStart']) if state['clipEnabled'] else 0,
+                                      clip_end=parse_clip_time(state['clipEnd']) if state['clipEnabled'] else 0,
+                                      embed_thumbnail=bool(state['embedThumbnail']),
+                                      embed_metadata=bool(state['embedMetadata']),
+                                      embed_chapters=bool(state['embedChapters']),
+                                      remux_container=state['remuxContainer'],
+                                      sponsorblock_mark=bool(state['sponsorblockMark'] and str(video.extractor_key or '').casefold().startswith('youtube')),
                                       use_native_format=state['mediaMode'] == 'video_audio' and state['qualityAuto'])
             profile = self.window.download_page.selected_cookie_profile(self.window.cookies)
             request = replace(request, cookie_profile=profile, cookie_profile_id=profile.id if profile else '')
@@ -568,8 +582,10 @@ class AppController:
                 ErrorContext(url=video.url, selected_format=option.label, output_directory=directory, stage="Preparing download"),
             ))
 
-    def enqueue_batch(self, media, entries):
-        from yt_downloader.core.models import ResolvedMedia
+    def enqueue_collection(self, media, entries):
+        from yt_downloader.core.formats import apply_codec_preference
+        from yt_downloader.core.models import CodecPreference, ResolvedMedia
+        from yt_downloader.core.quality_target import choose_quality
         from urllib.parse import urlsplit
         page = self.window.download_page
         state = page.state
@@ -578,26 +594,36 @@ class AppController:
             return
         output = Path(state['directory'].strip()).expanduser()
         if not state['directory'].strip() or not output.is_absolute():
-            self.show_error(AppError('invalid_output', '请选择有效的绝对下载目录。', 'Invalid batch output directory'))
+            self.show_error(AppError('invalid_output', '请选择有效的绝对下载目录。', 'Invalid collection output directory'))
             return
         batch_id = uuid.uuid4().hex
         created = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
-        page.add_batch(batch_id, media, len(entries), created)
         profile = self.window.download_page.selected_cookie_profile(self.window.cookies)
+        codec_preference = CodecPreference(self.settings.default_profile.codec_preference)
         # Deferred placeholders are presentation only. Actual formats are resolved
         # by the existing worker after acquiring a slot in the shared queue.
-        placeholder = FormatOption('解析后自动选择', None, None, 'none', 'none', '', '', '', None, False, '')
-        self.queue.pause(batch_id)
+        placeholder = FormatOption(page._t('format.resolve_after_parse'), None, None, 'none', 'none', '', '', '', None, False, '')
         try:
             for entry in entries:
-                embedded = bool(entry.embedded and entry.selected_format)
+                quality_target = entry.quality_target
+                if quality_target == 'recommended':
+                    quality_target = self.settings.default_profile.quality_tier
+                embedded = bool(entry.embedded)
                 if embedded:
+                    entry_formats = (entry.audio_formats if state['mediaMode'] == 'audio_only'
+                                     else entry.video_only_formats if state['mediaMode'] == 'video_only'
+                                     else entry.formats)
+                    entry_formats = tuple(apply_codec_preference(option, codec_preference)
+                                          for option in entry_formats)
+                    selected_format = choose_quality(entry_formats, quality_target)
+                    if selected_format is None:
+                        continue
                     child = replace(media, video_id=entry.id, url=media.url, title=entry.title,
-                                    duration=entry.duration, thumbnail_url=entry.thumbnail or media.thumbnail_url,
+                                    duration=entry.duration, thumbnail_url=entry.thumbnail or None,
                                     formats=entry.formats, audio_formats=entry.audio_formats,
                                     video_only_formats=entry.video_only_formats, entries=(), playlist=None,
-                                    media_type='video', extractor_key=entry.extractor_key or media.extractor_key)
-                    selected_format = entry.selected_format
+                                    media_type='video', extractor_key=entry.extractor_key or media.extractor_key,
+                                    collection=None)
                 else:
                     child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
                                           entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
@@ -607,11 +633,17 @@ class AppController:
                                           audio_codec=state['audioCodec'], audio_quality=state['audioQuality'],
                                           subtitle_enabled=state['subtitleEnabled'], subtitle_languages=tuple(state['subtitleLanguages']),
                                           subtitle_auto=state['subtitleAuto'], subtitle_embed=state['subtitleEmbed'],
+                                          embed_thumbnail=bool(state['embedThumbnail']),
+                                          embed_metadata=bool(state['embedMetadata']),
+                                          embed_chapters=bool(state['embedChapters']),
+                                          remux_container=state['remuxContainer'],
+                                          sponsorblock_mark=bool(state['sponsorblockMark'] and str(media.extractor_key or '').casefold().startswith('youtube')),
                                           subtitle_format=state['subtitleFormat'], cookie_profile=profile,
-                                          cookie_profile_id=profile.id if profile else '', batch_id=batch_id,
+                                          cookie_profile_id=profile.id if profile else '',
                                           playlist_id=media.playlist.id if media.playlist else '', playlist_title=media.title,
                                           resolve_before_download=not embedded,
-                                          preferred_quality=self.settings.default_profile.quality_tier,
+                                          preferred_quality=quality_target,
+                                          codec_preference=codec_preference,
                                           playlist_item_index=entry.index if embedded else None)
                 record = HistoryRecord(request.task_id, child.media_key, redact_sensitive(child.url), child.title,
                                        output / request.filename_stem, selected_format.label, selected_format.estimated_size, None, TaskStatus.PENDING, created,
@@ -623,25 +655,8 @@ class AppController:
                 self.history.upsert(record)
                 self.queue.enqueue(request)
         except (OSError, ValueError) as error:
-            self.show_error(AppError('batch_prepare_failed', '部分项目无法加入下载，请检查下载目录和历史存储。', redact_sensitive(str(error))))
+            self.show_error(AppError('collection_prepare_failed', '部分项目无法加入下载，请检查下载目录和历史存储。', redact_sensitive(str(error))))
         finally:
-            page.finish_batch_registration(batch_id)
-            self.queue.resume(batch_id)
-            self.refresh_history()
-
-    def _batch_action(self, batch_id, action):
-        if action == 'pause':
-            self.queue.pause(batch_id)
-        elif action == 'resume':
-            self.queue.resume(batch_id)
-        elif action == 'cancel':
-            self.queue.cancel_all(batch_id)
-        elif action == 'retry':
-            requests = self.window.download_page.failed_batch_requests(batch_id)
-            for request in requests:
-                if self.queue.task_position(request.task_id) is None:
-                    self.history.update_status(request.task_id, TaskStatus.PENDING)
-                    self.queue.enqueue(request)
             self.refresh_history()
 
     def _progress(self, progress) -> None:
@@ -696,7 +711,7 @@ class AppController:
         if task_id in self._remove_intents:
             self._remove_intents.discard(task_id)
             self.window.download_page.remove_task(task_id)
-        self.show_error(error)
+        self.show_error(error, retry_callback=lambda task_id=task_id: self._retry_task(task_id))
 
     def _cancelled(self, task_id: str, cleanup_report) -> None:
         getattr(self, "_persisted_task_stages", {}).pop(task_id, None)
@@ -820,9 +835,10 @@ class AppController:
         request = page.task_request(task_id)
         if request is None or page.task_status(task_id) is not TaskStatus.FAILED:
             return
-        if request.batch_id:
+        if request.playlist_item_index is not None:
             self.history.update_status(task_id, TaskStatus.PENDING)
             self.queue.enqueue(request)
+            self.refresh_history()
             return
         # Retry is a new parse/selection, not an implicit download. Use the
         # retained request so deleting a history entry cannot break this action.
@@ -926,6 +942,13 @@ class AppController:
             self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
     def show_error(self, error: AppError, *, title_text: str = "下载失败", retry_callback=None) -> None:
+        from yt_downloader.services.error_actions import error_presentation
+
+        title_id, body_id, actions = error_presentation(error.code, retry_available=retry_callback is not None)
+        error = replace(error,
+                        title_message_id=error.title_message_id or title_id,
+                        body_message_id=error.body_message_id or body_id,
+                        recommended_actions=error.recommended_actions or actions)
         logger.error("%s: %s", error.code, error.technical_message)
         report = build_error_report(
             error,
@@ -933,10 +956,36 @@ class AppController:
             yt_dlp_version=yt_dlp.version.__version__,
             ffmpeg_version=str(self.ffmpeg.ffmpeg_path or "Unavailable"),
         )
-        dialog = ErrorDialog(error, report, self.window, title_text=title_text, retry_callback=retry_callback)
+        callbacks = self._error_action_callbacks(error, retry_callback)
+        dialog = ErrorDialog(error, report, self.window, title_text=title_text,
+                             retry_callback=retry_callback, actions=error.recommended_actions,
+                             action_callbacks=callbacks)
         dialog.show()
         self._dialogs.append(dialog)
         dialog.closed.connect(lambda: self._dialogs.remove(dialog) if dialog in self._dialogs else None)
+
+    def _reparse_error_url(self, url: str) -> None:
+        page = self.window.download_page
+        target = str(url or page.state.get('url') or '').strip()
+        if not target or page.parse_state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}:
+            return
+        self.window._select_page(0)
+        page.set_url(target)
+        self.window.scroll_download_to_top()
+        page.requestParse()
+
+    def _error_action_callbacks(self, error: AppError, retry_callback=None):
+        callbacks = {}
+        for action in error.recommended_actions:
+            if action == 'OPEN_COOKIE_MANAGER':
+                callbacks[action] = self.window.openCookieSettings
+            elif action == 'REPARSE':
+                callbacks[action] = lambda url=error.context.url: self._reparse_error_url(url)
+            elif action == 'RETRY':
+                callbacks[action] = retry_callback or (lambda url=error.context.url: self._reparse_error_url(url))
+            elif action == 'CHECK_APP_UPDATE':
+                callbacks[action] = lambda: (self.window._select_page(3), self.updates.check(manual=True))
+        return callbacks
 
 
 def create_application(argv: list[str] | None = None) -> tuple[QApplication, AppController]:

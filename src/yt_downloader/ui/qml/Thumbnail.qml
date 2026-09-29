@@ -3,7 +3,7 @@ import QtQuick
 Rectangle {
     id: root
     property string source: ""
-    property string placeholder: "暂无封面"
+    property string placeholder: i18n.messages["thumbnail.none"]
     property string current: ""
     property int imageFillMode: Image.PreserveAspectCrop
     readonly property real sourceAspectRatio: incoming.status === Image.Ready && incoming.implicitHeight > 0
@@ -20,13 +20,14 @@ Rectangle {
         if (!source) current = ""
     }
     UiText { anchors.centerIn: parent; text: root.placeholder; role: "Caption"; color: theme.state.muted; visible: !root.current && incoming.status !== Image.Ready }
-    Image { id: outgoing; anchors.fill: parent; source: root.current; fillMode: root.imageFillMode; asynchronous: true; sourceSize.width: 720; sourceSize.height: 720 }
+    Image { id: outgoing; anchors.fill: parent; source: root.current; fillMode: root.imageFillMode; asynchronous: true; cache: true; sourceSize.width: 720; sourceSize.height: 720 }
     Image {
         id: incoming
         anchors.fill: parent
         opacity: 0
         fillMode: root.imageFillMode
         asynchronous: true
+        cache: true
         sourceSize.width: 720; sourceSize.height: 720
         onStatusChanged: if (status === Image.Ready) blend.restart()
     }

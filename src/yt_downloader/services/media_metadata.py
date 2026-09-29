@@ -3,7 +3,8 @@ import math
 from collections.abc import Mapping
 
 from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
-from yt_downloader.core.models import PlaylistEntry, PlaylistMetadata, ResolvedMedia, SubtitleTrack
+from yt_downloader.core.models import (Collection, CollectionQualityMode, PlaylistEntry,
+                                       PlaylistMetadata, ResolvedMedia, SubtitleTrack)
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
 
@@ -31,7 +32,7 @@ def _tracks(value, is_auto=False):
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
 
 
-def resolve_metadata(info, original_url, *, requested_url=None, detected_formats=None):
+def resolve_metadata(info, original_url, *, requested_url=None, detected_formats=None, cookie_used=False):
     if not isinstance(info, Mapping):
         raise TypeError('yt-dlp returned non-mapping metadata')
     extractor = str(info.get('extractor') or '')
@@ -55,6 +56,9 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
     formats = () if is_playlist else tuple(normalize_formats(
         display_formats,
         duration=duration, extractor_key=extractor_key))
+    # A separately resolved watch video can seed a task, but it cannot stand in
+    # for a deferred playlist's per-entry quality capabilities.
+    collection_quality_formats = ()
     usable = display_formats
     audios = tuple(normalize_audio_formats(usable)) if not is_playlist else ()
     videos = tuple(normalize_formats([item for item in usable if item.get('acodec') == 'none'],
@@ -113,8 +117,21 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
                           entry_duration, item_thumbnail or '',
                           not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'},
                           entry_formats, entry_audio, entry_video_only, has_usable_embedded))
+    selectable_entries = [entry for entry in entries if not entry.unavailable]
+    resolved_collection = bool(selectable_entries) and all(entry.formats for entry in selectable_entries)
+    collection_quality_mode = (CollectionQualityMode.RESOLVED_COMMON_FORMATS if resolved_collection
+                               else CollectionQualityMode.DEFERRED_BATCH_TARGET) if is_playlist else ''
+    if is_playlist and resolved_collection:
+        labels_by_entry = [{option.label for option in entry.formats} for entry in selectable_entries]
+        common_labels = set.intersection(*labels_by_entry) if labels_by_entry else set()
+        # Keep a representative option for each semantic label; children map
+        # the chosen label to their own native candidates at enqueue time.
+        collection_quality_formats = tuple(option for option in selectable_entries[0].formats
+                                           if option.label in common_labels)
     metadata_compatibility = 'VERIFIED' if extractor_key.casefold() in METADATA_VERIFIED_EXTRACTORS or extractor.casefold() in METADATA_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     download_compatibility = 'VERIFIED' if extractor_key.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS or extractor.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
+    entries_truncated = is_playlist and len(info.get("entries") or []) > 1000
+    collection = Collection(media_type, tuple(entries), entries_truncated) if is_playlist else None
     return ResolvedMedia(
         # Replay the successful extractor input for downloads/history retries.
         # Canonical webpage_url can have different access requirements.
@@ -123,7 +140,7 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
         channel=str(info.get('channel') or info.get('uploader') or '未知作者'),
         duration=duration, thumbnail_url=thumbnail, thumbnail_bytes=None, formats=formats,
         audio_formats=audios, video_only_formats=videos, entries=tuple(entries),
-        entries_truncated=is_playlist and len(info.get("entries") or []) > 1000,
+        entries_truncated=entries_truncated, collection=collection,
         extractor=extractor, extractor_key=extractor_key, original_url=requested_url or original_url,
         webpage_url=webpage_url, media_type=media_type, uploader=str(info.get('uploader') or ''),
         upload_date=str(info['upload_date']) if info.get('upload_date') else None,
@@ -132,4 +149,7 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
         compatibility=download_compatibility,
         metadata_compatibility=metadata_compatibility,
         download_compatibility=download_compatibility,
+        collection_quality_formats=collection_quality_formats,
+        collection_quality_mode=collection_quality_mode,
+        cookie_used=bool(cookie_used),
     )

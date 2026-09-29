@@ -1,12 +1,25 @@
 """Translate a structured media request into yt-dlp stream selection."""
 from dataclasses import replace
 from yt_downloader.core.models import MediaMode
+from yt_downloader.services.video_sections import validate_clip
 
 
 def prepare_request(request):
     """Derive the actual output and progress contract before any IO."""
     request = _effective_subtitle_request(request)
     mode = MediaMode(request.media_mode)
+    validate_clip(request.clip_enabled, request.clip_start, request.clip_end, request.video.duration)
+    if request.clip_enabled and (request.video.is_collection or request.playlist_item_index is not None):
+        raise ValueError('Clip downloads are only available for a single video.')
+    if request.sponsorblock_mark and not str(request.video.extractor_key or '').casefold().startswith('youtube'):
+        raise ValueError('SponsorBlock marking is only available for supported YouTube videos.')
+    remux_container = str(request.remux_container or '').lower()
+    if remux_container:
+        if mode is MediaMode.AUDIO_ONLY:
+            raise ValueError('Remux is only available for video output.')
+        from yt_dlp.postprocessor.ffmpeg import FFmpegVideoRemuxerPP
+        if remux_container not in FFmpegVideoRemuxerPP.SUPPORTED_EXTS:
+            raise ValueError('Unsupported remux container.')
     if request.subtitle_format not in {'srt', 'vtt'}:
         raise ValueError('不支持的字幕格式')
     if request.subtitle_enabled and request.subtitle_embed and (mode is MediaMode.AUDIO_ONLY or request.format.final_ext not in {'mp4', 'mkv'}):
@@ -69,14 +82,32 @@ def media_options(request):
             if request.audio_quality != 'original':
                 processor['preferredquality'] = request.audio_quality
             result['postprocessors'] = [processor]
-        return result
-    if mode is MediaMode.VIDEO_ONLY:
+    elif mode is MediaMode.VIDEO_ONLY:
         if not request.format.audio_format_id and request.format.acodec != 'none':
             raise ValueError('该格式包含声音，请选择独立视频流。')
-        return {'format': request.format.video_format_id, **playlist_selector}
-    if request.use_native_format:
+        result = {'format': request.format.video_format_id, **playlist_selector}
+    elif request.use_native_format:
         # Let this installed yt-dlp choose and merge its own video/audio pair.
         # A displayed quality option is not a verified native format selector.
-        return playlist_selector
-    return {'format': request.format.format_selector, 'merge_output_format': request.format.final_ext,
-            **playlist_selector}
+        result = dict(playlist_selector)
+    else:
+        result = {'format': request.format.format_selector, 'merge_output_format': request.format.final_ext,
+                  **playlist_selector}
+    if request.clip_enabled:
+        from yt_dlp.utils import download_range_func
+        result['download_ranges'] = download_range_func(None, [(request.clip_start, request.clip_end)])
+        result['force_keyframes_at_cuts'] = False
+    if request.embed_thumbnail:
+        result['embedthumbnail'] = True
+    if request.embed_metadata:
+        result['addmetadata'] = True
+    # Explicit false prevents yt-dlp from implicitly enabling chapters when
+    # metadata or SponsorBlock marking is enabled. Leave yt-dlp's default alone
+    # for ordinary downloads that did not request any post-processing.
+    if request.embed_metadata or request.embed_chapters or request.sponsorblock_mark:
+        result['addchapters'] = bool(request.embed_chapters or request.sponsorblock_mark)
+    if request.remux_container:
+        result['remuxvideo'] = str(request.remux_container).lower()
+    if request.sponsorblock_mark:
+        result['sponsorblock_mark'] = {'sponsor'}
+    return result

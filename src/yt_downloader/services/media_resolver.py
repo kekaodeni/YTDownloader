@@ -26,6 +26,7 @@ from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 from yt_downloader.services.ffmpeg_service import FfmpegService
+from yt_downloader.services.media_probe import needs_media_probe, probe_cache_key
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class MediaResolver:
         self.cookie_profile = cookie_profile
         self.cookie_enabled = bool(cookie_enabled)
         self.ffmpeg_service = ffmpeg_service
+        self._media_probe_cache: dict[str, dict[str, Any]] = {}
 
     def fetch_metadata(
         self,
@@ -132,8 +134,14 @@ class MediaResolver:
                 options.update(cookie_options(self.cookie_profile))
             except ValueError as error:
                 raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
+            cookie_used = False
             with self.ydl_factory(options) as ydl:
                 extracted = ydl.extract_info(normalized, download=False)
+                if self.cookie_enabled and self.cookie_profile is not None:
+                    cookiejar = getattr(ydl, 'cookiejar', None)
+                    get_cookies = getattr(cookiejar, 'get_cookies_for_url', None)
+                    if callable(get_cookies):
+                        cookie_used = bool(get_cookies(normalized))
                 # Bound the lazy enumeration; children are resolved only after selection.
                 if isinstance(extracted, Mapping) and extracted.get('_type') in {'playlist', 'multi_video'}:
                     from itertools import islice
@@ -145,9 +153,10 @@ class MediaResolver:
                     cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
-            detected_formats = self._probe_unknown_soop_hls(info, cancel_event)
+            detected_formats = self._probe_missing_media_metadata(info, cancel_event)
             media = resolve_metadata(info, normalized, requested_url=url.strip(),
-                                     detected_formats=detected_formats)
+                                     detected_formats=detected_formats,
+                                     cookie_used=cookie_used)
             if not media.formats and not media.audio_formats and media.media_type not in {'playlist', 'multi_video'}:
                 raw_formats = info.get('formats')
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))
@@ -196,37 +205,53 @@ class MediaResolver:
                 ),
             ) from exc
 
-    def _probe_unknown_soop_hls(self, info: Mapping[str, Any], cancel_event=None) -> dict[str, dict[str, Any]]:
+    def _probe_missing_media_metadata(self, info: Mapping[str, Any], cancel_event=None) -> dict[str, dict[str, Any]]:
         formats = info.get("formats")
-        extractor = str(info.get("extractor_key") or info.get("extractor") or "").casefold()
-        if (not extractor.startswith(("soop", "afreecatv"))
-                or not isinstance(formats, list) or len(formats) != 1):
+        # Collection pages can contain hundreds of unresolved entries. Probe only
+        # formats yt-dlp resolved for this one media item, never playlist children.
+        if (info.get("_type") in {"playlist", "multi_video"}
+                or not isinstance(formats, list) or not formats):
             return {}
-        item = formats[0]
-        if (not isinstance(item, Mapping) or item.get("vcodec") == "none"
-                or (item.get("width") and item.get("height"))):
+        unresolved = [item for item in formats if isinstance(item, Mapping) and needs_media_probe(item)]
+        if not unresolved:
             return {}
-        protocol = str(item.get("protocol") or "").casefold()
-        url = item.get("url")
-        if not (url and ("m3u8" in protocol or str(url).split("?", 1)[0].casefold().endswith(".m3u8"))):
-            return {}
-        format_id = str(item.get("format_id") or "")
+
+        # Probe only one representative per native quality group, with a strict
+        # cap for adaptive manifests that expose many aliases/bitrates.
+        groups: dict[tuple[str, str], Mapping[str, Any]] = {}
+        for item in unresolved:
+            group = (str(item.get("quality") or item.get("format_note") or ""),
+                     str(item.get("height") or item.get("width") or ""))
+            groups.setdefault(group, item)
+        selected = list(groups.values())[:4]
+        results: dict[str, dict[str, Any]] = {}
+        for item in selected:
+            format_id = str(item.get("format_id") or "")
+            key = probe_cache_key(item)
+            if key not in self._media_probe_cache:
+                self._media_probe_cache[key] = self._probe_one_media_format(item, cancel_event)
+            results[format_id] = dict(self._media_probe_cache[key])
+        return results
+
+    def _probe_one_media_format(self, item: Mapping[str, Any], cancel_event=None) -> dict[str, Any]:
         if not self.ffmpeg_service:
-            return {format_id: {"source": "original"}}
+            return {"source": "original"}
         headers = item.get("http_headers")
+        # Deliberately carry only the same safe request context used by the
+        # existing ffprobe adapter; Cookie/Authorization headers never reach logs.
         safe_headers = {str(key): str(value) for key, value in headers.items()
                         if str(key).casefold() in {"user-agent", "referer", "origin"}} if isinstance(headers, Mapping) else {}
         if cancel_event and cancel_event.is_set():
             raise OperationCancelled(ErrorContext(stage="Probing stream metadata"))
         try:
-            detected = self.ffmpeg_service.probe_stream(str(url), http_headers=safe_headers, timeout=8)
+            detected = self.ffmpeg_service.probe_stream(str(item["url"]), http_headers=safe_headers, timeout=8)
         except OperationCancelled:
             raise
         except Exception as exc:
-            logger.info("Optional HLS display probe failed (%s)", type(exc).__name__)
-            return {format_id: {"source": "original"}}
+            logger.info("Optional media display probe failed (%s)", type(exc).__name__)
+            return {"source": "original"}
         if not isinstance(detected, Mapping) or not detected.get("width") or not detected.get("height"):
-            return {format_id: {"source": "original"}}
+            return {"source": "original"}
         detected = dict(detected)
         if detected.get("fps") is None:
             rate = detected.get("avg_frame_rate") or detected.get("r_frame_rate")
@@ -235,8 +260,7 @@ class MediaResolver:
                 detected["fps"] = float(numerator) / float(denominator)
             except (TypeError, ValueError, ZeroDivisionError):
                 detected["fps"] = None
-        result = {format_id: dict(detected, source="ffprobe")}
-        return result
+        return dict(detected, source="ffprobe")
 
     def fetch_thumbnail(
         self,

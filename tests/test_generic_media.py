@@ -171,6 +171,81 @@ def test_soop_catch_unknown_codec_hls_format_survives_into_download_request():
     assert media_options(request)['format'] == 'hls'
 
 
+def test_clip_request_uses_native_ytdlp_section_range_and_rejects_invalid_times():
+    from pathlib import Path
+
+    from yt_downloader.core.models import DownloadRequest, FormatOption, ResolvedMedia
+    from yt_downloader.services.download_options import media_options, prepare_request
+    from yt_downloader.services.video_sections import parse_clip_time, validate_clip
+
+    media = ResolvedMedia('id', 'https://example.test/video', 'title', 'uploader', 420, None, None, (),
+                          extractor_key='Youtube')
+    option = FormatOption('720p', 720, 30, 'avc1', 'mp4a', 'mp4', 'mp4', 'v+a', 100, True, 'v', 'a')
+    request = DownloadRequest('task', media, option, Path('.'), 'clip',
+                              clip_enabled=True, clip_start=parse_clip_time('03:15'),
+                              clip_end=parse_clip_time('00:05:40'))
+    prepared = prepare_request(request)
+    ranges = media_options(prepared)['download_ranges']
+    assert list(ranges({}, None)) == [{'start_time': 195, 'end_time': 340}]
+
+    with pytest.raises(ValueError):
+        validate_clip(True, 340, 195, 420)
+    with pytest.raises(ValueError):
+        validate_clip(True, 0, 421, 420)
+
+
+@pytest.mark.parametrize(('value', 'seconds'), [('3:15', 195), ('00:03:15', 195), ('1:02:03', 3723)])
+def test_clip_time_parser_supports_mmss_and_hhmmss(value, seconds):
+    from yt_downloader.services.video_sections import parse_clip_time
+    assert parse_clip_time(value) == seconds
+
+
+@pytest.mark.parametrize('value', ['', '-1:00', '1:60', '1:02:60', '1:2:03:04', 'abc'])
+def test_clip_time_parser_rejects_invalid_clock_values(value):
+    from yt_downloader.services.video_sections import parse_clip_time
+    with pytest.raises(ValueError):
+        parse_clip_time(value)
+
+
+@pytest.mark.parametrize(('options', 'metadata', 'chapters'), [
+    ({'embed_metadata': True}, True, False),
+    ({'embed_chapters': True}, False, True),
+    ({'embed_metadata': True, 'embed_chapters': True}, True, True),
+])
+def test_postprocessing_metadata_and_chapters_are_explicit_and_independent(options, metadata, chapters):
+    from pathlib import Path
+
+    from yt_downloader.core.models import DownloadRequest, FormatOption, ResolvedMedia
+    from yt_downloader.services.download_options import media_options
+
+    media = ResolvedMedia('id', 'https://example.test/video', 'title', 'uploader', 420, None, None, (),
+                          extractor_key='Youtube')
+    option = FormatOption('720p', 720, 30, 'avc1', 'mp4a', 'mp4', 'mp4', 'v+a', 100, True, 'v', 'a')
+    request = DownloadRequest('task', media, option, Path('.'), 'clip', **options)
+    actual = media_options(request)
+    assert actual.get('addmetadata', False) is metadata
+    assert actual['addchapters'] is chapters
+    assert 'recodevideo' not in actual
+
+
+def test_postprocessing_uses_ffmpeg_native_remux_and_sponsor_mark_only():
+    from pathlib import Path
+
+    from yt_downloader.core.models import DownloadRequest, FormatOption, ResolvedMedia
+    from yt_downloader.services.download_options import media_options, prepare_request
+
+    media = ResolvedMedia('id', 'https://youtube.com/watch?v=id', 'title', 'uploader', 420, None, None, (),
+                          extractor_key='Youtube')
+    option = FormatOption('720p', 720, 30, 'avc1', 'mp4a', 'mp4', 'mp4', 'v+a', 100, True, 'v', 'a')
+    request = prepare_request(DownloadRequest('task', media, option, Path('.'), 'clip',
+                                               remux_container='mkv', sponsorblock_mark=True))
+    actual = media_options(request)
+    assert actual['remuxvideo'] == 'mkv'
+    assert actual['sponsorblock_mark'] == {'sponsor'}
+    assert actual['addchapters'] is True
+    assert 'recodevideo' not in actual
+
+
 @pytest.mark.parametrize('probe_error', [None, TimeoutError('probe timeout'), OSError('probe unavailable')])
 def test_single_unknown_soop_hls_format_uses_probe_once_and_keeps_raw_metadata(probe_error):
     from yt_downloader.services.media_resolver import MediaResolver
@@ -241,6 +316,78 @@ def test_soop_native_dimensions_skip_ffprobe():
         url, include_thumbnail=False)
     assert [item.label for item in media.formats] == ['1080p 竖屏', '720p 竖屏', '540p 竖屏']
     assert media.formats[0].display_metadata_source == 'yt-dlp'
+
+
+def test_generic_native_direct_media_uses_probe_without_mutating_raw_metadata():
+    from yt_downloader.services.media_resolver import MediaResolver
+    info = {'_type': 'video', 'extractor_key': 'Generic', 'formats': [
+        {'format_id': 'direct', 'url': 'https://cdn.example/stream.mp4', 'protocol': 'https',
+         'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'none', 'width': None, 'height': None,
+         'http_headers': {'User-Agent': 'fixture', 'Cookie': 'must-not-leak'}}]}
+    class Ydl(AbstractContextManager):
+        def __init__(self, _options): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def extract_info(self, _url, *, download): return info
+        def sanitize_info(self, data): return data
+    class Probe:
+        calls = []
+        def probe_stream(self, url, *, http_headers, timeout):
+            self.calls.append((url, http_headers, timeout))
+            return {'width': 1920, 'height': 1080, 'fps': 30}
+    probe = Probe()
+    resolver = MediaResolver(ydl_factory=Ydl, ffmpeg_service=probe, require_deno=False)
+    media = resolver.fetch_metadata('https://generic.example/watch/1', include_thumbnail=False)
+    resolver.fetch_metadata('https://generic.example/watch/1', include_thumbnail=False)
+    assert len(probe.calls) == 1
+    assert probe.calls[0][1] == {'User-Agent': 'fixture'}
+    assert probe.calls[0][2] == 8
+    option = media.formats[0]
+    assert (option.width, option.height) == (None, None)
+    assert (option.detected_width, option.detected_height) == (1920, 1080)
+    assert option.display_metadata_source == 'ffprobe'
+    assert info['formats'][0]['width'] is None and info['formats'][0]['height'] is None
+
+
+def test_soop_unresolved_sample_dimensions_keep_raw_fields_and_show_portrait_label():
+    from yt_downloader.services.media_resolver import MediaResolver
+    info = {'_type': 'video', 'extractor_key': 'AfreecaTV', 'formats': [
+        {'format_id': 'catch-hls', 'protocol': 'm3u8_native', 'ext': 'mp4', 'vcodec': 'unknown',
+         'url': 'https://cdn.example/catch.m3u8', 'width': None, 'height': None, 'fps': None}]}
+    class Ydl(AbstractContextManager):
+        def __init__(self, _options): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def extract_info(self, _url, *, download): return info
+        def sanitize_info(self, data): return data
+    class Probe:
+        def probe_stream(self, *_args, **_kwargs): return {'width': 406, 'height': 720, 'fps': 24}
+    media = MediaResolver(ydl_factory=Ydl, ffmpeg_service=Probe(), require_deno=False).fetch_metadata(
+        'https://vod.sooplive.com/player/207147181/catch', include_thumbnail=False)
+    option = media.formats[0]
+    assert option.label == '406p 竖屏'
+    assert option.width is option.height is option.fps is None
+    assert (option.detected_width, option.detected_height, option.detected_fps) == (406, 720, 24)
+    assert info['formats'][0]['width'] is None and info['formats'][0]['height'] is None
+
+
+@pytest.mark.parametrize('media_format', [
+    {'format_id': 'native', 'url': 'https://cdn.example/v.mp4', 'protocol': 'https',
+     'vcodec': 'avc1', 'width': 1280, 'height': 720},
+    {'format_id': 'semantic', 'url': 'https://cdn.example/v.mp4', 'protocol': 'https',
+     'vcodec': 'avc1', 'quality': 116},
+    {'format_id': 'semantic-hdr', 'url': 'https://cdn.example/v.mp4', 'protocol': 'https',
+     'vcodec': 'avc1', 'dynamic_range': 'HDR10'},
+    {'format_id': 'semantic-sdr', 'url': 'https://cdn.example/v.mp4', 'protocol': 'https',
+     'vcodec': 'avc1', 'dynamic_range': 'SDR'},
+    {'format_id': 'page', 'url': 'https://www.example/watch/1', 'protocol': 'https', 'vcodec': 'avc1'},
+    {'format_id': 'drm', 'url': 'https://cdn.example/v.mp4', 'protocol': 'https',
+     'vcodec': 'avc1', 'has_drm': True},
+    {'format_id': 'audio', 'url': 'https://cdn.example/a.m4a', 'protocol': 'https', 'vcodec': 'none'},
+])
+def test_generic_probe_eligibility_skips_sufficient_or_unsafe_formats(media_format):
+    from yt_downloader.services.media_probe import needs_media_probe
+    assert not needs_media_probe(media_format)
 
 
 @pytest.mark.parametrize(
@@ -318,3 +465,30 @@ def test_download_and_history_reuse_successful_input_not_a_different_canonical_p
     assert result.webpage_url == 'https://vimeo.com/76979871'
     assert result.original_url == original
     assert result.url == original
+
+
+@pytest.mark.parametrize('cookies', [(), (object(),)])
+def test_cookie_success_evidence_requires_loaded_site_cookies(cookies):
+    from yt_downloader.core.models import CookieProfile
+    from yt_downloader.services.media_resolver import MediaResolver
+
+    data = media_fixture('youtube', 'https://www.youtube.com/watch?v=123')
+    class CookieJar:
+        def get_cookies_for_url(self, _url):
+            return cookies
+    class YDL:
+        def __init__(self, options):
+            assert options['cookiesfrombrowser'] == ('firefox',)
+            self.cookiejar = CookieJar()
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def extract_info(self, _url, download):
+            assert download is False
+            return data
+        def sanitize_info(self, info): return info
+
+    result = MediaResolver(ydl_factory=YDL, require_deno=False, cookie_enabled=True,
+                           cookie_profile=CookieProfile('youtube', 'YouTube', 'browser', browser='firefox',
+                                                        domain_hint='youtube.com')) \
+        .fetch_metadata('https://www.youtube.com/watch?v=123', include_thumbnail=False)
+    assert result.cookie_used is bool(cookies)

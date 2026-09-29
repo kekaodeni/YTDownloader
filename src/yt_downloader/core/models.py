@@ -9,6 +9,12 @@ import hashlib
 from typing import Any, Mapping
 
 
+SUPPORTED_LOCALES = (
+    'zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR',
+    'ru-RU', 'es-ES', 'pt-BR', 'vi-VN', 'th-TH',
+)
+
+
 class TaskStatus(StrEnum):
     PENDING = "PENDING"
     FETCHING_METADATA = "FETCHING_METADATA"
@@ -74,6 +80,11 @@ class MediaMode(StrEnum):
     AUDIO_ONLY = "audio_only"
 
 
+class CollectionQualityMode(StrEnum):
+    RESOLVED_COMMON_FORMATS = "RESOLVED_COMMON_FORMATS"
+    DEFERRED_BATCH_TARGET = "DEFERRED_BATCH_TARGET"
+
+
 class SizeKind(StrEnum):
     EXACT = "EXACT"
     ESTIMATED = "ESTIMATED"
@@ -95,6 +106,10 @@ STATUS_TEXT: Mapping[TaskStatus, str] = {
     TaskStatus.COMPLETED: "下载完成",
     TaskStatus.FAILED: "下载失败",
     TaskStatus.CANCELLED: "已取消",
+}
+
+TASK_STATUS_MESSAGE_IDS: Mapping[TaskStatus, str] = {
+    status: f'task.status.{status.value.lower()}' for status in TaskStatus
 }
 
 
@@ -232,6 +247,20 @@ class ResolvedMedia:
     entries: tuple[PlaylistEntry, ...] = ()
     entries_truncated: bool = False
     auth_state: AuthState = AuthState.NOT_APPLICABLE
+    collection: Collection | None = None
+    collection_quality_formats: tuple[FormatOption, ...] = ()
+    collection_quality_mode: CollectionQualityMode | str = ''
+    cookie_used: bool = False
+
+    @property
+    def is_collection(self) -> bool:
+        """Whether yt-dlp resolved this result as a selectable collection."""
+        return self.collection is not None or self.media_type in {'playlist', 'multi_video'}
+
+    @property
+    def collection_kind(self) -> str:
+        """Retain the extractor distinction while presenting one UI concept."""
+        return self.collection.kind if self.collection is not None else self.media_type if self.is_collection else ''
 
     @property
     def media_key(self) -> str:
@@ -289,6 +318,28 @@ class PlaylistEntry:
     video_only_formats: tuple[FormatOption, ...] = ()
     embedded: bool = False
     selected_format: FormatOption | None = None
+    quality_target: str = 'recommended'
+
+    @property
+    def entry_kind(self) -> str:
+        return 'embedded' if self.embedded else 'external'
+
+    @property
+    def available(self) -> bool:
+        return not self.unavailable
+
+
+@dataclass(frozen=True, slots=True)
+class Collection:
+    """Unified UI-facing collection while retaining yt-dlp entry kinds."""
+
+    kind: str
+    entries: tuple[PlaylistEntry, ...]
+    truncated: bool = False
+
+    @property
+    def entry_count(self) -> int:
+        return len(self.entries)
 
 
 # Keep existing download/history consumers and older fixtures source-compatible.
@@ -319,9 +370,18 @@ class DownloadRequest:
     playlist_title: str = ''
     resolve_before_download: bool = False
     preferred_quality: str = 'recommended'
+    codec_preference: CodecPreference = CodecPreference.AUTO
     use_native_format: bool = False
     resume_partial: bool = False
     playlist_item_index: int | None = None
+    clip_enabled: bool = False
+    clip_start: int = 0
+    clip_end: int = 0
+    embed_thumbnail: bool = False
+    embed_metadata: bool = False
+    embed_chapters: bool = False
+    remux_container: str = ''
+    sponsorblock_mark: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,6 +408,9 @@ class DownloadProgress:
     eta: int | None = None
     total_is_estimate: bool = False
     total_source: TotalSource = TotalSource.UNKNOWN
+    resolved_quality: str = ''
+    resolved_thumbnail_url: str = ''
+    resolved_thumbnail_bytes: bytes | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,7 +477,7 @@ class DownloadProfile:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 6
+    schema_version: int = 7
     download_directory: str = ""
     theme: str = "system"
     reduce_motion: bool = False
@@ -427,6 +490,7 @@ class AppSettings:
     use_cookies: bool = False
     default_download_profile_id: str = 'auto'
     custom_download_profiles: tuple[DownloadProfile, ...] = ()
+    language: str = 'zh-CN'
 
     @property
     def default_profile(self) -> DownloadProfile:
@@ -446,19 +510,3 @@ class AppSettings:
     @property
     def codec_preference(self) -> CodecPreference:
         return CodecPreference(self.default_profile.codec_preference)
-
-
-@dataclass(frozen=True, slots=True)
-class BatchTask:
-    batch_id: str
-    source_url: str
-    title: str
-    total_count: int
-    selected_count: int
-    created_at: str
-    queued_count: int = 0
-    active_count: int = 0
-    completed_count: int = 0
-    failed_count: int = 0
-    cancelled_count: int = 0
-    status: str = 'queued'

@@ -17,11 +17,14 @@ def test_native_bilibili_replay_entries_retain_formats_and_fallback_thumbnails()
     media = resolve_metadata(replay_info(), URL)
 
     assert media.media_type == 'multi_video'
+    assert media.collection_quality_mode == 'RESOLVED_COMMON_FORMATS'
+    assert media.collection is not None and media.collection.kind == 'multi_video'
     assert media.formats == ()
     assert media.thumbnail_url == 'https://i.example.invalid/replay-p1.jpg'
     assert [entry.id for entry in media.entries] == ['BV1TiGg6kErJ_p1', 'BV1TiGg6kErJ_p2']
     assert [entry.index for entry in media.entries] == [1, 2]
     assert all(entry.url == '' and not entry.unavailable and entry.embedded for entry in media.entries)
+    assert all(entry.entry_kind == 'embedded' and entry.available for entry in media.entries)
     assert all(entry.thumbnail.endswith(f'p{i}.jpg') for i, entry in enumerate(media.entries, 1))
     assert [option.label for option in media.entries[0].formats] == [
         'HDR 60 FPS', '1080p 60 FPS', '1080p', '720p', '480p', '360p']
@@ -55,19 +58,21 @@ def test_bilibili_replay_metadata_uses_native_entries_but_keeps_ordinary_lists_f
     assert CaptureYDL.last_options['extract_flat'] is False
 
     class FlatYDL(YDL):
-        last_options = None
+        options_seen = []
         def __init__(self, options):
             super().__init__(options)
-            type(self).last_options = options
+            type(self).options_seen.append(options)
         def extract_info(self, _url, *, download):
             return {'_type': 'playlist', 'title': 'List', 'entries': [
                 {'id': '1', 'title': 'One', 'url': 'https://example.org/one'}]}
     MediaResolver(ydl_factory=FlatYDL, require_deno=False).fetch_metadata(
         'https://www.bilibili.com/list/series-123', include_thumbnail=False)
-    assert FlatYDL.last_options['extract_flat'] == 'in_playlist'
+    initial = next(options for options in FlatYDL.options_seen if options['noplaylist'] is False)
+    assert initial['extract_flat'] == 'in_playlist'
+    assert sum(options['noplaylist'] is True for options in FlatYDL.options_seen) == 0
 
 
-def test_embedded_replay_rows_select_per_entry_format_and_emit_native_index(qapp, tmp_path):
+def test_embedded_replay_uses_collection_quality_target_and_native_index(qapp, tmp_path):
     from yt_downloader.ui.quick_download import DownloadPresenter
     class Images:
         def add(self, _value):
@@ -77,38 +82,93 @@ def test_embedded_replay_rows_select_per_entry_format_and_emit_native_index(qapp
     presenter = DownloadPresenter(str(tmp_path), Images())
     presenter.show_video(media)
     assert presenter.state['playlist']
-    assert '多个分段' in presenter.state['mediaHint']
-    assert presenter.entries.get(0)['formatLabels']
+    assert presenter.state['collection']
+    assert '1080p 60 FPS' in presenter.state['collectionQualityLabels']
     received = []
-    presenter.batch_requested.connect(lambda *args: received.append(args))
-    q116_index = presenter.entries.get(0)['formatLabels'].index('1080p 60 FPS')
-    presenter.selectEntryFormat(0, q116_index)
+    presenter.collection_download_requested.connect(lambda *args: received.append(args))
+    q116_index = presenter.state['collectionQualityLabels'].index('1080p 60 FPS')
+    presenter.selectCollectionQuality(q116_index)
     presenter.selectEntry(0, True)
     presenter.requestDownload()
     entry = received[0][1][0]
     assert entry.index == 1
-    assert entry.selected_format is not None
-    assert entry.selected_format.label == '1080p 60 FPS'
+    assert entry.selected_format is None
+    assert entry.quality_target == '1080p 60 FPS'
 
     from dataclasses import replace
     from yt_downloader.core.models import DownloadRequest
+    from yt_downloader.core.quality_target import choose_quality
     from yt_downloader.services.download_options import media_options
-    request = DownloadRequest('task', replace(media, url=URL), entry.selected_format, tmp_path,
+    selected = choose_quality(entry.formats, entry.quality_target)
+    assert selected.label == '1080p 60 FPS'
+    request = DownloadRequest('task', replace(media, url=URL), selected, tmp_path,
                               'segment', playlist_item_index=entry.index)
     assert media_options(request)['playlist_items'] == '1'
 
 
-def test_embedded_replay_qml_renders_per_segment_format_controls(qapp, quick_window):
+def test_bilibili_collection_child_keeps_entry_thumbnail_not_parent_cover(qapp, tmp_path):
+    from types import SimpleNamespace
+    from yt_downloader.app import AppController
+    from yt_downloader.core.models import AppSettings
+    from yt_downloader.services.history_service import HistoryRepository
+    from yt_downloader.ui.quick_download import DownloadPresenter
+
+    class Images:
+        def add(self, _value): return ''
+    class Queue:
+        def __init__(self): self.requests = []
+        def enqueue(self, request): self.requests.append(request)
+
+    media = resolve_metadata(replay_info(), URL)
+    page = DownloadPresenter(str(tmp_path), Images())
+    page.show_video(media)
+    queue = Queue()
+    controller = AppController.__new__(AppController)
+    controller.window = SimpleNamespace(download_page=page, cookies=SimpleNamespace(selected_profile=None))
+    controller.settings = AppSettings()
+    controller.history = HistoryRepository(tmp_path / 'history.db')
+    controller.queue = queue
+    controller.refresh_history = lambda: None
+    controller.show_error = lambda error: (_ for _ in ()).throw(AssertionError(error))
+
+    controller.enqueue_collection(media, (media.entries[1],))
+
+    assert len(queue.requests) == 1
+    assert queue.requests[0].video.thumbnail_url == media.entries[1].thumbnail
+    assert queue.requests[0].video.thumbnail_url != media.thumbnail_url
+
+
+def test_embedded_replay_qml_renders_shared_collection_controls(qapp, quick_window):
     from dataclasses import replace
-    from conftest import find_item, run_frames
+    from conftest import click_item, find_item, run_frames
 
     media = resolve_metadata(replay_info(), URL)
     media = replace(media, thumbnail_url=None,
                     entries=tuple(replace(entry, thumbnail='') for entry in media.entries))
     quick_window.download_page.show_video(media)
     run_frames(qapp, 100)
-    assert find_item(quick_window, 'playlistItems') is not None
-    assert find_item(quick_window, 'segmentFormatCombo') is not None
+    assert find_item(quick_window, 'collectionItems') is not None
+    assert find_item(quick_window, 'collectionQualityCombo') is not None
+    from PySide6.QtCore import QObject
+    assert quick_window.root.findChild(QObject, 'segmentFormatCombo') is None
+    select_all = find_item(quick_window, 'collectionSelectAll')
+    button = find_item(quick_window, 'downloadButton')
+    assert select_all.property('checkState').value == 0
+    assert button.property('text') == '下载 0 个项目'
+    task_list = find_item(quick_window, 'taskList')
+    task_list.setProperty('contentY', -400)
+    run_frames(qapp, 60)
+    checkbox = find_item(quick_window, 'collectionEntryCheck-0')
+    assert checkbox.property('enabled')
+    click_item(quick_window, checkbox)
+    run_frames(qapp, 50)
+    assert quick_window.download_page.state['selectedCount'] == 1
+    assert button.property('text') == '下载 1 个项目'
+    title = find_item(quick_window, 'collectionEntryTitle-0')
+    click_item(quick_window, title)
+    run_frames(qapp, 50)
+    assert quick_window.download_page.state['selectedCount'] == 0
+    assert not quick_window.qml_warnings
     assert not quick_window.qml_warnings
 
 
@@ -164,11 +224,12 @@ def test_embedded_batch_request_uses_page_url_and_native_playlist_item(tmp_path)
     controller.refresh_history = lambda: None
     controller.show_error = lambda error: (_ for _ in ()).throw(AssertionError(error))
 
-    controller.enqueue_batch(media, (replace(media.entries[0], selected_format=selected),))
+    controller.enqueue_collection(media, (replace(media.entries[0], selected_format=selected),))
 
     request = controller.queue.requests[0]
     assert request.video.url == URL
     assert request.playlist_item_index == 1
+    assert request.batch_id == ''
     assert request.format.format_selector
     assert request.resolve_before_download is False
 

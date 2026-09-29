@@ -132,6 +132,32 @@ def test_paused_ytdlp_partial_resumes_in_same_owned_workspace(tmp_path):
     assert not partial.exists()
 
 
+def test_native_clip_and_postprocessing_options_flow_through_task_pipeline(tmp_path):
+    class ProcessingYDL(FakeYDL):
+        def download(self, _urls):
+            opts = self.options
+            assert opts['force_keyframes_at_cuts'] is False
+            assert list(opts['download_ranges']({}, None)) == [{'start_time': 15, 'end_time': 40}]
+            assert opts['embedthumbnail'] is True
+            assert opts['addmetadata'] is True
+            assert opts['addchapters'] is True
+            assert opts['remuxvideo'] == 'mkv'
+            assert opts['sponsorblock_mark'] == {'sponsor'}
+            target = Path(opts['final_path']).with_suffix('.mkv')
+            target.write_bytes(b'processed')
+            return 0
+
+    request = replace(_request(tmp_path), video=replace(_request(tmp_path).video, extractor_key='Youtube'),
+                      clip_enabled=True, clip_start=15, clip_end=40,
+                      embed_thumbnail=True, embed_metadata=True, embed_chapters=True,
+                      remux_container='mkv', sponsorblock_mark=True)
+    result = DownloadService(ydl_factory=ProcessingYDL, require_tools=False,
+                             media_validator=lambda _path: True).download(
+                                 request, lambda _event: None, threading.Event())
+    assert result.file_path.suffix == '.mkv'
+    assert result.file_path.read_bytes() == b'processed'
+
+
 class FakeYDLWithMixedTotalSources(FakeYDL):
     def download(self, _urls: list[str]) -> int:
         progress = self.options["progress_hooks"][0]

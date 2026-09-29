@@ -18,7 +18,7 @@ def test_metadata_busy_state_disables_input_without_blocking(quick_window, qtbot
         click_item(quick_window, button)
     assert page.parse_state is ParseState.CANCELLING
     assert not button.isEnabled()
-    assert button.property('text') == '正在取消…'
+    assert button.property('text') == quick_window.i18n.messages['download.stop_parsing']
     page.set_loading(False)
     assert find_item(quick_window, 'urlInput').isEnabled()
 
@@ -41,6 +41,73 @@ def test_url_clear_action_is_centered_and_clears_presenter(quick_window, qapp):
     click_item(quick_window, clear)
     assert quick_window.download_page.state['url'] == ''
 
+
+def test_advanced_clip_panel_is_collapsed_then_validates_immediately(quick_window, qapp):
+    from scripts.verify_quick_ui import sample_video
+
+    page = quick_window.download_page
+    page.show_video(sample_video())
+    assert page.state['advancedExpanded'] is False
+    assert not find_item(quick_window, 'clipEnabled').isVisible()
+    page.setAdvancedToggle('advancedExpanded', True)
+    qapp.processEvents()
+    assert page.state['advancedExpanded'] is True
+    clip_toggle = find_item(quick_window, 'clipEnabled')
+    assert clip_toggle.isVisible()
+    page.setAdvancedToggle('clipEnabled', True)
+    assert page.state['clipEnabled'] is True
+    assert page.state['clipValid'] is False
+
+    start = find_item(quick_window, 'clipStart')
+    end = find_item(quick_window, 'clipEnd')
+    page.setAdvancedField('clipStart', '03:15')
+    page.setAdvancedField('clipEnd', '05:40')
+    assert page.state['clipValid'] is True
+    page.setAdvancedField('clipEnd', '13:00')
+    assert page.state['clipValid'] is False
+    assert page.state['clipError'] == page._t('clip.end_after_duration')
+
+
+def test_advanced_options_disclosure_and_fresh_defaults(quick_window, qapp):
+    from scripts.verify_quick_ui import sample_video
+
+    page = quick_window.download_page
+    page.show_video(sample_video())
+    header = find_item(quick_window, 'advancedOptionsToggle')
+    panel = find_item(quick_window, 'advancedOptionsPanel')
+    assert not panel.isVisible()
+    assert header.property('implicitHeight') >= 40
+    assert header.property('label') == quick_window.i18n.messages['download.advanced']
+    assert page.state['embedThumbnail'] is False
+    assert page.state['embedMetadata'] is False
+    assert page.state['embedChapters'] is False
+    assert page.state['remuxContainer'] == ''
+    assert page.state['sponsorblockMark'] is False
+
+    from PySide6.QtTest import QSignalSpy, QTest
+    clicks = QSignalSpy(header.clicked)
+    quick_window.root.resize(1200, 1000)
+    run_frames(qapp, 160)
+    click_item(quick_window, header)
+    run_frames(qapp, 220)
+    assert clicks.count() == 1
+    assert page.state['advancedExpanded'] is True
+    assert panel.isVisible()
+    for name in ('embedThumbnail', 'embedMetadata', 'embedChapters'):
+        assert find_item(quick_window, name).property('checked') is False
+    assert find_item(quick_window, 'remuxContainer').property('currentIndex') == 0
+    header.forceActiveFocus()
+    assert header.property('activeFocus') is True
+
+    page.setAdvancedToggle('clipEnabled', True)
+    run_frames(qapp, 220)
+    assert find_item(quick_window, 'clipStart').isVisible()
+    header.forceActiveFocus()
+    QTest.keyClick(quick_window.root, Qt.Key_Space)
+    run_frames(qapp, 220)
+    assert page.state['advancedExpanded'] is False
+    assert not panel.isVisible()
+
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 def test_theme_palette_and_selection_contrast(quick_window, qapp, mode):
     from test_typography import _contrast_ratio
@@ -53,6 +120,68 @@ def test_error_dialog_copies_prebuilt_redacted_report(quick_window):
     dialog = ErrorSession(AppError('x','用户说明','技术详情'), 'safe report', quick_window)
     dialog.copyReport()
     assert QGuiApplication.clipboard().text() == 'safe report'
+
+
+def test_actionable_error_dialog_localizes_actions_and_invokes_real_callback(quick_window):
+    from yt_downloader.services.error_actions import error_presentation
+
+    assert error_presentation('COOKIE_REQUIRED')[2] == ('OPEN_COOKIE_MANAGER', 'REPARSE')
+    assert error_presentation('AUTH_REQUIRED')[2] == ('OPEN_COOKIE_MANAGER', 'REPARSE')
+    assert error_presentation('format_unavailable')[2] == ('REPARSE',)
+    assert error_presentation('NETWORK_ERROR')[2] == ('RETRY',)
+    assert error_presentation('BROWSER_PROFILE_LOCKED')[2] == ('RETRY', 'OPEN_COOKIE_MANAGER')
+    assert error_presentation('TEMPORARY_EXTRACTOR_ERROR')[2] == ('RETRY', 'CHECK_APP_UPDATE')
+    assert 'OPEN_COOKIE_MANAGER' not in error_presentation('forbidden')[2]
+
+    called = []
+    error = AppError('COOKIE_REQUIRED', 'legacy body', 'raw technical detail',
+                     title_message_id='error.cookie_required.title',
+                     body_message_id='error.cookie_required.body',
+                     recommended_actions=('OPEN_COOKIE_MANAGER', 'REPARSE'))
+    dialog = ErrorSession(error, 'safe report', quick_window,
+                          actions=error.recommended_actions,
+                          action_callbacks={'OPEN_COOKIE_MANAGER': lambda: called.append('cookie')})
+    dialog.show()
+    quick_window.i18n.setLanguage('en-US')
+    assert dialog.state['title'] == 'Cookie required'
+    assert dialog.state['message'].startswith('This content requires a signed-in session')
+    assert [item['label'] for item in dialog.state['errorActions']] == ['Manage cookies', 'Reparse']
+    dialog.runAction('OPEN_COOKIE_MANAGER')
+    assert called == ['cookie']
+    assert not dialog.state['open']
+
+
+def test_error_action_callbacks_open_cookie_reparse_and_check_app_update(quick_window, qtbot):
+    from types import SimpleNamespace
+    from yt_downloader.app import AppController
+    from yt_downloader.core.errors import ErrorContext
+    from yt_downloader.services.error_actions import error_presentation
+
+    controller = object.__new__(AppController)
+    controller.window = quick_window
+    update_calls = []
+    controller.updates = SimpleNamespace(check=lambda *, manual: update_calls.append(manual))
+
+    cookie_error = AppError('COOKIE_REQUIRED', 'need auth', 'raw',
+                            ErrorContext(url='https://site.example/member'),
+                            *error_presentation('COOKIE_REQUIRED')[:2],
+                            error_presentation('COOKIE_REQUIRED')[2])
+    callbacks = controller._error_action_callbacks(cookie_error)
+    callbacks['OPEN_COOKIE_MANAGER']()
+    assert quick_window.state['page'] == 2
+
+    with qtbot.waitSignal(quick_window.download_page.parse_requested) as parsed:
+        controller._reparse_error_url(cookie_error.context.url)
+    assert parsed.args == ['https://site.example/member']
+
+    extractor_error = AppError('TEMPORARY_EXTRACTOR_ERROR', 'temporary', 'raw',
+                               ErrorContext(url='https://site.example/video'),
+                               *error_presentation('TEMPORARY_EXTRACTOR_ERROR')[:2],
+                               error_presentation('TEMPORARY_EXTRACTOR_ERROR')[2])
+    callbacks = controller._error_action_callbacks(extractor_error)
+    callbacks['CHECK_APP_UPDATE']()
+    assert quick_window.state['page'] == 3
+    assert update_calls == [True]
 
 def test_task_card_enters_cancelling_immediately(quick_window, tmp_path):
     page = quick_window.download_page
@@ -82,7 +211,9 @@ def test_cancel_cleanup_warning_offers_output_folder(quick_window, tmp_path, qtb
     request = _request(tmp_path); page.add_task(request)
     report = CancellationCleanupReport(task_id=request.task_id, output_directory=str(tmp_path), failed_paths=(str(tmp_path/'owned'),), errors=('locked',))
     page.fail_task(request.task_id, TaskStatus.CANCELLED, report)
-    assert '未能清理' in page.cards[request.task_id].values['statusText']
+    card = page.cards[request.task_id]
+    assert '未能清理' in card.values['warningMessages'][0]
+    assert card.values['statusKey'] == 'task.status.cancelled'
     with qtbot.waitSignal(page.open_folder_requested) as signal:
         page.taskAction(request.task_id, 'folder')
     assert signal.args == [str(tmp_path)]
@@ -118,6 +249,24 @@ def test_starting_next_task_retires_older_terminal_cards(quick_window, tmp_path)
     assert set(page.cards) == {'second'}
     assert page.tasks.get(0)['id'] == 'second'
 
+
+def test_completed_subtitle_warning_retranslates_without_translating_media_data(quick_window, qapp, tmp_path):
+    from conftest import run_frames, find_item
+
+    page = quick_window.download_page
+    request = replace(_request(tmp_path), task_id='warning-i18n')
+    page.add_task(request)
+    page.complete_task(DownloadResult(
+        request.task_id, tmp_path / 'done.mp4', 10, 'now',
+        warnings=('字幕嵌入失败；媒体已保留，字幕另存为独立文件。',),
+    ))
+    quick_window.i18n.setLanguage('es-ES')
+    run_frames(qapp)
+
+    status = find_item(quick_window, 'taskStatus-warning-i18n')
+    assert 'subtítulos' in status.property('text')
+    assert 'embedded' not in status.property('text')
+
 def test_download_selection_maps_to_original_domain_option(quick_window, tmp_path, qtbot):
     page = quick_window.download_page
     video = _request(tmp_path).video
@@ -140,13 +289,20 @@ def test_task_card_pause_resume_and_cancel_have_real_button_states(quick_window,
     pause = find_item(quick_window, 'taskPause-' + request.task_id)
     cancel = find_item(quick_window, 'taskCancel-' + request.task_id)
     assert pause.property('appearance') == 'normal' and cancel.property('appearance') == 'normal'
+    assert find_item(quick_window, 'taskStatus-' + request.task_id).property('text') == '正在下载视频'
+    assert pause.property('text') == '暂停'
+    assert cancel.property('text') == '取消'
     assert pause.isEnabled()
     with qtbot.waitSignal(page.pause_requested):
         page.taskAction(request.task_id, 'pause')
     page.paused_task(request.task_id)
     assert page.cards[request.task_id].values['resumeEnabled']
+    assert find_item(quick_window, 'taskStatus-' + request.task_id).property('text') == '已暂停'
+    assert pause.property('text') == '继续下载'
     with qtbot.waitSignal(page.resume_requested):
         page.taskAction(request.task_id, 'resume')
+    page.update_task(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 26, 1, 4))
+    assert pause.property('text') == '暂停'
     page.update_task(DownloadProgress(request.task_id, TaskStatus.MERGING))
     assert not page.cards[request.task_id].values['pauseEnabled']
 
@@ -155,7 +311,7 @@ def test_settings_auto_save_after_text_edit_and_show_saved_status(quick_window, 
     with qtbot.waitSignal(page.save_requested, timeout=1500) as signal:
         page.edit('download_directory', str(tmp_path/'新的目录'))
     saved = signal.args[0]
-    assert saved.schema_version == 6
+    assert saved.schema_version == 7
     assert saved.download_directory == str(tmp_path/'新的目录')
     assert page.state['saveText'] == '正在保存…'
     page.mark_saved(saved)

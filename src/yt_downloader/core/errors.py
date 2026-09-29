@@ -21,6 +21,9 @@ class AppError(Exception):
     user_message: str
     technical_message: str
     context: ErrorContext = field(default_factory=ErrorContext)
+    title_message_id: str = ''
+    body_message_id: str = ''
+    recommended_actions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "args", (self.user_message,))
