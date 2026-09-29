@@ -83,7 +83,9 @@ def test_broken_ipc_becomes_a_localized_failure(qtbot) -> None:
         require_deno=False,
     )
 
-    with qtbot.waitSignal(controller.failed, timeout=2_000) as signal:
+    # Spawn startup can exceed two seconds under the full Windows GUI suite.
+    # This test verifies the IPC failure result, not a startup latency contract.
+    with qtbot.waitSignal(controller.failed, timeout=10_000) as signal:
         controller.start(token, token.source, config)
 
     assert signal.args[0] == token
