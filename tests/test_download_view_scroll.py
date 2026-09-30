@@ -1,6 +1,7 @@
 """Viewport behavior through the actual Qt Quick download view."""
 from dataclasses import replace
 from types import SimpleNamespace
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QTimer, Qt
 from PySide6.QtTest import QTest
@@ -11,6 +12,13 @@ from yt_downloader.workers.request_gate import LatestRequestGate
 
 from conftest import click_item, find_item, run_frames
 from scripts.verify_quick_ui import sample_video
+from yt_downloader.core.models import DownloadRequest
+
+
+def add_anchor_test_tasks(page):
+    video = sample_video()
+    for index in range(3):
+        page.add_task(DownloadRequest(f'anchor-{index}', video, video.formats[0], Path(page.state['directory']), 'anchor'))
 
 
 def scene_y(item):
@@ -28,6 +36,7 @@ def scroll_to(window, item, offset=100):
 def test_local_expansion_keeps_header_visual_anchor(quick_window, qapp):
     page = quick_window.download_page
     page.show_video(sample_video())
+    add_anchor_test_tasks(page)
     run_frames(qapp)
     header = find_item(quick_window, 'advancedOptionsToggle')
     scroll_to(quick_window, header)
@@ -82,12 +91,53 @@ def test_collapse_at_content_end_keeps_view_in_bounds(quick_window, qapp):
 
 
 @pytest.mark.parametrize('field', ['advancedExpanded', 'clipEnabled'])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('enabled', [False, True])
+def test_bottom_mutation_preserves_bottom_in_every_rendered_frame(quick_window, qapp, field, theme, enabled):
+    page = quick_window.download_page
+    quick_window.theme.set_mode(theme)
+    page.show_video(sample_video())
+    page.setAdvancedToggle('advancedExpanded', field == 'clipEnabled' or not enabled)
+    page.setAdvancedToggle('clipEnabled', not enabled if field == 'clipEnabled' else True)
+    run_frames(qapp)
+    view = find_item(quick_window, 'taskList')
+    view.setProperty('contentY', view.property('originY') + view.property('contentHeight') - view.height())
+    run_frames(qapp, 60)
+    observations = []
+    timer = QTimer()
+    def capture():
+        assert not quick_window.grab().isNull()
+        gap = view.property('contentHeight') - (view.property('contentY') - view.property('originY')) - view.height()
+        observations.append(gap)
+    timer.timeout.connect(capture)
+    timer.start(5)
+    try:
+        item = find_item(quick_window, 'advancedOptionsToggle' if field == 'advancedExpanded' else 'clipEnabled')
+        if field == 'advancedExpanded':
+            click_item(quick_window, item)
+        else:
+            point = item.mapToScene(QPointF(item.width() - 31, item.height() / 2)).toPoint()
+            QTest.mouseClick(quick_window.root, Qt.LeftButton, Qt.NoModifier, point)
+        assert page.state[field] == enabled
+        run_frames(qapp, 300)
+    finally:
+        timer.stop()
+    assert observations
+    assert all(abs(gap) < 2 or view.property('contentHeight') <= view.height() for gap in observations), observations
+    assert not find_item(quick_window, 'viewportAnchor').property('mutating')
+    view.setProperty('contentY', view.property('originY'))
+    run_frames(qapp, 60)
+    assert abs(view.property('contentY') - view.property('originY')) < 1
+
+
+@pytest.mark.parametrize('field', ['advancedExpanded', 'clipEnabled'])
 @pytest.mark.parametrize('extractor', ['Youtube', 'BiliBili'])
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_every_rendered_toggle_frame_keeps_card_and_anchor(quick_window, qapp, field, extractor, theme):
     page = quick_window.download_page
     quick_window.theme.set_mode(theme)
     page.show_video(replace(sample_video(), extractor_key=extractor))
+    add_anchor_test_tasks(page)
     if field == 'clipEnabled':
         page.setAdvancedToggle('advancedExpanded', True)
     run_frames(qapp)
@@ -112,6 +162,17 @@ def test_every_rendered_toggle_frame_keeps_card_and_anchor(quick_window, qapp, f
     timer.start(5)
     try:
         for enabled in (True, False, True, False):
+            # Bring the action back into view if preserving the bottom moved
+            # it above the viewport; record the anchor for this mutation.
+            if scene_y(item) < scene_y(find_item(quick_window, 'taskList')):
+                scroll_to(quick_window, item)
+                run_frames(qapp, 50)
+            view = find_item(quick_window, 'taskList')
+            maximum = max(0, view.property('contentHeight') - view.height())
+            bottom_distance = maximum - (view.property('contentY') - view.property('originY'))
+            bottom = maximum > 0 and bottom_distance <= 6
+            baseline = scene_y(item)
+            observations.clear()
             if field == 'advancedExpanded':
                 click_item(quick_window, item)
             else:
@@ -121,11 +182,18 @@ def test_every_rendered_toggle_frame_keeps_card_and_anchor(quick_window, qapp, f
             assert page.state[field] == enabled
             assert not controls[1].hasActiveFocus() and not controls[2].hasActiveFocus()
             run_frames(qapp, 240)
+            assert observations
+            assert all(visible and opacity == 1 and not blank and stable_sidebar
+                       for y, visible, opacity, blank, stable_sidebar in observations), observations
+            if bottom:
+                assert abs(view.property('contentHeight') - (view.property('contentY') - view.property('originY')) - view.height() - bottom_distance) < 2
+            else:
+                assert all(abs(y - baseline) < 2 for y, *_ in observations), observations
     finally:
         timer.stop()
     assert observations
     assert controls == [find_item(quick_window, name) for name in ('advancedOptionsPanel','clipStart','clipEnd')]
-    assert all(abs(y - baseline) < 2 and visible and opacity == 1 and not blank and stable_sidebar
+    assert all(visible and opacity == 1 and not blank and stable_sidebar
                for y, visible, opacity, blank, stable_sidebar in observations), observations
 
 

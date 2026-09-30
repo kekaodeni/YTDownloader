@@ -79,7 +79,7 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { onPressedChanged: if (pressed) wheel.stop() }
             WheelSmoother { id: wheel; view: tasks }
-            UiListViewport { id: viewport; view: tasks; header: tasks.headerItem }
+            UiListViewport { id: viewport; objectName: "viewportAnchor"; view: tasks; header: tasks.headerItem }
             header: Column {
                 width: tasks.width; spacing: 22
                 property alias resultCard: videoPanel
@@ -219,9 +219,10 @@ Item {
                                 UiText { Layout.fillWidth: true; text: i18n.messages["collection.guidance"]; wrapMode: Text.Wrap; role: "Caption"; color: theme.state.secondary }
                             }
                             UiDisclosure {
+                                id: advancedToggle
                                 label: i18n.messages["download.advanced"]
                                 expanded: download.state.advancedExpanded
-                                onClicked: download.setAdvancedToggle("advancedExpanded", !download.state.advancedExpanded)
+                                onClicked: { viewport.prepare(advancedToggle); download.setAdvancedToggle("advancedExpanded", !download.state.advancedExpanded) }
                             }
                             Rectangle {
                                 objectName: "advancedOptionsPanel"
@@ -243,10 +244,11 @@ Item {
                                         spacing: 8
                                         UiText { text: i18n.messages["clip.title"]; role: "SectionTitle" }
                                         UiSettingToggle {
+                                            id: clipToggle
                                             objectName: "clipEnabled"
                                             label: i18n.messages["clip.range_toggle"]
                                             checked: download.state.clipEnabled
-                                            onChanged: function(value) { download.setAdvancedToggle("clipEnabled", value) }
+                                            onChanged: function(value) { viewport.prepare(clipToggle); download.setAdvancedToggle("clipEnabled", value) }
                                         }
                                         Item {
                                             objectName: "clipFieldsContainer"
