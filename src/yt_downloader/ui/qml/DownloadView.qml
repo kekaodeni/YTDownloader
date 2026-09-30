@@ -79,12 +79,16 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { onPressedChanged: if (pressed) wheel.stop() }
             WheelSmoother { id: wheel; view: tasks }
+            UiListViewport { id: viewport; view: tasks; header: tasks.headerItem }
             header: Column {
                 width: tasks.width; spacing: 22
+                property alias resultCard: videoPanel
                 Rectangle {
                     id: videoPanel
                     objectName: "videoPanel"
-                    visible: download.state.ready
+                    // Keep the previous card's viewport while a replacement is
+                    // loading; only accepted metadata requests a new position.
+                    visible: download.state.ready || (download.state.busy && download.state.title.length > 0)
                     width: parent.width; height: visible ? info.implicitHeight + 40 : 0
                     color: theme.state.surface; radius: 14
                     border.color: theme.state.stroke
@@ -391,5 +395,13 @@ Item {
             }
         }
     }
-    Connections { target: shell; function onScrollToTopRequested() { tasks.positionViewAtBeginning(); urlField.forceActiveFocus() } }
+    Connections {
+        target: shell
+        // Emitted only after the controller's generation gate accepts metadata.
+        function onScrollToTopRequested() {
+            wheel.stop()
+            tasks.cancelFlick()
+            viewport.positionAt(tasks.headerItem.resultCard)
+        }
+    }
 }
