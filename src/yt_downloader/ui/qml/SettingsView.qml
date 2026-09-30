@@ -45,8 +45,8 @@ Item {
                         contentHeight: body0.implicitHeight + 20
                         ColumnLayout {
                             id: body0
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll0.width - scroll0.contentInsetRight)
+                            x: Math.max(0, (scroll0.width - scroll0.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[1].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout {
                                 id: downloads
@@ -102,8 +102,8 @@ Item {
                         contentHeight: body1.implicitHeight + 20
                         ColumnLayout {
                             id: body1
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll1.width - scroll1.contentInsetRight)
+                            x: Math.max(0, (scroll1.width - scroll1.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[2].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-2"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
@@ -141,8 +141,8 @@ Item {
                         contentHeight: body2.implicitHeight + 20
                         ColumnLayout {
                             id: body2
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll2.width - scroll2.contentInsetRight)
+                            x: Math.max(0, (scroll2.width - scroll2.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[3].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-3"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.network_connection"]
@@ -171,8 +171,8 @@ Item {
                         contentHeight: body3.implicitHeight + 20
                         ColumnLayout {
                             id: body3
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll3.width - scroll3.contentInsetRight)
+                            x: Math.max(0, (scroll3.width - scroll3.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[0].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-0"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
@@ -200,8 +200,8 @@ Item {
                         contentHeight: body4.implicitHeight + 20
                         ColumnLayout {
                             id: body4
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll4.width - scroll4.contentInsetRight)
+                            x: Math.max(0, (scroll4.width - scroll4.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[4].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-4"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
@@ -223,8 +223,8 @@ Item {
                         contentHeight: body5.implicitHeight + 20
                         ColumnLayout {
                             id: body5
-                            width: Math.min(980, parent.width - 12)
-                            x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
+                            width: Math.min(980, scroll5.width - scroll5.contentInsetRight)
+                            x: Math.max(0, (scroll5.width - scroll5.contentInsetRight - width) / 2); spacing: 22
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[5].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-5"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.component_versions"]
@@ -300,7 +300,7 @@ Item {
                     text: i18n.messages["settings.custom_profile_editor"]; role: "SectionTitle"
                 }
             }
-            ScrollView {
+            UiScrollView {
                 id: profileEditorBody
                 objectName: "profileEditorBody"
                 Layout.fillWidth: true; Layout.fillHeight: true

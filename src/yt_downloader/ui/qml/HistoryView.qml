@@ -124,7 +124,7 @@ Item {
                 function onChanged() { list.syncSelectedIndex() }
             }
             onCurrentIndexChanged: if (currentIndex >= 0 && history.model.get(currentIndex).id !== history.state.selectedId) history.select(history.model.get(currentIndex).id)
-            ScrollBar.vertical: ScrollBar { onPressedChanged: if (pressed) wheel.stop() }
+            ScrollBar.vertical: UiScrollBar { onPressedChanged: if (pressed) wheel.stop() }
             WheelSmoother { id: wheel; view: list }
             Keys.onPressed: function(event) {
                 wheel.stop()
@@ -146,7 +146,7 @@ Item {
                 Component.onCompleted: history.requestThumbnail(item.id)
                 onItemChanged: history.requestThumbnail(item.id)
                 ListView.onReused: history.requestThumbnail(item.id)
-                width: list.width - 10; height: row.implicitHeight + 24; radius: 10
+                width: list.width - 20; height: row.implicitHeight + 24; radius: 10
                 property bool rowSelected: history.state.managing ? item.checked : item.id === history.state.selectedId
                 property int rowCursorShape: hover.cursorShape
                 // Interpolate opaque theme colors; transparent black darkens

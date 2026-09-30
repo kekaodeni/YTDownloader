@@ -41,7 +41,7 @@ ComboBox {
         hoverEnabled: false
         HoverHandler { id: optionHover }
         objectName: control.objectName + "-option-" + index
-        width: control.width - 12; height: 38
+        width: options.width - 16; height: 38
         highlighted: control.highlightedIndex === index
         contentItem: UiText { text: modelData; elide: Text.ElideRight }
         background: Rectangle { radius: 6; color: parent.highlighted ? theme.state.selection : optionHover.hovered ? theme.state.subtle : "transparent" }
@@ -61,7 +61,7 @@ ComboBox {
             model: control.popup.visible ? control.delegateModel : null
             // Hover is a visual state, not a request to scroll the viewport.
             currentIndex: control.currentIndex
-            ScrollIndicator.vertical: ScrollIndicator { }
+            ScrollBar.vertical: UiScrollBar { compact: true }
         }
         enter: UiPopupEnter { }
         exit: UiPopupExit { }

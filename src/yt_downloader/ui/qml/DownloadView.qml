@@ -77,11 +77,11 @@ Item {
             model: download.tasks
             spacing: 12; clip: true; reuseItems: true
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { onPressedChanged: if (pressed) wheel.stop() }
+            ScrollBar.vertical: UiScrollBar { onPressedChanged: if (pressed) wheel.stop() }
             WheelSmoother { id: wheel; view: tasks }
             UiListViewport { id: viewport; objectName: "viewportAnchor"; view: tasks; header: tasks.headerItem }
             header: Column {
-                width: tasks.width; spacing: 22
+                width: tasks.width - 20; spacing: 22
                 property alias resultCard: videoPanel
                 property alias disclosure: advancedToggle
                 Rectangle {
@@ -135,8 +135,8 @@ Item {
                                     Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 38, 190)
                                     clip: true; reuseItems: true; boundsBehavior: Flickable.StopAtBounds
                                     model: download.state.subtitleChoices
-                                    delegate: UiSwitch { required property var modelData; width: ListView.view.width; text: modelData.name; checked: modelData.selected; onToggled: download.selectSubtitle(modelData.code, checked) }
-                                    ScrollBar.vertical: ScrollBar {}
+                                    delegate: UiSwitch { required property var modelData; width: ListView.view.width - 20; text: modelData.name; checked: modelData.selected; onToggled: download.selectSubtitle(modelData.code, checked) }
+                                    ScrollBar.vertical: UiScrollBar {}
                                 }
                                 UiText { text: i18n.messages["download.subtitle_format"]; role: "Caption" }
                                 UiCombo { objectName: "subtitleFormat"; enabled: download.state.subtitleCanFormat; Layout.preferredWidth: 280; accessibleName: i18n.messages["download.subtitle_format"]; model: ["SRT", "VTT"]; currentIndex: download.state.subtitleFormat === "srt" ? 0 : 1; onActivated: download.selectSubtitleFormat(currentIndex === 0 ? "srt" : "vtt") }
@@ -182,10 +182,10 @@ Item {
                                     Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 76, 380)
                                     model: download.entries; clip: true; reuseItems: true
                                     boundsBehavior: Flickable.StopAtBounds; spacing: 3
-                                    ScrollBar.vertical: ScrollBar {}
+                                    ScrollBar.vertical: UiScrollBar {}
                                     delegate: Rectangle {
                                         required property var item
-                                        width: ListView.view.width; height: 72; radius: 8
+                                        width: ListView.view.width - 20; height: 72; radius: 8
                                         color: item.selected ? theme.state.selection : rowHover.hovered ? theme.state.subtle : "transparent"
                                         border.color: item.selected ? theme.state.accent : "transparent"
                                         RowLayout {
@@ -380,7 +380,7 @@ Item {
                 }
                 Item { width: 1; height: root.taskCount > 0 || videoPanel.visible ? 2 : 0 }
             }
-            delegate: TaskCard { width: tasks.width - 10 }
+            delegate: TaskCard { width: tasks.width - 20 }
             footer: Item { width: tasks.width; height: viewport.boundaryReserve }
             add: Transition { ParallelAnimation {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: motion.standard; easing.type: motion.easing }

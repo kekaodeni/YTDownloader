@@ -43,7 +43,7 @@ Menu {
         clip: true
         interactive: contentHeight > height
         boundsBehavior: Flickable.StopAtBounds
-        ScrollIndicator.vertical: ScrollIndicator { }
+        ScrollBar.vertical: UiScrollBar { compact: true }
     }
     enter: UiPopupEnter { duration: motion.micro }
     exit: UiPopupExit { duration: motion.micro }

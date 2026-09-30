@@ -3,10 +3,11 @@ import QtQuick.Layouts
 Item {
     id: root; objectName: "aboutPage"
     UiScroll {
+        id: aboutScroll
         anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32
         contentHeight: content.implicitHeight
         ColumnLayout {
-            id: content; width: parent.width - 12; spacing: 24
+            id: content; width: aboutScroll.width - aboutScroll.contentInsetRight; spacing: 24
             UiText { text: i18n.messages["nav.about"]; role: "PageTitle" }
             Item { Layout.preferredHeight: 20 }
             Image { source: assetsBase + "app-icon.png"; Layout.preferredWidth: 72; Layout.preferredHeight: 72; sourceSize.width: 144; sourceSize.height: 144 }

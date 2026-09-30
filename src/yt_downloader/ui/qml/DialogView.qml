@@ -41,7 +41,7 @@ Dialog {
     }
     enter: UiPopupEnter { duration: motion.standard }
     exit: UiPopupExit { }
-    contentItem: ScrollView {
+    contentItem: UiScrollView {
         id: viewport
         implicitHeight: body.implicitHeight
         clip: true
@@ -54,7 +54,7 @@ Dialog {
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12
                 UiButton { objectName: "errorDetails"; text: popup.detailsOpen ? i18n.messages["error.hide_details"] : i18n.messages["error.details"]; appearance: "quiet"; onClicked: popup.detailsOpen = !popup.detailsOpen }
-                ScrollView {
+                UiScrollView {
                     Layout.fillWidth: true; Layout.preferredHeight: 180; visible: popup.detailsOpen
                         TextArea { text: popup.s.details || ""; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; color: theme.state.text; selectionColor: theme.state.selection; selectedTextColor: theme.state.text; font.family: theme.fontFamily("Caption", text); font.pointSize: theme.fontSize("Caption"); font.weight: theme.fontWeight("Caption"); background: Rectangle { color: theme.state.subtle; radius: 8 } }
                 }
@@ -64,7 +64,7 @@ Dialog {
                 Layout.fillWidth: true; visible: popup.s.kind === "update"; spacing: 12
                 UiText { objectName: "updateVersions"; Layout.fillWidth: true; text: i18n.messages["update.version_comparison"].replace("{current}", popup.s.currentVersion || "").replace("{target}", popup.s.targetVersion || "").replace("{size}", popup.s.packageSize || ""); wrapMode: Text.Wrap; textFormat: Text.PlainText }
                 UiCombo { objectName: "updateLanguage"; accessibleName: i18n.messages["update.notes_language"]; model: [i18n.languages[0].name, i18n.languages[2].name]; currentIndex: popup.s.language === "en" ? 1 : 0; onActivated: popup.session.setLanguage(currentIndex === 1 ? "en" : "zh-CN") }
-                ScrollView {
+                UiScrollView {
                     objectName: "updateNotesScroll"
                     Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, Math.max(70, popup.height * 0.24))
                     clip: true; contentWidth: availableWidth
