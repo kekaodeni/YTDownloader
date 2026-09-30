@@ -44,7 +44,8 @@ def test_task_action_labels_are_distinct_from_status_copy_in_all_locales(qapp):
         assert messages['task.action.cancel'] != messages['task.status.cancelling']
 
     assert messages_by_locale['zh-CN']['task.action.pause'] == '暂停'
-    assert messages_by_locale['zh-CN']['task.action.resume'] == '继续下载'
+    assert messages_by_locale['zh-CN']['task.action.resume'] == '继续'
+    assert messages_by_locale['zh-TW']['task.action.resume'] == '繼續'
     assert messages_by_locale['zh-CN']['task.action.cancel'] == '取消'
     assert messages_by_locale['en-US']['task.action.pause'] == 'Pause'
     assert messages_by_locale['en-US']['task.action.resume'] == 'Resume'

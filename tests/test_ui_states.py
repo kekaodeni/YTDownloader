@@ -298,7 +298,7 @@ def test_task_card_pause_resume_and_cancel_have_real_button_states(quick_window,
     page.paused_task(request.task_id)
     assert page.cards[request.task_id].values['resumeEnabled']
     assert find_item(quick_window, 'taskStatus-' + request.task_id).property('text') == '已暂停'
-    assert pause.property('text') == '继续下载'
+    assert pause.property('text') == '继续'
     with qtbot.waitSignal(page.resume_requested):
         page.taskAction(request.task_id, 'resume')
     page.update_task(DownloadProgress(request.task_id, TaskStatus.DOWNLOADING_VIDEO, 26, 1, 4))
