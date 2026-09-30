@@ -7,14 +7,14 @@ Item {
     objectName: "settingsPage"
     property int category: settings.state.category
     readonly property var categories: [
-        {key: "nav.download", icon: "arrow_download_regular.svg"},
-        {key: "settings.account_cookie", icon: "info_regular.svg"},
-        {key: "settings.network", icon: "link_regular.svg"},
-        {key: "settings.appearance", icon: "image_regular.svg"},
-        {key: "settings.updates", icon: "retry_regular.svg"},
-        {key: "settings.tools", icon: "settings_regular.svg"}
+        {key: "settings.appearance", icon: "image"},
+        {key: "nav.download", icon: "arrow_download", filled: true},
+        {key: "settings.account_cookie", icon: "info", filled: true},
+        {key: "settings.network", icon: "link"},
+        {key: "settings.updates", icon: "retry"},
+        {key: "settings.tools", icon: "settings", filled: true}
     ]
-    readonly property var activeScroll: [scroll0, scroll1, scroll2, scroll3, scroll4, scroll5][category]
+    readonly property var activeScroll: [scroll3, scroll0, scroll1, scroll2, scroll4, scroll5][category]
     function selectCategory(index) { settings.selectCategory(index) }
     ColumnLayout {
         anchors.fill: parent
@@ -23,71 +23,34 @@ Item {
         UiText { text: i18n.messages["nav.settings"]; role: "PageTitle" }
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: root.width < 620 ? 14 : 24
-            ListView {
+            UiNavigation {
                 id: navigation
                 objectName: "settingsNavigation"
+                itemPrefix: "settingsNav-"; secondary: true
                 Layout.preferredWidth: root.width < 620 ? 160 : 180
                 Layout.fillHeight: true
-                clip: true; spacing: 4; boundsBehavior: Flickable.StopAtBounds
-                model: root.categories
-                currentIndex: root.category
-                activeFocusOnTab: true
+                model: root.categories; currentIndex: root.category
                 KeyNavigation.tab: root.activeScroll
-                Keys.onUpPressed: root.selectCategory((root.category + 5) % 6)
-                Keys.onDownPressed: root.selectCategory((root.category + 1) % 6)
                 Keys.onReturnPressed: root.activeScroll.forceActiveFocus()
-                delegate: ItemDelegate {
-                    id: navItem
-                    required property int index
-                    required property var modelData
-                    objectName: "settingsNav-" + index
-                    width: ListView.view.width
-                    height: Math.max(46, navLabel.implicitHeight + 20)
-                    highlighted: root.category === index
-                    Accessible.role: Accessible.PageTab
-                    Accessible.name: i18n.messages[modelData.key]
-                    Accessible.selected: highlighted
-                    onClicked: { navigation.forceActiveFocus(); root.selectCategory(index) }
-                    background: Rectangle {
-                        radius: 8
-                        color: navItem.highlighted ? theme.state.selection : navItem.down || navItem.hovered ? theme.state.subtle : theme.state.canvas
-                        border.width: navigation.activeFocus && navItem.highlighted ? 1 : 0
-                        border.color: theme.state.accent
-                        Behavior on color { ColorAnimation { duration: motion.fast; easing.type: motion.easing } }
-                        Rectangle { opacity: navItem.highlighted ? 1 : 0; Behavior on opacity { NumberAnimation { duration: motion.fast } } width: 3; height: 20; radius: 2; anchors.left: parent.left; anchors.leftMargin: 4; anchors.verticalCenter: parent.verticalCenter; color: theme.state.accent }
-                    }
-                    contentItem: RowLayout {
-                        spacing: 10
-                        ToolButton {
-                            Layout.preferredWidth: 18; Layout.minimumWidth: 18; Layout.maximumWidth: 18
-                            Layout.preferredHeight: 18; padding: 0; enabled: false
-                            icon.source: assetsBase + "icons/" + navItem.modelData.icon
-                            icon.width: 18; icon.height: 18
-                            icon.color: navItem.highlighted ? theme.state.accent : theme.state.secondary
-                            Behavior on icon.color { ColorAnimation { duration: motion.fast } }
-                            background: null; Accessible.ignored: true
-                        }
-                        UiText { id: navLabel; Layout.fillWidth: true; text: i18n.messages[navItem.modelData.key]; wrapMode: Text.Wrap; role: "Button"; color: navItem.highlighted ? theme.state.accent : theme.state.text; Behavior on color { ColorAnimation { duration: motion.fast } } }
-                    }
-                }
+                onActivated: function(index) { root.selectCategory(index) }
             }
             Item { Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                 UiCategoryHost {
-                    objectName: "settingsHost-0"
-                    anchors.fill: parent; index: 0; selectedIndex: root.category; current: root.category === 0
+                    objectName: "settingsHost-1"
+                    anchors.fill: parent; index: 1; selectedIndex: root.category; current: root.category === 1
                     UiScroll {
                         id: scroll0
-                        objectName: root.category === 0 ? "settingsScroll" : "settingsScroll-0"
+                        objectName: root.category === 1 ? "settingsScroll" : "settingsScroll-1"
                         anchors.fill: parent; activeFocusOnTab: true
                         contentHeight: body0.implicitHeight + 20
                         ColumnLayout {
                             id: body0
                             width: Math.min(980, parent.width - 12)
                             x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
-                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[0].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[1].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout {
                                 id: downloads
-                                objectName: "settingsCategory-0"
+                                objectName: "settingsCategory-1"
                                 Layout.fillWidth: true; spacing: 22
                                 SettingCard {
                                     objectName: "downloadProfilesSection"; Layout.fillWidth: true; title: i18n.messages["settings.profiles"]
@@ -130,19 +93,19 @@ Item {
                     }
                 }
                 UiCategoryHost {
-                    objectName: "settingsHost-1"
-                    anchors.fill: parent; index: 1; selectedIndex: root.category; current: root.category === 1
+                    objectName: "settingsHost-2"
+                    anchors.fill: parent; index: 2; selectedIndex: root.category; current: root.category === 2
                     UiScroll {
                         id: scroll1
-                        objectName: root.category === 1 ? "settingsScroll" : "settingsScroll-1"
+                        objectName: root.category === 2 ? "settingsScroll" : "settingsScroll-2"
                         anchors.fill: parent; activeFocusOnTab: true
                         contentHeight: body1.implicitHeight + 20
                         ColumnLayout {
                             id: body1
                             width: Math.min(980, parent.width - 12)
                             x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
-                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[1].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
-                            ColumnLayout { objectName: "settingsCategory-1"; Layout.fillWidth: true; spacing: 22
+                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[2].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                            ColumnLayout { objectName: "settingsCategory-2"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
                                     UiText { Layout.fillWidth: true; text: i18n.messages["settings.cookie_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
                                     UiButton { id: privacyHelp; objectName: "cookiePrivacyHelp"; Layout.maximumWidth: parent.width
@@ -169,19 +132,19 @@ Item {
                     }
                 }
                 UiCategoryHost {
-                    objectName: "settingsHost-2"
-                    anchors.fill: parent; index: 2; selectedIndex: root.category; current: root.category === 2
+                    objectName: "settingsHost-3"
+                    anchors.fill: parent; index: 3; selectedIndex: root.category; current: root.category === 3
                     UiScroll {
                         id: scroll2
-                        objectName: root.category === 2 ? "settingsScroll" : "settingsScroll-2"
+                        objectName: root.category === 3 ? "settingsScroll" : "settingsScroll-3"
                         anchors.fill: parent; activeFocusOnTab: true
                         contentHeight: body2.implicitHeight + 20
                         ColumnLayout {
                             id: body2
                             width: Math.min(980, parent.width - 12)
                             x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
-                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[2].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
-                            ColumnLayout { objectName: "settingsCategory-2"; Layout.fillWidth: true; spacing: 22
+                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[3].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                            ColumnLayout { objectName: "settingsCategory-3"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.network_connection"]
                                     SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.proxy_mode"]
                                         UiCombo { objectName: "proxyMode"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.proxy_mode"]; model: [i18n.messages["settings.proxy_system"], i18n.messages["settings.proxy_direct"], i18n.messages["settings.proxy_custom"]]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.setSetting("proxy_mode", values[currentIndex]) }
@@ -199,19 +162,19 @@ Item {
                     }
                 }
                 UiCategoryHost {
-                    objectName: "settingsHost-3"
-                    anchors.fill: parent; index: 3; selectedIndex: root.category; current: root.category === 3
+                    objectName: "settingsHost-0"
+                    anchors.fill: parent; index: 0; selectedIndex: root.category; current: root.category === 0
                     UiScroll {
                         id: scroll3
-                        objectName: root.category === 3 ? "settingsScroll" : "settingsScroll-3"
+                        objectName: root.category === 0 ? "settingsScroll" : "settingsScroll-0"
                         anchors.fill: parent; activeFocusOnTab: true
                         contentHeight: body3.implicitHeight + 20
                         ColumnLayout {
                             id: body3
                             width: Math.min(980, parent.width - 12)
                             x: Math.max(0, (parent.width - 12 - width) / 2); spacing: 22
-                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[3].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
-                            ColumnLayout { objectName: "settingsCategory-3"; Layout.fillWidth: true; spacing: 22
+                            UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[0].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                            ColumnLayout { objectName: "settingsCategory-0"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
                                     SettingRow { objectName: "languageField"; Layout.fillWidth: true; label: i18n.messages["settings.language"]; separator: true
                                         UiCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"]; model: i18n.languages.map(function(language) { return language.name }); currentIndex: Math.max(0, i18n.languages.findIndex(function(language) { return language.locale === settings.state.language })); onActivated: settings.setSetting("language", i18n.languages[currentIndex].locale) }
@@ -242,7 +205,6 @@ Item {
                             UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[4].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
                             ColumnLayout { objectName: "settingsCategory-4"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
-                                    SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.stable_channel"]; controlWidth: 0 }
                                     SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.auto_updates"]; controlWidth: 52
                                         UiSwitch { objectName: "autoCheckUpdates"; text: ""; Accessible.name: i18n.messages["settings.auto_updates"]; checked: settings.state.auto_check_updates; onToggled: settings.setSetting("auto_check_updates", checked) }
                                     }

@@ -40,7 +40,7 @@ def main():
   before=nav.mapToScene(QPointF(0,0));scroll.setProperty('contentY',max(0,scroll.property('contentHeight')-scroll.height()));wait(60);assert nav.mapToScene(QPointF(0,0))==before;scroll.setProperty('contentY',0);wait(60)
  for theme in ('light','dark'):
   w.theme.set_mode(theme);w._select_page(2);wait(400)
-  for category,name in enumerate(('download','cookies','network','appearance','updates','tools')):
+  for category,name in enumerate(('appearance','download','cookies','network','updates','tools')):
    w.settings_page.selectCategory(category);find(w,'settingsScroll').setProperty('contentY',0);wait(280);inspect_settings();snap('settings-'+theme+'-'+name)
   for locale in ('ru-RU','es-ES','pt-BR'):
    w.settings_page.setSetting('language',locale)

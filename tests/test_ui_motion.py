@@ -26,6 +26,7 @@ def test_settings_navigation_never_has_blank_frame_and_preserves_scroll(quick_wi
     assert quick_window.motion.property('reduced') == reduced
     quick_window.root.resize(700, 560)
     quick_window._select_page(2)
+    quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     first_scroll = find_item(quick_window, 'settingsScroll')
     first_scroll.setProperty('contentY', 120)
@@ -46,12 +47,12 @@ def test_settings_navigation_never_has_blank_frame_and_preserves_scroll(quick_wi
     timer.timeout.connect(capture)
     timer.start(8)
     try:
-        for n in (1, 2, 3, 4, 5, 0):
+        for n in (2, 3, 4, 5, 0, 1):
             quick_window.settings_page.selectCategory(n)
             run_frames(qapp, 40)
             # A transparent-black color endpoint creates a dark flash while
             # the selected secondary-navigation background is interpolating.
-            nav_background = find_item(quick_window, f'settingsNav-{n}').property('background')
+            nav_background = find_item(quick_window, 'settingsNavigation-selection')
             assert nav_background.property('color').alpha() == 255
             run_frames(qapp, 220)
             assert hosts[n].isEnabled()
@@ -80,6 +81,7 @@ def test_main_navigation_keeps_stable_instances_and_motion_policy(quick_window, 
 def test_popup_and_modal_use_short_fade_without_changing_focus_contract(quick_window, qapp):
     from PySide6.QtCore import QMetaObject
     quick_window._select_page(2)
+    quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     combo = find_item(quick_window, 'defaultDownloadProfile')
     click_item(quick_window, combo)

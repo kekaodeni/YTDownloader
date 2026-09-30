@@ -310,6 +310,7 @@ def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_windo
 
 def test_settings_profiles_follow_v2_information_architecture(quick_window, qapp):
     quick_window._select_page(2)
+    quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     default_combo = find_item(quick_window, 'defaultDownloadProfile')
     empty_state = find_item(quick_window, 'emptyDownloadProfiles')

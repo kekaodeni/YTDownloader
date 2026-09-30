@@ -140,7 +140,7 @@ class MainWindow(ViewState):
 
     @Slot()
     def openCookieSettings(self):
-        self.settings_page.selectCategory(1)
+        self.settings_page.selectCategory(2)
         self._select_page(2)
 
     @Slot()

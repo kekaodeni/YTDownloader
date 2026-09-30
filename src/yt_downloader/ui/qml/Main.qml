@@ -40,38 +40,16 @@ ApplicationWindow {
                 UiText { text: "YT Downloader"; font.weight: Font.DemiBold; visible: !window.compact }
                 UiText { text: i18n.messages["app.subtitle"]; role: "Caption"; color: theme.state.muted; visible: !window.compact }
             }
-            Item {
+            UiNavigation {
                 id: navigation
+                objectName: "mainNavigation"
                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: branding.bottom
                 anchors.leftMargin: 10; anchors.rightMargin: 10; anchors.topMargin: 30
                 height: 4 * 49
-                Rectangle {
-                    width: parent.width; height: 44; radius: 9; color: theme.state.selection
-                    y: shell.state.page * 49
-                    Behavior on y { SmoothedAnimation { duration: motion.reduced ? 0 : motion.page; velocity: -1 } }
-                    Rectangle { x: 0; anchors.verticalCenter: parent.verticalCenter; width: 3; height: 18; radius: 2; color: theme.state.accent }
-                }
-                Column {
-                    width: parent.width; spacing: 5
-                    Repeater {
-                        model: [{key:"nav.download", icon:"arrow_download"}, {key:"nav.history", icon:"history"}, {key:"nav.settings", icon:"settings"}, {key:"nav.about", icon:"info"}]
-                        UiButton {
-                            required property var modelData
-                            required property int index
-                            objectName: "nav-" + index
-                            implicitWidth: navigation.width; width: navigation.width; height: 44
-                            text: window.compact ? "" : i18n.messages[modelData.key]
-                            hint: i18n.messages[modelData.key]
-                            appearance: "nav"; selected: shell.state.page === index
-                            icon.source: assetsBase + "icons/" + modelData.icon + (selected ? "_filled.svg" : "_regular.svg")
-                            leftPadding: window.compact ? 14 : 12
-                            // Leave room for fractional-DPI text rasterization.
-                            rightPadding: window.compact ? 14 : Math.max(12, width - Math.ceil(implicitContentWidth) - 14)
-                            background: Rectangle { radius: 9; color: parent.hovered && !parent.selected ? theme.state.subtle : "transparent"; border.width: parent.visualFocus ? 2 : 0; border.color: theme.state.accent }
-                            onClicked: shell._select_page(index)
-                        }
-                    }
-                }
+                compact: window.compact
+                currentIndex: shell.state.page
+                model: [{key:"nav.download", icon:"arrow_download", filled:true}, {key:"nav.history", icon:"history", filled:true}, {key:"nav.settings", icon:"settings", filled:true}, {key:"nav.about", icon:"info", filled:true}]
+                onActivated: function(index) { shell._select_page(index) }
             }
             UiText { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 20; text: "v" + shell.state.version; role: "Caption"; color: theme.state.muted; visible: !window.compact }
         }
