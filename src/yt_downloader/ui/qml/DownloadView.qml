@@ -83,6 +83,7 @@ Item {
             header: Column {
                 width: tasks.width; spacing: 22
                 property alias resultCard: videoPanel
+                property alias disclosure: advancedToggle
                 Rectangle {
                     id: videoPanel
                     objectName: "videoPanel"
@@ -222,9 +223,10 @@ Item {
                                 id: advancedToggle
                                 label: i18n.messages["download.advanced"]
                                 expanded: download.state.advancedExpanded
-                                onClicked: { viewport.prepare(advancedToggle); download.setAdvancedToggle("advancedExpanded", !download.state.advancedExpanded) }
+                                onClicked: { viewport.prepare(advancedToggle, download.state.advancedExpanded ? advancedPanel.height + 16 : 0); download.setAdvancedToggle("advancedExpanded", !download.state.advancedExpanded) }
                             }
                             Rectangle {
+                                id: advancedPanel
                                 objectName: "advancedOptionsPanel"
                                 Layout.fillWidth: true
                                 visible: download.state.advancedExpanded
@@ -248,7 +250,7 @@ Item {
                                             objectName: "clipEnabled"
                                             label: i18n.messages["clip.range_toggle"]
                                             checked: download.state.clipEnabled
-                                            onChanged: function(value) { viewport.prepare(clipToggle); download.setAdvancedToggle("clipEnabled", value) }
+                                            onChanged: function(value) { viewport.prepare(clipToggle, value ? 0 : clipFields.implicitHeight); download.setAdvancedToggle("clipEnabled", value) }
                                         }
                                         Item {
                                             objectName: "clipFieldsContainer"
@@ -261,7 +263,7 @@ Item {
                                                 spacing: 8
                                                 opacity: download.state.clipEnabled ? 1 : 0
                                                 enabled: download.state.clipEnabled
-                                                Behavior on opacity { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 150 } }
+                                                Behavior on opacity { NumberAnimation { duration: motion.standard } }
                                                 GridLayout {
                                                     Layout.fillWidth: true
                                                     columns: width >= 560 ? 2 : 1
@@ -367,21 +369,32 @@ Item {
                         }
                     }
                     opacity: visible ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 240 } }
+                    Behavior on opacity { NumberAnimation { duration: motion.standard } }
                 }
                 RowLayout {
-                    visible: root.taskCount > 0
+                    visible: root.taskCount > 0 || videoPanel.visible
                     width: parent.width
                     UiText { text: i18n.messages["download.tasks"]; role: "SectionTitle" }
                     Item { Layout.fillWidth: true }
                     UiText { text: i18n.messages["download.task_history_hint"]; role: "Caption"; color: theme.state.muted; visible: parent.width > 520 }
                 }
-                Item { width: 1; height: root.taskCount > 0 ? 2 : 0 }
+                Item { width: 1; height: root.taskCount > 0 || videoPanel.visible ? 2 : 0 }
             }
             delegate: TaskCard { width: tasks.width - 10 }
-            add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: shell.state.reduceMotion ? 0 : 240; easing.type: Easing.OutCubic } }
-            remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: shell.state.reduceMotion ? 0 : 190 } }
-            displaced: Transition { NumberAnimation { property: "y"; duration: shell.state.reduceMotion ? 0 : 240; easing.type: Easing.OutQuart } }
+            footer: Item { width: tasks.width; height: viewport.boundaryReserve }
+            add: Transition { ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: motion.standard; easing.type: motion.easing }
+                NumberAnimation { property: "entranceOffset"; from: motion.reduced ? 0 : 6; to: 0; duration: motion.movement; easing.type: motion.easing }
+            } }
+            remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: motion.fast } }
+            displaced: Transition { NumberAnimation { property: "y"; duration: motion.movement; easing.type: motion.easing } }
+            Connections {
+                target: download
+                function onTaskRemoving(taskId) {
+                    if (tasks.count === 1 && download.state.ready)
+                        viewport.prepare(tasks.headerItem.disclosure, Math.max(0, tasks.contentHeight - tasks.headerItem.height), true)
+                }
+            }
             Column {
                 anchors.centerIn: parent; width: Math.min(340, parent.width - 32); spacing: 14
                 visible: !download.state.ready && !download.state.busy && root.taskCount === 0

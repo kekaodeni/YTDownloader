@@ -6,6 +6,8 @@ Rectangle {
     id: root
     required property var item
     property bool exiting: false
+    property real entranceOffset: 0
+    transform: Translate { y: root.entranceOffset }
     objectName: "task-" + item.id
     implicitHeight: content.implicitHeight + 32
     height: implicitHeight

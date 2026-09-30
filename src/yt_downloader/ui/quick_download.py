@@ -78,6 +78,7 @@ class DownloadPresenter(ViewState):
     open_file_requested = Signal(str)
     open_folder_requested = Signal(str)
     remove_requested = Signal(str)
+    taskRemoving = Signal(str)
     retry_requested = Signal(str)
     browse_requested = Signal()
     cookie_enabled_changed = Signal(bool)
@@ -925,6 +926,8 @@ class DownloadPresenter(ViewState):
                 self.remove_task(previous)
 
     def remove_task(self, task_id):
+        if task_id in self.cards:
+            self.taskRemoving.emit(task_id)
         card = self.cards.get(task_id)
         self._terminal_task_ids.discard(task_id)
         self.cards.pop(task_id, None)

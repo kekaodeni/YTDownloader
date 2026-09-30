@@ -3,7 +3,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QTimer, Qt
+from PySide6.QtCore import QPointF, QTimer, Qt, QMetaObject, Q_ARG
 from PySide6.QtTest import QTest
 import pytest
 
@@ -97,6 +97,7 @@ def test_bottom_mutation_preserves_bottom_in_every_rendered_frame(quick_window, 
     page = quick_window.download_page
     quick_window.theme.set_mode(theme)
     page.show_video(sample_video())
+    add_anchor_test_tasks(page)
     page.setAdvancedToggle('advancedExpanded', field == 'clipEnabled' or not enabled)
     page.setAdvancedToggle('clipEnabled', not enabled if field == 'clipEnabled' else True)
     run_frames(qapp)
@@ -114,10 +115,9 @@ def test_bottom_mutation_preserves_bottom_in_every_rendered_frame(quick_window, 
     try:
         item = find_item(quick_window, 'advancedOptionsToggle' if field == 'advancedExpanded' else 'clipEnabled')
         if field == 'advancedExpanded':
-            click_item(quick_window, item)
+            QMetaObject.invokeMethod(item, 'clicked', Qt.DirectConnection)
         else:
-            point = item.mapToScene(QPointF(item.width() - 31, item.height() / 2)).toPoint()
-            QTest.mouseClick(quick_window.root, Qt.LeftButton, Qt.NoModifier, point)
+            QMetaObject.invokeMethod(item, 'changed', Qt.DirectConnection, Q_ARG(bool, enabled))
         assert page.state[field] == enabled
         run_frames(qapp, 300)
     finally:
@@ -128,6 +128,43 @@ def test_bottom_mutation_preserves_bottom_in_every_rendered_frame(quick_window, 
     view.setProperty('contentY', view.property('originY'))
     run_frames(qapp, 60)
     assert abs(view.property('contentY') - view.property('originY')) < 1
+
+
+@pytest.mark.parametrize('offset', [120, 350])
+def test_removing_last_task_preserves_or_smoothly_follows_disclosure(quick_window, qapp, offset):
+    import time
+    page = quick_window.download_page
+    video = sample_video()
+    page.show_video(video)
+    page.setAdvancedToggle('advancedExpanded', True)
+    page.add_task(DownloadRequest('last', video, video.formats[0], Path(page.state['directory']), 'last'))
+    run_frames(qapp)
+    item = find_item(quick_window, 'advancedOptionsToggle')
+    scroll_to(quick_window, item, offset)
+    run_frames(qapp, 80)
+    samples = [(time.perf_counter(), scene_y(item))]
+    timer = QTimer()
+    def capture():
+        quick_window.grab()
+        samples.append((time.perf_counter(), scene_y(item)))
+    timer.timeout.connect(capture)
+    timer.start(8)
+    try:
+        page.remove_task('last')
+        run_frames(qapp, 550)
+    finally:
+        timer.stop()
+    distance = abs(samples[-1][1] - samples[0][1])
+    if distance > 2:
+        assert len({round(y, 1) for _, y in samples}) > 5
+        assert all(abs(y2-y1) <= 3*distance/.170*(t2-t1+.017)+5
+                   for (t1,y1),(t2,y2) in zip(samples,samples[1:])), samples
+    else:
+        assert all(abs(y-samples[0][1]) < 2 for _,y in samples)
+    helper = find_item(quick_window, 'viewportAnchor')
+    assert not helper.property('mutating'), {key: helper.property(key) for key in (
+        'boundaryReserve', 'removalAnimating', 'removingLastTask', 'finishingBoundary',
+        'renderedMutationHeader', 'renderedMutationContent', 'headerHeight', 'offset')}
 
 
 @pytest.mark.parametrize('field', ['advancedExpanded', 'clipEnabled'])
@@ -231,3 +268,65 @@ def test_successful_result_positions_after_layout_once(quick_window, qapp):
     page.update(cookieAuthStatus='Updated', technical='Updated format summary')
     run_frames(qapp)
     assert abs(scene_y(panel) - before) < 2
+
+
+@pytest.mark.parametrize('field', ['advancedExpanded', 'clipEnabled'])
+@pytest.mark.parametrize('after_removal', [False, True])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('anchor_offset', [20, 150])
+def test_empty_task_disclosure_has_no_instant_jump(quick_window, qapp, field, after_removal, theme, anchor_offset):
+    page = quick_window.download_page
+    quick_window.theme.set_mode(theme)
+    page.show_video(sample_video())
+    if after_removal:
+        video = sample_video()
+        page.add_task(DownloadRequest('last', video, video.formats[0], Path(page.state['directory']), 'last'))
+    page.setAdvancedToggle('advancedExpanded', True)
+    page.setAdvancedToggle('clipEnabled', True)
+    run_frames(qapp)
+    item = find_item(quick_window, 'advancedOptionsToggle' if field == 'advancedExpanded' else 'clipEnabled')
+    scroll_to(quick_window, item, anchor_offset)
+    run_frames(qapp, 60)
+    view = find_item(quick_window, 'taskList')
+    if after_removal:
+        page.remove_task('last')
+        run_frames(qapp, 500)
+        assert view.property('count') == 0
+        scroll_to(quick_window, item, anchor_offset)
+        run_frames(qapp, 80)
+    samples = []
+    def capture():
+        import time
+        quick_window.grab()
+        samples.append(dict(at=time.perf_counter(), y=scene_y(item), height=view.property('contentHeight'),
+                            contentY=view.property('contentY'), origin=view.property('originY'),
+                            maximum=max(0, view.property('contentHeight') - view.height())))
+    capture()
+    timer = QTimer()
+    timer.timeout.connect(capture)
+    timer.start(8)
+    try:
+        click_item(quick_window, item) if field == 'advancedExpanded' else QTest.mouseClick(
+            quick_window.root, Qt.LeftButton, Qt.NoModifier,
+            item.mapToScene(QPointF(item.width() - 31, item.height() / 2)).toPoint())
+        run_frames(qapp, 500)
+    finally:
+        timer.stop()
+    assert not page.state[field]
+    import json
+    Path('artifacts/motion').mkdir(parents=True, exist_ok=True)
+    Path(f'artifacts/motion/empty-{field}.json').write_text(json.dumps(samples), encoding='utf-8')
+    distance = abs(samples[-1]['y'] - samples[0]['y'])
+    old_offset = samples[0]['contentY'] - samples[0]['origin']
+    final_offset = min(old_offset, samples[-1]['maximum'])
+    expected_y = samples[0]['y'] + old_offset - final_offset
+    assert abs(samples[-1]['y'] - expected_y) < 2, samples
+    if distance > 2:
+        assert len({round(s['y'], 1) for s in samples}) > 5, samples
+        # Account for skipped scene-graph frames: OutCubic's maximum initial
+        # slope is 3 * distance / duration, rather than an arbitrary px/frame.
+        assert all(abs(b['y'] - a['y']) <= 3 * distance / .170 * (b['at'] - a['at'] + .017) + 5
+                   for a, b in zip(samples, samples[1:])), samples
+    assert 0 <= view.property('contentY') - view.property('originY') <= max(0, view.property('contentHeight') - view.height()) + 1
+    assert find_item(quick_window, 'viewportAnchor').property('boundaryReserve') == 0
+    assert not find_item(quick_window, 'viewportAnchor').property('mutating')

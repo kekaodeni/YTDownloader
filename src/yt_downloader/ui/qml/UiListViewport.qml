@@ -18,8 +18,42 @@ QtObject {
     property real mutationHeaderHeight: 0
     property real renderedMutationHeader: -1
     property real renderedMutationContent: -1
+    property real boundaryReserve: 0
+    property real boundaryTarget: 0
+    property bool finishingBoundary: false
+    property bool removingLastTask: false
+    property bool removalAnimating: false
+    property SequentialAnimation removalHold: SequentialAnimation {
+        PauseAnimation { duration: motion.fast + 32 }
+        ScriptAction { script: { anchor.removalAnimating = false; anchor.view.Window.window.update() } }
+    }
+    onOffsetChanged: if (boundary.running) {
+        boundaryReserve = Math.max(0, offset - boundaryTarget)
+        restore()
+    }
+    property NumberAnimation boundary: NumberAnimation {
+        target: anchor; property: "offset"
+        duration: motion.geometry
+        easing.type: motion.easing
+        onFinished: {
+            anchor.mutating = true
+            anchor.pending = true
+            anchor.finishingBoundary = true
+            anchor.renderedMutationHeader = -1
+            anchor.renderedMutationContent = -1
+            anchor.boundaryReserve = 0
+            anchor.restore()
+        }
+    }
 
-    function prepare(item) {
+    function prepare(item, shrinkingHeight = 0, removingLast = false) {
+        boundary.stop()
+        finishingBoundary = false
+        removingLastTask = removingLast
+        removalAnimating = removingLast
+        if (removingLast) removalHold.restart()
+        else removalHold.stop()
+        boundaryReserve = 0
         mutating = true
         const viewportHeight = view.height
         const oldContentHeight = view.contentHeight
@@ -33,7 +67,10 @@ QtObject {
         offset = item.mapToItem(view.contentItem, 0, 0).y - view.originY - anchorY
         const maximum = Math.max(0, oldContentHeight - viewportHeight)
         bottomDistance = Math.max(0, maximum - (oldContentY - view.originY))
-        bottomAnchored = maximum > 0 && bottomDistance <= 6
+        // Empty lists have no task below the disclosure to anchor to. Preserve
+        // the clicked control, reserving shrinkage only for this transaction.
+        bottomAnchored = !removingLast && view.count > 0 && maximum > 0 && bottomDistance <= 6
+        if (view.count === 0 || removingLast) boundaryReserve = Math.max(0, shrinkingHeight)
         schedule()
     }
 
@@ -46,7 +83,7 @@ QtObject {
         schedule()
     }
     function settle() {
-        if (mutating) return
+        if (mutating || boundary.running) return
         if (target) {
             offset = target.mapToItem(view.contentItem, 0, 0).y - view.originY
             target = null
@@ -62,22 +99,47 @@ QtObject {
         // Position changes happen synchronously in geometry handlers, never
         // here or on the following frame.
         if (!mutating) return
+        if (removingLastTask && removalAnimating) return
         // A frame can swap before ListView has polished the resized header.
         // Keep the transaction until changed geometry has rendered stably.
         // Rows can also change height during a download, so do not require
         // the content delta to equal only the header delta.
         const headerDelta = header.height - mutationHeaderHeight
-        if (Math.abs(headerDelta) < 0.5) return
+        if (!removingLastTask && !finishingBoundary && Math.abs(headerDelta) < 0.5) return
         if (renderedMutationHeader !== header.height || renderedMutationContent !== view.contentHeight) {
             renderedMutationHeader = header.height
             renderedMutationContent = view.contentHeight
+            view.Window.window.update()
             return
         }
         offset = view.contentY - view.originY
         headerHeight = header.height
         mutating = false
+        finishingBoundary = false
         pending = false
         bottomAnchored = false
+        boundaryTarget = Math.min(offset, Math.max(0, view.contentHeight - boundaryReserve - view.height))
+        if (boundaryReserve > 0 && offset > boundaryTarget) {
+            // ListView can reset contentY when the animated footer reaches
+            // zero. Keep the logical offset authoritative through that last
+            // polish pass, including the animation's final value notification.
+            pending = true
+            boundary.from = offset
+            boundary.to = boundaryTarget
+            boundary.start()
+        } else {
+            if (boundaryReserve > 0) {
+                // Footer removal itself is an empty-ListView layout mutation.
+                mutating = true
+                pending = true
+                finishingBoundary = true
+                renderedMutationHeader = -1
+                renderedMutationContent = -1
+            }
+            boundaryReserve = 0
+            restore()
+            if (mutating) view.Window.window.update()
+        }
     }
     property Connections frame: Connections {
         target: anchor.view.Window.window
