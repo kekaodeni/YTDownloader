@@ -18,8 +18,9 @@ UiButton {
     Accessible.selected: selected
     background: Rectangle {
         radius: 9
-        color: navButton.down ? theme.state.stroke : theme.state.subtle
-        opacity: (!navButton.selected && (navButton.hovered || navButton.down)) || navButton.visualFocus ? 1 : 0
+        // Press feedback comes from UiButton's existing scale, not darkening.
+        color: theme.state.subtle
+        opacity: (!navButton.selected && navButton.hovered) || navButton.visualFocus ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: motion.micro } }
         border.width: navButton.visualFocus ? 2 : 0
         border.color: theme.state.accent

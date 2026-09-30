@@ -1,9 +1,39 @@
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF
 from PySide6.QtTest import QTest
 from PySide6.QtQml import QQmlProperty
 
 from conftest import click_item, find_item, run_frames
 import pytest
+
+
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+@pytest.mark.parametrize('secondary', [False, True])
+@pytest.mark.parametrize('selected', [False, True])
+@pytest.mark.parametrize('reduced', [False, True])
+def test_navigation_press_preserves_background_and_only_scales(quick_window, qapp, mode, secondary, selected, reduced):
+    quick_window.theme.set_mode(mode)
+    quick_window.settings_page.setSetting('reduce_motion', reduced)
+    if secondary:
+        quick_window._select_page(2)
+    run_frames(qapp)
+    index = 0 if selected else 1
+    item = find_item(quick_window, f'{"settingsNav" if secondary else "nav"}-{index}')
+    point = item.mapToScene(QPointF(item.width()/2, item.height()/2)).toPoint()
+    QTest.mouseMove(quick_window.root, point)
+    run_frames(qapp, 180)
+    background = item.property('background')
+    color, opacity = background.property('color'), background.opacity()
+    QTest.mousePress(quick_window.root, Qt.LeftButton, Qt.NoModifier, point)
+    try:
+        run_frames(qapp, 160)
+        assert background.property('color') == color
+        assert background.opacity() == pytest.approx(opacity, abs=.001)
+        assert item.scale() == pytest.approx(1 if reduced else .985, abs=.001)
+    finally:
+        QTest.mouseRelease(quick_window.root, Qt.LeftButton, Qt.NoModifier, point)
+    run_frames(qapp, 250)
+    assert item.scale() == pytest.approx(1)
 
 
 def test_settings_starts_with_appearance_and_has_no_selected_focus_outline(quick_window, qapp):
