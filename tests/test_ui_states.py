@@ -56,7 +56,8 @@ def test_advanced_clip_panel_is_collapsed_then_validates_immediately(quick_windo
     assert clip_toggle.isVisible()
     page.setAdvancedToggle('clipEnabled', True)
     assert page.state['clipEnabled'] is True
-    assert page.state['clipValid'] is False
+    assert page.state['clipValid'] is True
+    assert page.state['clipEnd'] == '12:46'
 
     start = find_item(quick_window, 'clipStart')
     end = find_item(quick_window, 'clipEnd')

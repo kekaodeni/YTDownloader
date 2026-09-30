@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from math import isfinite
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
@@ -91,7 +92,8 @@ class DownloadPresenter(ViewState):
                          formatIndex=0, qualityAuto=True, technical='', compatibilityHint='', mediaHint='',
                          mediaMode='video_audio', audioCodec='original', audioQuality='original',
                          modeHint='', subtitleEnabled=False, subtitleAuto=False,
-                         advancedExpanded=False, clipEnabled=False, clipStart='00:00', clipEnd='',
+                         advancedExpanded=False, clipEnabled=False, clipStart='00:00:00', clipEnd='',
+                         clipLongFormat=True,
                          clipError='', clipValid=True, embedThumbnail=False, embedMetadata=False,
                          embedChapters=False, remuxContainer='', sponsorblockMark=False, mediaSite='',
                          subtitleEmbed=False, subtitleFormat='srt', subtitleLanguages=[],
@@ -476,7 +478,43 @@ class DownloadPresenter(ViewState):
             self._translated_state.pop('parseHint', None)
             self.update(parseHint='')
 
+    def _sync_clip_time_format(self, video):
+        """Initialize new media, or losslessly adapt a current media timecode."""
+        from yt_downloader.services.video_sections import parse_clip_time
+
+        duration = video.duration
+        known = duration is not None and isfinite(duration) and duration >= 0
+        long_format = not known or duration >= 3600
+        same_media = self.video is not None and self.video.media_key == video.media_key
+
+        def clock(seconds):
+            minutes, seconds = divmod(int(seconds), 60)
+            if long_format:
+                hours, minutes = divmod(minutes, 60)
+                return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
+            return f'{minutes:02d}:{seconds:02d}'
+
+        if not same_media:
+            start, end = clock(0), clock(duration) if known else ''
+        else:
+            start, end = self._state['clipStart'], self._state['clipEnd']
+            if long_format != self._state['clipLongFormat']:
+                values = []
+                try:
+                    for value in (start, end):
+                        seconds = parse_clip_time(value) if value else None
+                        if not long_format and seconds is not None and seconds >= 3600:
+                            raise ValueError('Cannot shorten this timecode losslessly')
+                        values.append(seconds)
+                except ValueError:
+                    # Keep incomplete or out-of-range edits intact until corrected.
+                    long_format = self._state['clipLongFormat']
+                else:
+                    start, end = [clock(value) if value is not None else '' for value in values]
+        self.update(clipLongFormat=long_format, clipStart=start, clipEnd=end)
+
     def show_video(self, video, *, preferred_quality='recommended', profile=None):
+        self._sync_clip_time_format(video)
         self.video = video
         self._format_codec_preference = CodecPreference(profile.codec_preference) if profile else CodecPreference.AUTO
         is_bilibili = str(video.extractor_key or '').casefold().startswith('bilibili')

@@ -269,25 +269,23 @@ Item {
                                                     ColumnLayout {
                                                         Layout.fillWidth: true
                                                         UiText { text: i18n.messages["clip.start"]; role: "Caption" }
-                                                        UiField {
+                                                        UiTimeField {
                                                             objectName: "clipStart"
                                                             Layout.fillWidth: true
                                                             Accessible.name: i18n.messages["clip.start"]
-                                                            placeholderText: "MM:SS / HH:MM:SS"
-                                                            text: download.state.clipStart
-                                                            onTextEdited: download.setAdvancedField("clipStart", text)
+                                                            timecode: ({longFormat: download.state.clipLongFormat, value: download.state.clipStart})
+                                                            onValueEdited: function(value) { download.setAdvancedField("clipStart", value) }
                                                         }
                                                     }
                                                     ColumnLayout {
                                                         Layout.fillWidth: true
                                                         UiText { text: i18n.messages["clip.end"]; role: "Caption" }
-                                                        UiField {
+                                                        UiTimeField {
                                                             objectName: "clipEnd"
                                                             Layout.fillWidth: true
                                                             Accessible.name: i18n.messages["clip.end"]
-                                                            placeholderText: "MM:SS / HH:MM:SS"
-                                                            text: download.state.clipEnd
-                                                            onTextEdited: download.setAdvancedField("clipEnd", text)
+                                                            timecode: ({longFormat: download.state.clipLongFormat, value: download.state.clipEnd})
+                                                            onValueEdited: function(value) { download.setAdvancedField("clipEnd", value) }
                                                         }
                                                     }
                                                     UiText {
