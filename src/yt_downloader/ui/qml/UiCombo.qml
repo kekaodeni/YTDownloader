@@ -12,6 +12,7 @@ ComboBox {
     font.weight: theme.fontWeight("Body")
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
+    property bool subtleOverscroll: false
     Keys.onPressed: function(event) {
         if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
             Qt.callLater(function() { if (control.popup.visible) options.positionViewAtIndex(control.highlightedIndex, ListView.Contain) })
@@ -58,11 +59,43 @@ ComboBox {
             objectName: "options-" + control.objectName
             clip: true
             implicitHeight: contentHeight
+            boundsBehavior: control.subtleOverscroll ? Flickable.StopAtBounds : Flickable.DragAndOvershootBounds
+            property real elasticOffset: 0
+            contentItem.transform: Translate { y: options.elasticOffset }
+            // Keep native scrolling bounded; the independent pulse never adds
+            // to contentY or accumulates across repeated wheel events.
+            WheelHandler {
+                target: null
+                blocking: false
+                enabled: control.subtleOverscroll
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: function(event) {
+                    const delta = event.pixelDelta.y || event.angleDelta.y
+                    const bottom = options.originY + Math.max(0, options.contentHeight - options.height)
+                    const atEdge = delta > 0 && options.contentY <= options.originY + 0.5
+                        || delta < 0 && options.contentY >= bottom - 0.5
+                    if (atEdge) {
+                        rebound.stop()
+                        options.elasticOffset = motion.reduced ? 0 : (delta > 0 ? 6 : -6)
+                        if (!motion.reduced) rebound.restart()
+                    }
+                    event.accepted = false
+                }
+            }
+            NumberAnimation {
+                id: rebound
+                target: options
+                property: "elasticOffset"
+                to: 0
+                duration: motion.fast
+                easing.type: motion.easing
+            }
             model: control.popup.visible ? control.delegateModel : null
             // Hover is a visual state, not a request to scroll the viewport.
             currentIndex: control.currentIndex
             ScrollBar.vertical: UiScrollBar { compact: true }
         }
+        onClosed: { rebound.stop(); options.elasticOffset = 0 }
         enter: UiPopupEnter { }
         exit: UiPopupExit { }
     }
