@@ -15,6 +15,7 @@ class ProcessJob:
     def __init__(self) -> None:
         self._handle: int | None = None
         self._assigned = False
+        self._suspended = {}
         if os.name != "nt":
             return
         try:
@@ -22,6 +23,7 @@ class ProcessJob:
             from ctypes import wintypes
 
             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
             kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
             kernel32.CreateJobObjectW.restype = wintypes.HANDLE
             handle = kernel32.CreateJobObjectW(None, None)
@@ -87,11 +89,12 @@ class ProcessJob:
             from ctypes import wintypes
 
             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
             kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
             kernel32.OpenProcess.restype = wintypes.HANDLE
             kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
             kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-            process = kernel32.OpenProcess(0x0100 | 0x0400, False, process_id)
+            process = kernel32.OpenProcess(0x0100 | 0x0001, False, process_id)
             if not process:
                 raise ctypes.WinError(ctypes.get_last_error())
             try:
@@ -113,6 +116,7 @@ class ProcessJob:
             from ctypes import wintypes
 
             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
             kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
             kernel32.TerminateJobObject.restype = wintypes.BOOL
             if not kernel32.TerminateJobObject(self._handle, exit_code):
@@ -153,9 +157,105 @@ class ProcessJob:
             return False
 
     def close(self) -> None:
+        if self._suspended:
+            try:
+                self.resume()
+            except OSError:
+                self.terminate()
+                logger.exception("Unable to resume closing helper Job Object")
         if os.name == "nt" and self._handle is not None:
             import ctypes
 
-            ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(self._handle)
+            from ctypes import wintypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle(self._handle)
             self._handle = None
             self._assigned = False
+
+    def members(self) -> tuple[int, ...]:
+        """Query only the process tree owned by this job."""
+        if os.name != 'nt' or self._handle is None or not self._assigned:
+            return ()
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                                       ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p]
+        kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+        capacity = 32
+        while True:
+            class ProcessList(ctypes.Structure):
+                _fields_ = [('assigned', wintypes.DWORD), ('count', wintypes.DWORD),
+                            ('ids', ctypes.c_size_t * capacity)]
+            data = ProcessList()
+            if kernel32.QueryInformationJobObject(self._handle, 3, ctypes.byref(data), ctypes.sizeof(data), None):
+                return tuple(data.ids[:data.count])
+            if ctypes.get_last_error() != 234:
+                raise ctypes.WinError(ctypes.get_last_error())
+            capacity *= 2
+
+    @staticmethod
+    def _suspension_api():
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        ntdll = ctypes.WinDLL('ntdll')
+        for name in ('NtSuspendProcess', 'NtResumeProcess'):
+            function = getattr(ntdll, name)
+            function.argtypes = [wintypes.HANDLE]
+            function.restype = ctypes.c_long
+        return kernel32, ntdll
+
+    def suspend(self):
+        """Suspend every job member, retaining handles to prevent PID reuse."""
+        import ctypes
+        kernel32, ntdll = self._suspension_api()
+        try:
+            # A stopped parent cannot create more children. Repeat until the
+            # membership is stable, including children created during the call.
+            while True:
+                new = [pid for pid in self.members() if pid not in self._suspended]
+                if not new:
+                    break
+                for pid in new:
+                    handle = kernel32.OpenProcess(0x0800 | 0x1000, False, pid)
+                    if not handle:
+                        if pid not in self.members():
+                            continue
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    status = ntdll.NtSuspendProcess(handle)
+                    if status < 0:
+                        kernel32.CloseHandle(handle)
+                        raise OSError(f'NtSuspendProcess failed: {status:#x}')
+                    self._suspended[pid] = handle
+        except Exception:
+            self.resume()
+            raise
+        if not self._suspended:
+            raise OSError('The section process exited before suspension')
+
+    def resume(self):
+        import ctypes
+        from ctypes import wintypes
+        kernel32, ntdll = self._suspension_api()
+        failure = None
+        for pid, handle in reversed(tuple(self._suspended.items())):
+            try:
+                code = wintypes.DWORD()
+                alive = kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) and code.value == 259
+                if alive:
+                    status = ntdll.NtResumeProcess(handle)
+                    if status < 0:
+                        raise OSError(f'NtResumeProcess failed: {status:#x}')
+            except Exception as error:
+                failure = error
+            finally:
+                kernel32.CloseHandle(handle)
+                del self._suspended[pid]
+        if failure is not None:
+            raise failure

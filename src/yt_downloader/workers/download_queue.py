@@ -27,15 +27,18 @@ _PAUSABLE = {TaskStatus.DOWNLOADING_VIDEO, TaskStatus.DOWNLOADING_AUDIO}
 class _TaskControl:
     """Event-compatible stop token with an explicit pause/cancel distinction."""
 
-    def __init__(self):
+    def __init__(self, *, live_pause=False):
         self._cancel = threading.Event()
         self._pause = threading.Event()
         self._changed = threading.Event()
         self._status = TaskStatus.PENDING
         self._lock = threading.Lock()
+        self.live_pause = live_pause
+        self.section_pid = None
+        self.section_path = None
 
     def is_set(self):
-        return self._cancel.is_set() or self._pause.is_set()
+        return self._cancel.is_set() or (self._pause.is_set() and not self.live_pause)
 
     def set(self):
         self._cancel.set()
@@ -56,10 +59,17 @@ class _TaskControl:
 
     def pause(self):
         with self._lock:
-            if self._status not in _PAUSABLE or self.is_set():
+            if self._status not in _PAUSABLE or self.is_set() or self.is_paused():
                 return False
             self._pause.set()
             self._changed.set()
+            return True
+
+    def resume(self):
+        with self._lock:
+            if not self.live_pause or not self.is_paused() or self.is_cancelled():
+                return False
+            self._pause.clear()
             return True
 
 
@@ -139,6 +149,9 @@ class DownloadQueueController(QObject):
 
     def task_position(self, task_id):
         if task_id in self._active:
+            control = self._active[task_id][3]
+            if control.live_pause and control.is_paused():
+                return 'paused'
             return 'active'
         if task_id in self._paused_tasks:
             return 'paused'
@@ -176,6 +189,10 @@ class DownloadQueueController(QObject):
         return True
 
     def resume_task(self, task_id):
+        active = self._active.get(task_id)
+        if active and active[3].resume():
+            self.resuming.emit(task_id)
+            return True
         request = self._paused_tasks.pop(task_id, None)
         if request is None:
             return False
@@ -228,7 +245,7 @@ class DownloadQueueController(QObject):
             if request is None:
                 break
             self._pending.remove(request)
-            cancel = _TaskControl()
+            cancel = _TaskControl(live_pause=request.clip_enabled)
             thread = QThread(self)
             thread.setObjectName(f'download-{request.task_id}')
             worker = _DownloadWorker(self._service, request, cancel)
@@ -250,6 +267,8 @@ class DownloadQueueController(QObject):
         if active:
             active[3].set_status(progress.status)
             if not active[3].is_set():
+                if active[3].live_pause and progress.status is TaskStatus.PAUSED:
+                    self.paused.emit(progress.task_id)
                 self.progress.emit(progress)
 
     @Slot()

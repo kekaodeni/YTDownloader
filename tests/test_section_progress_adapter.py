@@ -17,10 +17,12 @@ def test_section_time_is_progress_and_media_speed_drives_eta(tmp_path):
     from yt_downloader.services.section_progress import SectionDownloadProgressAdapter
     request = replace(_request(tmp_path), clip_enabled=True, clip_start=8, clip_end=108)
     events = []
-    adapter = SectionDownloadProgressAdapter(request, events.append)
+    now = [0.0]
+    adapter = SectionDownloadProgressAdapter(request, events.append, clock=lambda: now[0])
     adapter.started()
     assert events[-1].status == TaskStatus.DOWNLOADING_VIDEO
     assert events[-1].percent == 0
+    now[0] = .5
     for line in ('out_time_us=25000000', 'total_size=1000', 'speed=1.5x', 'progress=continue'):
         adapter.feed(line)
     event = events[-1]
@@ -64,6 +66,133 @@ def test_section_metadata_size_stays_an_estimate(tmp_path):
     adapter.started()
     assert events[-1].total_bytes == 150
     assert events[-1].total_is_estimate
+
+
+def test_section_stat_fallback_and_ui_cadence(tmp_path):
+    from yt_downloader.services.section_progress import SectionDownloadProgressAdapter
+    now = [0.0]
+    events = []
+    adapter = SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), events.append,
+                                             clock=lambda: now[0])
+    adapter.output_path = tmp_path / 'native.part'
+    adapter.output_path.write_bytes(b'x' * 1000)
+    adapter.feed('out_time_us=25000000')
+    adapter.feed('total_size=N/A')
+    adapter.feed('progress=continue')
+    assert events[-1].downloaded_bytes == 1000
+    for stamp in (.1, .2, .3, .4):
+        now[0] = stamp
+        adapter.tick()
+    assert len(events) == 1
+    adapter.output_path.write_bytes(b'x' * 3000)
+    now[0] = .5
+    adapter.tick()
+    assert len(events) == 2
+    assert events[-1].downloaded_bytes == 3000
+    assert events[-1].speed == 4000
+    now[0] = 1
+    for line in ('out_time_us=26000000', 'total_size=2500', 'speed=1.5x', 'progress=continue'):
+        adapter.feed(line)
+    assert events[-1].downloaded_bytes == 3000
+    assert events[-1].speed == 4000  # delayed pipe data must not reset stat progress
+
+
+def test_section_tick_publishes_rate_limited_media_position(tmp_path):
+    from yt_downloader.services.section_progress import SectionDownloadProgressAdapter
+    now, events = [0.0], []
+    adapter = SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), events.append,
+                                             clock=lambda: now[0])
+    adapter.started()
+    now[0] = .49
+    for line in ('out_time_us=25000000', 'speed=1.5x', 'progress=continue'):
+        adapter.feed(line)
+    assert events[-1].percent == 0
+    now[0] = .5
+    adapter.tick()
+    assert events[-1].percent == 25 and events[-1].eta == 50
+
+
+def test_section_zero_exit_with_broken_input_is_recoverable_failure(tmp_path):
+    from yt_downloader.services.section_progress import SectionDownloadProgressAdapter, observed_section_popen
+    from yt_downloader.core.errors import AppError, ErrorContext
+    adapter = SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), lambda p: None)
+    adapter.stderr('[tls] Unable to read from socket')
+    adapter.stderr('[in#0] Error during demuxing: I/O error')
+    class ExitedProcess:
+        def wait(self, timeout=None): return 0
+        def poll(self): return 0
+    process_type = observed_section_popen(ExitedProcess, adapter, threading.Event(), ErrorContext())
+    process = process_type.__new__(process_type)
+    process._stopping = False
+    process._read_error = None
+    process._job = None
+    process._readers = []
+    with pytest.raises(AppError, match='网络连接失败') as error:
+        process.wait()
+    assert error.value.code == 'NETWORK_ERROR'
+
+
+def test_section_harmless_decoder_warning_does_not_fail_download(tmp_path):
+    from yt_downloader.services.section_progress import SectionDownloadProgressAdapter
+    adapter = SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), lambda p: None)
+    adapter.stderr('[h264] Increasing reorder buffer to 2')
+    assert not adapter.input_error
+
+
+def test_section_containment_failure_stops_child_and_reports_error(tmp_path, monkeypatch):
+    from yt_downloader.services import section_progress
+    from yt_downloader.workers.download_queue import _TaskControl
+    from yt_downloader.core.errors import AppError, ErrorContext
+    closed, killed = [], []
+    class Job:
+        def assign(self, pid): return False
+        def close(self): closed.append(True)
+    class Process:
+        pid = 123
+        def __init__(self, *args, **kwargs): pass
+        def wait(self, timeout=None): return 0
+        def kill(self, timeout=None):
+            killed.append(True)
+            self.wait(timeout)
+    monkeypatch.setattr(section_progress, 'ProcessJob', Job)
+    adapter = section_progress.SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), lambda p: None)
+    process_type = section_progress.observed_section_popen(Process, adapter, _TaskControl(live_pause=True), ErrorContext())
+    with pytest.raises(AppError) as error:
+        process_type(['ffmpeg', 'output.mp4'])
+    assert error.value.code == 'ffmpeg_failed'
+    assert killed == closed == [True]
+
+
+def test_section_resume_failure_terminates_job_without_hanging(tmp_path):
+    from yt_downloader.services.section_progress import SectionDownloadProgressAdapter, observed_section_popen
+    from yt_downloader.core.errors import AppError, ErrorContext
+    events, stopped = [], []
+    adapter = SectionDownloadProgressAdapter(replace(_request(tmp_path), clip_end=100), events.append)
+    adapter.started()
+    adapter.publish(replace(adapter.latest, status=TaskStatus.PAUSED))
+    class Job:
+        def resume(self): raise OSError('resume denied')
+        def terminate(self): stopped.append('job')
+    class Process:
+        def wait(self, timeout=None): return 0
+        def poll(self): return 0
+        def kill(self, timeout=None):
+            stopped.append('process')
+            self.wait(timeout)
+    control = threading.Event()
+    control.is_paused = lambda: False
+    process_type = observed_section_popen(Process, adapter, control, ErrorContext())
+    process = process_type.__new__(process_type)
+    process._stopping = False
+    process._read_error = None
+    process._suspended = True
+    process._job = Job()
+    process._readers = []
+    with pytest.raises(AppError) as error:
+        process.wait()
+    assert error.value.code == 'ffmpeg_failed'
+    assert stopped == ['job', 'process']
+    assert events[-1].status == TaskStatus.PAUSED
 
 
 def test_section_child_uses_ydl_resolved_proxy_per_input_without_changing_auth():
@@ -180,8 +309,7 @@ def test_native_ffmpegfd_section_updates_task_before_finished_and_preserves_outp
     assert {s['codec_type'] for s in data['streams']} == {'video','audio'}
 
 
-@pytest.mark.parametrize('pause', [False,True])
-def test_native_section_cancel_or_pause_stops_child_and_resume_restarts_cleanly(tmp_path, native_section_source, native_source_url, pause):
+def test_native_section_cancel_stops_child(tmp_path, native_section_source, native_source_url):
     from yt_downloader.core.errors import OperationCancelled, OperationPaused
     from yt_downloader.workers.download_queue import _TaskControl
     control = _TaskControl()
@@ -192,26 +320,58 @@ def test_native_section_cancel_or_pause_stops_child_and_resume_restarts_cleanly(
         events.append(p)
         control.set_status(p.status)
         if p.status == TaskStatus.DOWNLOADING_VIDEO and p.percent and p.percent > 10:
-            if pause:
-                assert control.pause()
-            else:
-                control.set()
+            control.set()
     started = time.monotonic()
-    with pytest.raises(OperationPaused if pause else OperationCancelled):
+    with pytest.raises(OperationCancelled):
         service.download(request,progress,control)
     assert time.monotonic()-started < 4
     workspace = tmp_path/'.ytdownloader-tmp'
-    if not pause:
-        assert not workspace.exists()
-        return
-    assert workspace.exists()
-    # FFmpegFD does not support byte continuation: the native -y section call
-    # safely replaces its .part on resume rather than appending corrupt media.
-    resumed = service.download(replace(request,resume_partial=True),events.append,threading.Event())
-    probe=subprocess.run(['vendor/tools/ffmpeg/ffprobe.exe','-v','error','-show_entries','format=duration',
-                          '-of','json',str(resumed.file_path)],capture_output=True,encoding='utf-8',check=True)
-    assert 1.8 < float(json.loads(probe.stdout)['format']['duration']) < 2.2
     assert not workspace.exists()
+
+
+@pytest.mark.parametrize('cancel_while_paused', [False, True])
+def test_native_section_queue_pauses_and_resumes_same_pid_and_file(qtbot, tmp_path, native_section_source, native_source_url, cancel_while_paused):
+    from yt_downloader.workers.download_queue import DownloadQueueController
+    request = replace(section_request(tmp_path, native_section_source), clip_start=0, clip_end=5)
+    queue = DownloadQueueController(DownloadService(ydl_factory=native_factory(native_source_url)))
+    events, completed, paused, failures = [], [], [], []
+    queue.progress.connect(events.append)
+    queue.completed.connect(completed.append)
+    queue.paused.connect(paused.append)
+    queue.failed.connect(lambda _task, error: failures.append(error))
+    queue.enqueue(request)
+    try:
+        qtbot.waitUntil(lambda: any(p.percent and p.percent > 10 for p in events), timeout=5000)
+        control = queue._active[request.task_id][3]
+        pid = control.section_pid
+        path = control.section_path
+        assert queue.pause_task(request.task_id), [(p.status, p.percent) for p in events]
+        qtbot.waitUntil(lambda: bool(paused) or bool(failures), timeout=3000)
+        assert not failures, [getattr(e, 'technical_message', str(e)) for e in failures]
+        assert paused == [request.task_id]
+        before = events[-1].percent
+        assert path.exists(), (str(path), list(tmp_path.rglob('*')), [(p.status, p.percent) for p in events], failures)
+        size = path.stat().st_size
+        qtbot.wait(350)
+        assert path.stat().st_size == size
+        assert queue.task_position(request.task_id) == 'paused'
+        if cancel_while_paused:
+            assert queue.cancel(request.task_id)
+            qtbot.waitUntil(lambda: not queue.is_busy, timeout=5000)
+            assert not path.exists()
+            assert not completed
+            return
+        assert queue.resume_task(request.task_id)
+        assert control.section_pid == pid
+        assert control.section_path == path
+        qtbot.waitUntil(lambda: bool(completed) and not queue.is_busy, timeout=5000)
+        assert len(completed) == 1
+        after = [p.percent for p in events if p.status in {TaskStatus.DOWNLOADING_VIDEO, TaskStatus.PAUSED} and p.percent is not None]
+        assert after == sorted(after)
+        assert before > 0
+    finally:
+        queue.cancel_all()
+        qtbot.waitUntil(lambda: not queue.is_busy, timeout=5000)
 
 
 def test_native_split_opus_section_drops_negative_preroll_without_reencoding(tmp_path, native_section_source, native_source_url):
