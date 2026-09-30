@@ -253,7 +253,6 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: download.state.clipEnabled ? clipFields.implicitHeight : 0
                                             clip: true
-                                            Behavior on height { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 180; easing.type: Easing.OutCubic } }
                                             ColumnLayout {
                                                 id: clipFields
                                                 width: parent.width

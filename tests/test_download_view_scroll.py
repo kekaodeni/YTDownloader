@@ -2,7 +2,9 @@
 from dataclasses import replace
 from types import SimpleNamespace
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QTimer, Qt
+from PySide6.QtTest import QTest
+import pytest
 
 from yt_downloader.app import AppController
 from yt_downloader.workers.request_gate import LatestRequestGate
@@ -77,6 +79,54 @@ def test_collapse_at_content_end_keeps_view_in_bounds(quick_window, qapp):
     view = find_item(quick_window, 'taskList')
     offset = view.property('contentY') - view.property('originY')
     assert 0 <= offset <= max(0, view.property('contentHeight') - view.height()) + 1
+
+
+@pytest.mark.parametrize('field', ['advancedExpanded', 'clipEnabled'])
+@pytest.mark.parametrize('extractor', ['Youtube', 'BiliBili'])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_every_rendered_toggle_frame_keeps_card_and_anchor(quick_window, qapp, field, extractor, theme):
+    page = quick_window.download_page
+    quick_window.theme.set_mode(theme)
+    page.show_video(replace(sample_video(), extractor_key=extractor))
+    if field == 'clipEnabled':
+        page.setAdvancedToggle('advancedExpanded', True)
+    run_frames(qapp)
+    item = find_item(quick_window, 'advancedOptionsToggle' if field == 'advancedExpanded' else 'clipEnabled')
+    scroll_to(quick_window, item)
+    run_frames(qapp, 50)
+    baseline = scene_y(item)
+    panel = find_item(quick_window, 'videoPanel')
+    initial = quick_window.grab()
+    sidebar_width = round(190 * quick_window.root.devicePixelRatio())
+    sidebar = initial.copy(0, 0, sidebar_width, initial.height())
+    controls = [find_item(quick_window, name) for name in ('advancedOptionsPanel','clipStart','clipEnd')]
+    observations = []
+    def capture():
+        # grabWindow renders a real scene-graph frame, rather than only checking
+        # the endpoint after a 280ms animation has finished.
+        picture = quick_window.grab()
+        observations.append((scene_y(item), panel.isVisible(), panel.opacity(), picture.isNull(),
+                             picture.copy(0, 0, sidebar_width, picture.height()) == sidebar))
+    timer = QTimer()
+    timer.timeout.connect(capture)
+    timer.start(5)
+    try:
+        for enabled in (True, False, True, False):
+            if field == 'advancedExpanded':
+                click_item(quick_window, item)
+            else:
+                # UiSettingToggle's switch is at the trailing edge of its row.
+                point = item.mapToScene(QPointF(item.width() - 31, item.height() / 2)).toPoint()
+                QTest.mouseClick(quick_window.root, Qt.LeftButton, Qt.NoModifier, point)
+            assert page.state[field] == enabled
+            assert not controls[1].hasActiveFocus() and not controls[2].hasActiveFocus()
+            run_frames(qapp, 240)
+    finally:
+        timer.stop()
+    assert observations
+    assert controls == [find_item(quick_window, name) for name in ('advancedOptionsPanel','clipStart','clipEnd')]
+    assert all(abs(y - baseline) < 2 and visible and opacity == 1 and not blank and stable_sidebar
+               for y, visible, opacity, blank, stable_sidebar in observations), observations
 
 
 def test_successful_result_positions_after_layout_once(quick_window, qapp):

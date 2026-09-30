@@ -163,6 +163,7 @@ class DownloadPresenter(ViewState):
                     cookieAuthWarning=(warning_external or self._t(warning_key, self._cookie_warning_params)) if warning_key or warning_external else '',
                     cookieAuthInvalid=invalid, cookieAuthSeverity=severity)
 
+    @Slot(str)
     def _refresh_localized(self, _locale=None):
         if self._translated_state:
             self.update(**{field: self._t(message_id, params)
