@@ -1,6 +1,8 @@
 from dataclasses import replace
 from PySide6.QtCore import Qt, QPointF, QObject
 from PySide6.QtGui import QColor
+from PySide6.QtCore import QTimer
+from PySide6.QtQml import QQmlProperty
 from PySide6.QtTest import QTest
 import pytest
 from yt_downloader.core.models import TaskStatus
@@ -147,6 +149,38 @@ def test_management_context_delete_on_selected_row_deletes_complete_selection(qu
     assert len(quick_window.dialogs.sessions) == before + 1
     quick_window.dialogs.sessions[-1].answer(True)
     assert deleted == [('first','second')]
+
+
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+def test_selected_outlines_survive_menu_confirm_and_cancel_every_frame(quick_window, tmp_path, qapp, mode):
+    page = prepare(quick_window, tmp_path, qapp)
+    quick_window.theme.set_mode(mode)
+    page.set_records([_record(tmp_path, name, TaskStatus.COMPLETED) for name in ('first','second','third')])
+    page.manage(True); page.selectAll(True)
+    find_item(quick_window, 'historyList').forceActiveFocus()
+    run_frames(qapp, 220)
+    rows = [find_item(quick_window, 'history-' + name) for name in ('first','second','third')]
+    baseline = [row.property('color') for row in rows]
+    click_item(quick_window, rows[0], Qt.RightButton)
+    run_frames(qapp, 200)
+    assert all(QQmlProperty.read(row, 'border.width') == 1 for row in rows)
+    observations = []
+    timer = QTimer()
+    def capture():
+        quick_window.grab()
+        observations.append([(QQmlProperty.read(row, 'border.width'), row.property('color')) for row in rows])
+    timer.timeout.connect(capture); timer.start(8)
+    try:
+        click_item(quick_window, find_item(quick_window, 'historyContextDelete'))
+        run_frames(qapp, 300)
+        assert find_item(quick_window, 'dialog-confirm').property('visible')
+        QTest.keyClick(quick_window.root, Qt.Key_Escape)
+        run_frames(qapp, 260)
+    finally:
+        timer.stop()
+    assert page.state['checkedCount'] == 3
+    assert observations
+    assert all(width == 1 and color == baseline[i] for frame in observations for i,(width,color) in enumerate(frame))
 
 
 def test_management_context_click_on_unselected_row_makes_it_the_only_delete_target(quick_window,tmp_path,qapp):
