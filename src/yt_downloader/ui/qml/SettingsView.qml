@@ -1,137 +1,202 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+
 Item {
     id: root
     objectName: "settingsPage"
+    property int category: settings.state.category
+    readonly property var categories: [
+        {key: "nav.download", icon: "arrow_download_regular.svg"},
+        {key: "settings.account_cookie", icon: "info_regular.svg"},
+        {key: "settings.network", icon: "link_regular.svg"},
+        {key: "settings.appearance", icon: "image_regular.svg"},
+        {key: "settings.updates", icon: "retry_regular.svg"},
+        {key: "settings.tools", icon: "settings_regular.svg"}
+    ]
+    function selectCategory(index) { settings.selectCategory(index); scroll.contentY = 0 }
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32; spacing: 20
+        anchors.fill: parent
+        anchors.margins: root.width < 620 ? 20 : 32
+        spacing: 24
         UiText { text: i18n.messages["nav.settings"]; role: "PageTitle" }
-        UiScroll {
-            id: scroll; objectName: "settingsScroll"; Layout.fillWidth: true; Layout.fillHeight: true
-            contentHeight: body.implicitHeight + 20
-            ColumnLayout {
-                id: body; width: scroll.width - 12; spacing: 20
-                UiText { text: i18n.messages["nav.download"]; role: "SectionTitle" }
+        RowLayout {
+            Layout.fillWidth: true; Layout.fillHeight: true; spacing: root.width < 620 ? 14 : 24
+            ListView {
+                id: navigation
+                objectName: "settingsNavigation"
+                Layout.preferredWidth: root.width < 620 ? 160 : 180
+                Layout.fillHeight: true
+                clip: true; spacing: 4; boundsBehavior: Flickable.StopAtBounds
+                model: root.categories
+                currentIndex: root.category
+                activeFocusOnTab: true
+                KeyNavigation.tab: scroll
+                Keys.onUpPressed: root.selectCategory((root.category + 5) % 6)
+                Keys.onDownPressed: root.selectCategory((root.category + 1) % 6)
+                Keys.onReturnPressed: scroll.forceActiveFocus()
+                delegate: ItemDelegate {
+                    id: navItem
+                    required property int index
+                    required property var modelData
+                    objectName: "settingsNav-" + index
+                    width: ListView.view.width
+                    height: Math.max(46, navLabel.implicitHeight + 20)
+                    highlighted: root.category === index
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: i18n.messages[modelData.key]
+                    Accessible.selected: highlighted
+                    onClicked: { navigation.forceActiveFocus(); root.selectCategory(index) }
+                    background: Rectangle {
+                        radius: 8
+                        color: navItem.highlighted ? theme.state.selection : navItem.down || navItem.hovered ? theme.state.subtle : "transparent"
+                        border.width: navigation.activeFocus && navItem.highlighted ? 1 : 0
+                        border.color: theme.state.accent
+                        Rectangle { visible: navItem.highlighted; width: 3; height: 20; radius: 2; anchors.left: parent.left; anchors.leftMargin: 4; anchors.verticalCenter: parent.verticalCenter; color: theme.state.accent }
+                    }
+                    contentItem: RowLayout {
+                        spacing: 10
+                        ToolButton {
+                            Layout.preferredWidth: 18; Layout.minimumWidth: 18; Layout.maximumWidth: 18
+                            Layout.preferredHeight: 18; padding: 0; enabled: false
+                            icon.source: assetsBase + "icons/" + navItem.modelData.icon
+                            icon.width: 18; icon.height: 18
+                            icon.color: navItem.highlighted ? theme.state.accent : theme.state.secondary
+                            background: null; Accessible.ignored: true
+                        }
+                        UiText { id: navLabel; Layout.fillWidth: true; text: i18n.messages[navItem.modelData.key]; wrapMode: Text.Wrap; role: "Button" }
+                    }
+                }
+            }
+            UiScroll {
+                id: scroll
+                objectName: "settingsScroll"
+                Layout.fillWidth: true; Layout.fillHeight: true
+                activeFocusOnTab: true
+                contentHeight: body.implicitHeight + 20
                 ColumnLayout {
-                    id: downloadProfilesSection; objectName: "downloadProfilesSection"
-                    Layout.fillWidth: true; spacing: 10
-                    UiText { text: i18n.messages["settings.profiles"]; role: "SectionTitle" }
-                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.default_profile"]
-                        UiCombo {
-                            objectName: "defaultDownloadProfile"; Layout.fillWidth: true
-                            accessibleName: i18n.messages["settings.default_profile"]
-                            model: settings.state.profileOptions.map(function(profile) { return profile.name })
-                            currentIndex: Math.max(0, settings.state.profileOptions.findIndex(function(profile) { return profile.id === settings.state.defaultProfileId }))
-                            onActivated: settings.setDefaultProfile(settings.state.profileOptions[currentIndex].id)
-                        }
-                    }
-                    UiText { objectName: "profileExplainer"; Layout.fillWidth: true; text: i18n.messages["settings.profile_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                    RowLayout { Layout.fillWidth: true; spacing: 8
-                        UiText { Layout.fillWidth: true; text: i18n.messages["settings.custom_profiles"]; role: "SectionTitle" }
-                        UiButton { objectName: "newDownloadProfile"; text: i18n.messages["settings.new_profile"]; appearance: "normal"; onClicked: settings.newProfile() }
-                    }
-                    UiText { objectName: "emptyDownloadProfiles"; Layout.fillWidth: true; visible: settings.state.customProfiles.length === 0; text: i18n.messages["settings.empty_profiles"]; role: "Caption"; color: theme.state.muted }
-                    Repeater {
-                        model: settings.state.customProfiles
-                        delegate: Rectangle {
-                            required property var modelData
-                            objectName: "customProfile-" + modelData.id
-                            Layout.fillWidth: true; implicitHeight: 68; radius: 10
-                            color: theme.state.surface; border.color: theme.state.stroke
-                            RowLayout { anchors.fill: parent; anchors.margins: 10; spacing: 8
-                                ColumnLayout { Layout.fillWidth: true; spacing: 2
-                                    UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
-                                    UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
+                    id: body
+                    width: Math.min(980, scroll.width - 12)
+                    x: Math.max(0, (scroll.width - 12 - width) / 2)
+                    spacing: 22
+                    UiText { Layout.fillWidth: true; text: i18n.messages[root.categories[root.category].key]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                    ColumnLayout {
+                        id: downloads
+                        objectName: "settingsCategory-0"
+                        visible: root.category === 0; Layout.fillWidth: true; spacing: 22
+                        SettingCard {
+                            objectName: "downloadProfilesSection"; Layout.fillWidth: true; title: i18n.messages["settings.profiles"]
+                            SettingRow { objectName: "defaultProfileRow"; Layout.fillWidth: true; label: i18n.messages["settings.default_profile"]; description: i18n.messages["settings.profile_explainer"]
+                                UiCombo { objectName: "defaultDownloadProfile"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.default_profile"]
+                                    model: settings.state.profileOptions.map(function(profile) { return profile.name })
+                                    currentIndex: Math.max(0, settings.state.profileOptions.findIndex(function(profile) { return profile.id === settings.state.defaultProfileId }))
+                                    onActivated: settings.setDefaultProfile(settings.state.profileOptions[currentIndex].id)
                                 }
-                                UiButton { objectName: "editProfile-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: settings.editProfile(modelData.id) }
-                                UiButton { objectName: "deleteProfile-" + modelData.id; text: i18n.messages["action.delete_record"]; appearance: "danger"; onClicked: settings.deleteProfile(modelData.id) }
+                            }
+                        }
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.custom_profiles"]
+                            UiText { objectName: "emptyDownloadProfiles"; Layout.fillWidth: true; visible: settings.state.customProfiles.length === 0; text: i18n.messages["settings.empty_profiles"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            Repeater { model: settings.state.customProfiles
+                                delegate: SettingRow { required property var modelData; required property int index
+                                    objectName: "customProfile-" + modelData.id; Layout.fillWidth: true; label: modelData.name; description: modelData.summary; separator: index < settings.state.customProfiles.length - 1
+                                    UiButton { objectName: "editProfile-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: settings.editProfile(modelData.id) }
+                                    UiButton { objectName: "deleteProfile-" + modelData.id; text: i18n.messages["common.delete"]; appearance: "danger"; onClicked: settings.deleteProfile(modelData.id) }
+                                }
+                            }
+                            UiButton { objectName: "newDownloadProfile"; text: i18n.messages["settings.new_profile"]; onClicked: settings.newProfile() }
+                        }
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.download_location"]
+                            UiText { text: i18n.messages["settings.default_folder"]; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            RowLayout { Layout.fillWidth: true; spacing: 10
+                                UiField { objectName: "defaultDirectory"; Layout.fillWidth: true; text: settings.state.download_directory; Accessible.name: i18n.messages["settings.default_folder"]; onTextChanged: if (text !== settings.state.download_directory) settings.setSetting("download_directory", text) }
+                                UiButton { text: i18n.messages["common.browse"]; onClicked: settings.browse_requested("download_directory") }
+                            }
+                        }
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.tasks"]
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.concurrent_tasks"]; separator: true
+                                UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.concurrent_tasks"]; model: ["1", i18n.messages["settings.concurrent_default"], "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.setSetting("max_concurrent_downloads", currentIndex + 1) }
+                            }
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.fragment_count"]
+                                UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.fragment_count"]; model: [i18n.messages["settings.fragments_auto"], "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.setSetting("concurrent_fragments", values[currentIndex]) }
                             }
                         }
                     }
-                }
-                SettingField {
-                    Layout.fillWidth: true; label: i18n.messages["settings.default_folder"]
-                    RowLayout { Layout.fillWidth: true
-                        UiField { objectName: "defaultDirectory"; Layout.fillWidth: true; text: settings.state.download_directory; Accessible.name: i18n.messages["settings.default_folder"]; onTextChanged: if (text !== settings.state.download_directory) settings.setSetting("download_directory", text) }
-                        UiButton { text: i18n.messages["common.browse"]; onClicked: settings.browse_requested("download_directory") }
-                    }
-                }
-                GridLayout {
-                    Layout.fillWidth: true; columns: root.width >= 720 ? 2 : 1; columnSpacing: 16; rowSpacing: 16
-                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.concurrent_tasks"]
-                        UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.concurrent_tasks"]; model: ["1", i18n.messages["settings.concurrent_default"], "3", "4"]; currentIndex: settings.state.max_concurrent_downloads - 1; onActivated: settings.setSetting("max_concurrent_downloads", currentIndex + 1) }
-                    }
-                    SettingField { Layout.fillWidth: true; label: i18n.messages["settings.fragment_count"]
-                        UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.fragment_count"]; model: [i18n.messages["settings.fragments_auto"], "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.setSetting("concurrent_fragments", values[currentIndex]) }
-                    }
-                }
-                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: i18n.messages["settings.account_cookie"]; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: i18n.messages["settings.cookie_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { objectName: "cookiePrivacyHelp"; text: i18n.messages["settings.cookie_privacy"]; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "normal"; onClicked: dialogs.info(i18n.messages["cookie.privacy_title"], i18n.messages["cookie.privacy_body"]) }
-                UiText { text: i18n.messages["settings.saved_cookies"]; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: i18n.messages["common.none_configured"]; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
-                Flow { objectName: "cookieProfiles"; Layout.fillWidth: true; spacing: 10
-                    Repeater { model: cookies.state.profileCards
-                        delegate: Rectangle { required property var modelData; required property int index
-                            objectName: "cookieProfile-" + modelData.id; width: Math.max(240, Math.min(420, body.width - 20)); height: 64; radius: 10; color: theme.state.surface; border.color: theme.state.stroke
-                            RowLayout { anchors.fill: parent; anchors.margins: 10; spacing: 8
-                                ColumnLayout { Layout.fillWidth: true; spacing: 1
-                                    UiText { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
-                                    UiText { Layout.fillWidth: true; text: modelData.summary; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
+                    ColumnLayout { objectName: "settingsCategory-1"; visible: root.category === 1; Layout.fillWidth: true; spacing: 22
+                        SettingCard { Layout.fillWidth: true
+                            UiText { Layout.fillWidth: true; text: i18n.messages["settings.cookie_explainer"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            UiButton { id: privacyHelp; objectName: "cookiePrivacyHelp"; Layout.maximumWidth: parent.width
+                                text: i18n.messages["settings.cookie_privacy"]; implicitHeight: Math.max(38, implicitContentHeight + 16)
+                                contentItem: UiText { text: privacyHelp.text; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: privacyHelp.palette.buttonText }
+                                onClicked: dialogs.info(i18n.messages["cookie.privacy_title"], i18n.messages["cookie.privacy_body"])
+                            }
+                        }
+                        SettingCard { objectName: "cookieProfiles"; Layout.fillWidth: true; title: i18n.messages["settings.saved_cookies"]
+                            UiText { Layout.fillWidth: true; text: i18n.messages["common.none_configured"]; visible: cookies.state.profileCards.length === 0; role: "Caption"; color: theme.state.secondary }
+                            Repeater { model: cookies.state.profileCards
+                                delegate: SettingRow { required property var modelData; required property int index
+                                    objectName: "cookieProfile-" + modelData.id; Layout.fillWidth: true; label: modelData.name; description: modelData.summary; separator: index < cookies.state.profileCards.length - 1
+                                    UiButton { objectName: "cookieEdit-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: cookies.editProfile(index) }
+                                    UiButton { objectName: "cookieDelete-" + modelData.id; text: i18n.messages["common.delete"]; appearance: "danger"; onClicked: cookies.requestDelete(index) }
                                 }
-                                UiButton { objectName: "cookieEdit-" + modelData.id; text: i18n.messages["common.edit"]; onClicked: cookies.editProfile(index) }
-                                UiButton { objectName: "cookieDelete-" + modelData.id; text: i18n.messages["action.delete_record"]; appearance: "danger"; onClicked: cookies.requestDelete(index) }
+                            }
+                            UiButton { objectName: "newCookieProfile"; text: i18n.messages["settings.cookie_new"]; onClicked: cookies.newProfile() }
+                            UiText { objectName: "cookieFeedback"; Layout.fillWidth: true; visible: text.length > 0; text: i18n.sourceText(cookies.state.message); role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            UiButton { text: i18n.messages["settings.return_reparse"]; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
+                        }
+                    }
+                    ColumnLayout { objectName: "settingsCategory-2"; visible: root.category === 2; Layout.fillWidth: true; spacing: 22
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.network_connection"]
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.proxy_mode"]
+                                UiCombo { objectName: "proxyMode"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.proxy_mode"]; model: [i18n.messages["settings.proxy_system"], i18n.messages["settings.proxy_direct"], i18n.messages["settings.proxy_custom"]]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.setSetting("proxy_mode", values[currentIndex]) }
+                            }
+                            ColumnLayout { Layout.fillWidth: true; visible: settings.state.proxy_mode === "custom"; spacing: 8
+                                UiText { Layout.fillWidth: true; text: i18n.messages["settings.proxy_address"]; wrapMode: Text.Wrap }
+                                UiField { objectName: "proxyInput"; Layout.fillWidth: true; text: settings.state.custom_proxy_url; placeholderText: i18n.messages["settings.proxy_placeholder"]; Accessible.name: i18n.messages["settings.proxy_address"]; onTextChanged: if (text !== settings.state.custom_proxy_url) settings.setSetting("custom_proxy_url", text) }
+                                UiText { Layout.fillWidth: true; text: i18n.messages["settings.proxy_description"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+                            }
+                            UiButton { objectName: "testNetwork"; text: settings.state.networkBusy ? i18n.messages["settings.testing"] : i18n.messages["settings.test_connection"]; enabled: !settings.state.networkBusy; onClicked: settings.testNetwork() }
+                            UiText { objectName: "networkFeedback"; Layout.fillWidth: true; visible: text.length > 0; text: i18n.sourceText(settings.state.networkText); color: settings.state.networkSuccess ? theme.state.success : theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
+                        }
+                    }
+                    ColumnLayout { objectName: "settingsCategory-3"; visible: root.category === 3; Layout.fillWidth: true; spacing: 22
+                        SettingCard { Layout.fillWidth: true
+                            SettingRow { objectName: "languageField"; Layout.fillWidth: true; label: i18n.messages["settings.language"]; separator: true
+                                UiCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"]; model: i18n.languages.map(function(language) { return language.name }); currentIndex: Math.max(0, i18n.languages.findIndex(function(language) { return language.locale === settings.state.language })); onActivated: settings.setSetting("language", i18n.languages[currentIndex].locale) }
+                            }
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.theme"]; separator: true
+                                UiCombo { objectName: "themeCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.theme"]; model: [i18n.messages["settings.theme_system"], i18n.messages["settings.theme_light"], i18n.messages["settings.theme_dark"]]; property var values: ["system", "light", "dark"]; currentIndex: Math.max(0, values.indexOf(settings.state.theme)); onActivated: settings.setSetting("theme", values[currentIndex]) }
+                            }
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.reduce_motion"]; controlWidth: 52
+                                UiSwitch { objectName: "reduceMotion"; text: ""; Accessible.name: i18n.messages["settings.reduce_motion"]; checked: settings.state.reduce_motion; onToggled: settings.setSetting("reduce_motion", checked) }
                             }
                         }
                     }
-                }
-                UiButton { objectName: "newCookieProfile"; text: i18n.messages["settings.cookie_new"]; onClicked: cookies.newProfile() }
-                UiText { objectName: "cookieFeedback"; Layout.fillWidth: true; text: i18n.sourceText(cookies.state.message); role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
-                UiButton { text: i18n.messages["settings.return_reparse"]; visible: cookies.state.authRequired; onClicked: { shell._select_page(0); download.requestParse() } }
-                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: i18n.messages["settings.network"]; role: "SectionTitle" }
-                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.network_connection"]
-                    UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.proxy_mode"]; model: [i18n.messages["settings.proxy_system"], i18n.messages["settings.proxy_direct"], i18n.messages["settings.proxy_custom"]]; property var values: ["system", "direct", "custom"]; currentIndex: Math.max(0, values.indexOf(settings.state.proxy_mode)); onActivated: settings.setSetting("proxy_mode", values[currentIndex]) }
-                }
-                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.proxy_custom"]; description: i18n.messages["settings.proxy_description"]
-                    UiField { objectName: "proxyInput"; Layout.fillWidth: true; enabled: settings.state.proxy_mode === "custom"; text: settings.state.custom_proxy_url; placeholderText: i18n.messages["settings.proxy_placeholder"]; Accessible.name: i18n.messages["settings.proxy_address"]; onTextChanged: settings.setSetting("custom_proxy_url", text) }
-                }
-                RowLayout { Layout.fillWidth: true
-                    UiButton { text: settings.state.networkBusy ? i18n.messages["settings.testing"] : i18n.messages["settings.test_connection"]; enabled: !settings.state.networkBusy; onClicked: settings.testNetwork() }
-                    UiText { objectName: "networkFeedback"; Layout.fillWidth: true; text: i18n.sourceText(settings.state.networkText); color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
-                }
-                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: i18n.messages["settings.appearance"]; role: "SectionTitle" }
-                SettingField { objectName: "languageField"; Layout.fillWidth: true; label: i18n.messages["settings.language"]
-                    UiCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"]
-                        model: i18n.languages.map(function(language) { return language.name })
-                        currentIndex: Math.max(0, i18n.languages.findIndex(function(language) { return language.locale === settings.state.language }))
-                        onActivated: settings.setSetting("language", i18n.languages[currentIndex].locale)
+                    ColumnLayout { objectName: "settingsCategory-4"; visible: root.category === 4; Layout.fillWidth: true; spacing: 22
+                        SettingCard { Layout.fillWidth: true
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.stable_channel"]; controlWidth: 0 }
+                            SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.auto_updates"]; controlWidth: 52
+                                UiSwitch { objectName: "autoCheckUpdates"; text: ""; Accessible.name: i18n.messages["settings.auto_updates"]; checked: settings.state.auto_check_updates; onToggled: settings.setSetting("auto_check_updates", checked) }
+                            }
+                        }
                     }
-                }
-                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.theme"]
-                    UiCombo { objectName: "themeCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.theme"]; model: [i18n.messages["settings.theme_system"], i18n.messages["settings.theme_light"], i18n.messages["settings.theme_dark"]]; property var values: ["system", "light", "dark"]; currentIndex: Math.max(0, values.indexOf(settings.state.theme)); onActivated: settings.setSetting("theme", values[currentIndex]) }
-                }
-                UiSwitch { objectName: "reduceMotion"; text: i18n.messages["settings.reduce_motion"]; checked: settings.state.reduce_motion; onToggled: settings.setSetting("reduce_motion", checked) }
-                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: i18n.messages["settings.updates"]; role: "SectionTitle" }
-                UiText { text: i18n.messages["settings.stable_channel"]; role: "Secondary"; color: theme.state.secondary }
-                UiSwitch { objectName: "autoCheckUpdates"; text: i18n.messages["settings.auto_updates"]; checked: settings.state.auto_check_updates; onToggled: settings.setSetting("auto_check_updates", checked) }
-                Rectangle { Layout.fillWidth: true; height: 1; color: theme.state.stroke }
-                UiText { text: i18n.messages["settings.tools"]; role: "SectionTitle" }
-                UiText { Layout.fillWidth: true; text: "yt-dlp  " + settings.state.ytdlpVersion; role: "Secondary"; color: theme.state.secondary }
-                UiText { Layout.fillWidth: true; text: "FFmpeg  " + (settings.state.ffmpegDescription || i18n.messages["settings.ffmpeg_unavailable"]); role: "Caption"; color: theme.state.muted; wrapMode: Text.WrapAnywhere }
-                SettingField { Layout.fillWidth: true; label: i18n.messages["settings.ffmpeg_directory"]
-                    RowLayout { Layout.fillWidth: true
-                        UiField { Layout.fillWidth: true; text: settings.state.ffmpeg_directory; placeholderText: i18n.messages["settings.ffmpeg_placeholder"]; Accessible.name: i18n.messages["settings.ffmpeg_directory"]; onTextChanged: settings.setSetting("ffmpeg_directory", text) }
-                        UiButton { text: i18n.messages["settings.repair_path"]; onClicked: settings.browse_requested("ffmpeg_directory") }
+                    ColumnLayout { objectName: "settingsCategory-5"; visible: root.category === 5; Layout.fillWidth: true; spacing: 22
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.component_versions"]
+                            SettingRow { Layout.fillWidth: true; label: "yt-dlp"; separator: true; controlWidth: 160; UiText { text: settings.state.ytdlpVersion } }
+                            SettingRow { Layout.fillWidth: true; label: "FFmpeg"; controlWidth: 240; UiText { Layout.fillWidth: true; text: settings.state.ffmpegVersion || i18n.messages["settings.ffmpeg_unavailable"]; wrapMode: Text.WrapAnywhere } }
+                        }
+                        SettingCard { Layout.fillWidth: true; title: "FFmpeg"
+                            SettingRow { Layout.fillWidth: true; label: settings.state.ffmpeg_directory ? i18n.messages["settings.ffmpeg_custom"] : i18n.messages["settings.ffmpeg_builtin"]; description: settings.state.ffmpegPath
+                                UiButton { objectName: "changeFfmpeg"; Layout.fillWidth: true; text: i18n.messages["settings.ffmpeg_use_custom"]; onClicked: settings.browse_requested("ffmpeg_directory") }
+                            }
+                            UiButton { objectName: "restoreFfmpeg"; visible: settings.state.ffmpeg_directory.length > 0; text: i18n.messages["settings.ffmpeg_restore_builtin"]; onClicked: settings.setSetting("ffmpeg_directory", "") }
+                        }
+                        SettingCard { Layout.fillWidth: true; title: i18n.messages["settings.diagnostics"]
+                            Flow { Layout.fillWidth: true; spacing: 10
+                                UiButton { objectName: "openLogs"; text: i18n.messages["settings.logs"]; onClicked: settings.open_logs_requested() }
+                                UiButton { objectName: "copySystemInfo"; text: i18n.messages["settings.copy_system"]; onClicked: settings.copy_system_info_requested() }
+                            }
+                        }
                     }
-                }
-                Flow { Layout.fillWidth: true; spacing: 8
-                    UiButton { text: i18n.messages["settings.logs"]; onClicked: settings.open_logs_requested() }
-                    UiButton { text: i18n.messages["settings.copy_system"]; onClicked: settings.copy_system_info_requested() }
                 }
             }
         }

@@ -129,6 +129,7 @@ class MainWindow(ViewState):
 
     @Slot()
     def openCookieSettings(self):
+        self.settings_page.selectCategory(1)
         self._select_page(2)
 
     @Slot()
@@ -146,6 +147,7 @@ class MainWindow(ViewState):
             self._disposed = True
             self.root.hide()
             self.history_page.close()
+            self.settings_page.close_tools()
             shiboken6.delete(self.engine)
 
     def _cover_busy(self):

@@ -12,6 +12,15 @@
     {"locale": "th-TH", "name": "ไทย"}
   ],
   "messages": {
+    "common.delete": {"zh-CN":"删除","zh-TW":"刪除","en-US":"Delete","ja-JP":"削除","ko-KR":"삭제","ru-RU":"Удалить","es-ES":"Eliminar","pt-BR":"Excluir","vi-VN":"Xóa","th-TH":"ลบ"},
+    "settings.download_location": {"zh-CN":"下载位置","zh-TW":"下載位置","en-US":"Download location","ja-JP":"ダウンロード先","ko-KR":"다운로드 위치","ru-RU":"Папка загрузки","es-ES":"Ubicación de descarga","pt-BR":"Local de download","vi-VN":"Vị trí tải xuống","th-TH":"ตำแหน่งดาวน์โหลด"},
+    "settings.tasks": {"zh-CN":"任务","zh-TW":"工作","en-US":"Tasks","ja-JP":"タスク","ko-KR":"작업","ru-RU":"Задачи","es-ES":"Tareas","pt-BR":"Tarefas","vi-VN":"Tác vụ","th-TH":"งาน"},
+    "settings.component_versions": {"zh-CN":"组件版本","zh-TW":"元件版本","en-US":"Component versions","ja-JP":"コンポーネントのバージョン","ko-KR":"구성 요소 버전","ru-RU":"Версии компонентов","es-ES":"Versiones de componentes","pt-BR":"Versões dos componentes","vi-VN":"Phiên bản thành phần","th-TH":"เวอร์ชันส่วนประกอบ"},
+    "settings.ffmpeg_builtin": {"zh-CN":"使用内置版本","zh-TW":"使用內建版本","en-US":"Using bundled version","ja-JP":"同梱バージョンを使用","ko-KR":"내장 버전 사용","ru-RU":"Встроенная версия","es-ES":"Versión incluida","pt-BR":"Versão integrada","vi-VN":"Sử dụng phiên bản tích hợp","th-TH":"ใช้เวอร์ชันที่มาพร้อมแอป"},
+    "settings.ffmpeg_custom": {"zh-CN":"自定义 FFmpeg","zh-TW":"自訂 FFmpeg","en-US":"Custom FFmpeg","ja-JP":"カスタム FFmpeg","ko-KR":"사용자 지정 FFmpeg","ru-RU":"Пользовательский FFmpeg","es-ES":"FFmpeg personalizado","pt-BR":"FFmpeg personalizado","vi-VN":"FFmpeg tùy chỉnh","th-TH":"FFmpeg ที่กำหนดเอง"},
+    "settings.ffmpeg_use_custom": {"zh-CN":"使用自定义 FFmpeg…","zh-TW":"使用自訂 FFmpeg…","en-US":"Use custom FFmpeg…","ja-JP":"カスタム FFmpeg を使用…","ko-KR":"사용자 지정 FFmpeg 사용…","ru-RU":"Выбрать другой FFmpeg…","es-ES":"Usar FFmpeg personalizado…","pt-BR":"Usar FFmpeg personalizado…","vi-VN":"Sử dụng FFmpeg tùy chỉnh…","th-TH":"ใช้ FFmpeg ที่กำหนดเอง…"},
+    "settings.ffmpeg_restore_builtin": {"zh-CN":"恢复内置","zh-TW":"恢復內建","en-US":"Restore bundled version","ja-JP":"同梱版に戻す","ko-KR":"내장 버전 복원","ru-RU":"Вернуть встроенную версию","es-ES":"Restaurar versión incluida","pt-BR":"Restaurar versão integrada","vi-VN":"Khôi phục bản tích hợp","th-TH":"คืนค่าเวอร์ชันที่มาพร้อมแอป"},
+    "settings.diagnostics": {"zh-CN":"诊断","zh-TW":"診斷","en-US":"Diagnostics","ja-JP":"診断","ko-KR":"진단","ru-RU":"Диагностика","es-ES":"Diagnóstico","pt-BR":"Diagnóstico","vi-VN":"Chẩn đoán","th-TH":"การวินิจฉัย"},
     "settings.language": {"zh-CN":"语言","zh-TW":"語言","en-US":"Language","ja-JP":"言語","ko-KR":"언어","ru-RU":"Язык","es-ES":"Idioma","pt-BR":"Idioma","vi-VN":"Ngôn ngữ","th-TH":"ภาษา"},
     "settings.appearance": {"zh-CN":"外观","zh-TW":"外觀","en-US":"Appearance","ja-JP":"外観","ko-KR":"모양","ru-RU":"Внешний вид","es-ES":"Apariencia","pt-BR":"Aparência","vi-VN":"Giao diện","th-TH":"ลักษณะที่ปรากฏ"},
     "settings.theme": {"zh-CN":"界面主题","zh-TW":"介面主題","en-US":"Theme","ja-JP":"テーマ","ko-KR":"테마","ru-RU":"Тема","es-ES":"Tema","pt-BR":"Tema","vi-VN":"Chủ đề","th-TH":"ธีม"},

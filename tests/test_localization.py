@@ -203,16 +203,21 @@ def test_long_localized_settings_copy_remains_in_layout(quick_window, qapp, loca
     quick_window._select_page(2)
     quick_window.theme.set_mode(theme)
     quick_window.i18n.setLanguage(locale)
+    quick_window.settings_page.selectCategory(3)
     run_frames(qapp)
 
     language_field = find_item(quick_window, 'languageField')
-    profile_explainer = find_item(quick_window, 'profileExplainer')
     assert language_field.property('label') == quick_window.i18n.messages['settings.language']
     assert language_field.width() > 0
     assert language_field.x() >= 0
     assert language_field.x() + language_field.width() <= quick_window.root.width()
-    assert profile_explainer.width() > 0
-    assert profile_explainer.height() >= 20
+    assert language_field.isVisible()
+    quick_window.settings_page.selectCategory(0)
+    run_frames(qapp)
+    profile_row = find_item(quick_window, 'defaultProfileRow')
+    assert profile_row.property('description') == quick_window.i18n.messages['settings.profile_explainer']
+    assert profile_row.isVisible() and profile_row.width() > 0
+    assert profile_row.height() >= 60
 
 
 def test_updater_source_messages_refresh_live_and_keep_parameters(quick_window, qapp):

@@ -3,7 +3,7 @@ from dataclasses import asdict
 import re
 import uuid
 
-from PySide6.QtCore import QTimer, Signal, Slot
+from PySide6.QtCore import QProcess, QTimer, Signal, Slot
 
 from yt_downloader import __version__
 from yt_downloader.core.models import AppSettings, DownloadProfile
@@ -12,6 +12,7 @@ from yt_downloader.ui.quick_state import ViewState
 
 
 class SettingsPresenter(ViewState):
+    _component_versions = {}
     save_requested = Signal(object)
     network_test_requested = Signal(str, str)
     theme_preview_requested = Signal(str)
@@ -36,7 +37,9 @@ class SettingsPresenter(ViewState):
                          profileDraftSubtitleEmbed=False, profileDraftSubtitleFormat='srt',
                          profileDraftSubtitleLanguages=[], profileMessage='',
                          ffmpegDescription=ffmpeg_description, saveVisible=False, saveText='',
-                         networkBusy=False, networkText='', networkSuccess=False)
+                         networkBusy=False, networkText='', networkSuccess=False, category=0)
+        self._tool_process = None
+        self._refresh_tools()
         self._translator = translator
         self._save_message_id = ''
         self._save_error = ''
@@ -71,6 +74,7 @@ class SettingsPresenter(ViewState):
             })
         return self._translator.sourceText(source)
 
+    @Slot(str)
     def _refresh_localized(self, _locale=None):
         self._sync_profiles()
         if self._save_message_id:
@@ -106,6 +110,11 @@ class SettingsPresenter(ViewState):
     def setSetting(self, name, value):
         """QML-facing settings mutation entry point."""
         self.edit(name, value)
+
+    @Slot(int)
+    def selectCategory(self, index):
+        if 0 <= index < 6:
+            self.update(category=index)
 
     def current_settings(self):
         v = self._state
@@ -271,8 +280,46 @@ class SettingsPresenter(ViewState):
 
     def mark_saved(self, settings):
         self._saved = settings
+        self._refresh_tools()
         self._set_save_message('settings.saved')
         self._status_hide_timer.start()
+
+    def _refresh_tools(self):
+        from yt_downloader.services.ffmpeg_service import FfmpegService
+        tool = FfmpegService(configured_directory=self._state['ffmpeg_directory'] or None).ffmpeg_path
+        self.update(ffmpegPath=str(tool or ''), ffmpegVersion='')
+        self.close_tools()
+        if tool is None:
+            return
+        try:
+            stamp = tool.stat()
+        except OSError:
+            return
+        key = (str(tool), stamp.st_mtime_ns, stamp.st_size)
+        cached = self._component_versions.get(key)
+        if cached:
+            self.update(ffmpegVersion=cached)
+            return
+        process = QProcess(self)
+        self._tool_process = process
+        def finished(_code, _status):
+            if process is not self._tool_process:
+                return
+            output = bytes(process.readAllStandardOutput()).decode('utf-8', 'replace')
+            match = re.search(r'^ffmpeg version\s+(\S+)', output)
+            if match:
+                self._component_versions[key] = match.group(1)
+                self.update(ffmpegVersion=match.group(1))
+        process.finished.connect(finished)
+        process.start(str(tool), ['-version'])
+
+    def close_tools(self):
+        process, self._tool_process = self._tool_process, None
+        if process is not None:
+            if process.state() != QProcess.NotRunning:
+                process.kill()
+                process.waitForFinished(1000)
+            process.deleteLater()
 
     def mark_save_failed(self, message):
         self._status_hide_timer.stop()

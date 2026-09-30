@@ -211,7 +211,7 @@ def test_cookie_editor_save_failure_keeps_original_profile(qapp):
 
 
 def test_cookie_settings_help_and_editor_source_fields_are_interactive(quick_window, qtbot):
-    quick_window._select_page(2)
+    quick_window.openCookieSettings()
     help_button = find_item(quick_window, 'cookiePrivacyHelp')
     assert help_button.isVisible() and help_button.isEnabled()
     click_item(quick_window, help_button)
