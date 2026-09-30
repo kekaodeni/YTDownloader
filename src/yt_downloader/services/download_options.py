@@ -97,6 +97,13 @@ def media_options(request):
         from yt_dlp.utils import download_range_func
         result['download_ranges'] = download_range_func(None, [(request.clip_start, request.clip_end)])
         result['force_keyframes_at_cuts'] = False
+        if request.clip_start > 0 and request.format.acodec.split('.')[0].lower() == 'opus':
+            # Separate Opus inputs can seek to an earlier packet and retain
+            # negative timestamps in stream-copy mode. Matroska then shifts the
+            # entire mux timeline, adding preroll and delaying video. Discard
+            # that preroll within the native FFmpegFD output, without encoding
+            # or changing yt-dlp's input seek, URLs, mapping or format choice.
+            result['external_downloader_args'] = {'ffmpeg_o': ['-ss', '0']}
     if request.embed_thumbnail:
         result['embedthumbnail'] = True
     if request.embed_metadata:

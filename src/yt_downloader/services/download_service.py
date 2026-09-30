@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from dataclasses import replace
 import gc
 import logging
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,6 +19,7 @@ from typing import Any, Callable
 
 import yt_dlp
 from yt_dlp.downloader.fragment import FragmentFD
+from yt_dlp.downloader import external as ytdlp_external
 from yt_dlp.postprocessor import ffmpeg as ytdlp_ffmpeg
 from yt_dlp.utils import DownloadError
 
@@ -40,6 +42,7 @@ from yt_downloader.services.task_artifacts import TaskArtifactRegistry
 from yt_downloader.services.download_options import media_options, prepare_request
 from yt_downloader.services.subtitle_service import SubtitleService, SubtitleResult
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
+from yt_downloader.services.section_progress import SectionDownloadProgressAdapter, observed_section_popen, is_section_ffmpeg
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +51,7 @@ _YTDLP_TASK_CONTEXT = threading.local()
 _YTDLP_PATCH_USERS = 0
 _YTDLP_ORIGINAL_POPEN = None
 _YTDLP_ORIGINAL_FRAGMENT = None
+_YTDLP_ORIGINAL_EXTERNAL_POPEN = None
 
 
 def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext, base=None):
@@ -89,16 +93,18 @@ def _cancellable_popen_type(cancel_event: threading.Event, context: ErrorContext
 class _InterruptibleYtdlpResources:
     """Share temporary dispatchers, while cancellation belongs to each task thread."""
 
-    def __init__(self, cancel_event: threading.Event, context: ErrorContext) -> None:
-        self.task = (cancel_event, context)
+    def __init__(self, cancel_event: threading.Event, context: ErrorContext, section=None) -> None:
+        self.task = (cancel_event, context, section)
         self.previous = None
 
     def __enter__(self):
         global _YTDLP_PATCH_USERS, _YTDLP_ORIGINAL_POPEN, _YTDLP_ORIGINAL_FRAGMENT
+        global _YTDLP_ORIGINAL_EXTERNAL_POPEN
         with _YTDLP_RESOURCE_PATCH_LOCK:
             if _YTDLP_PATCH_USERS == 0:
                 original = ytdlp_ffmpeg.Popen
                 original_fragment = FragmentFD.download_and_append_fragments
+                original_external = ytdlp_external.Popen
 
                 class TaskPopen(original):
                     @classmethod
@@ -106,7 +112,15 @@ class _InterruptibleYtdlpResources:
                         task = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
                         if task is None:
                             return original.run(*args, **kwargs)
-                        return _cancellable_popen_type(*task, base=original).run(*args, **kwargs)
+                        return _cancellable_popen_type(*task[:2], base=original).run(*args, **kwargs)
+
+                class TaskExternalPopen(original_external):
+                    def __new__(cls, args, *remaining, **kwargs):
+                        task = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
+                        if task and task[2] is not None and is_section_ffmpeg(args):
+                            observed = observed_section_popen(original_external, task[2], task[0], task[1])
+                            return observed(args, *remaining, **kwargs)
+                        return super().__new__(cls)
 
                 def fragment_download(downloader, fragment_context, *args, **kwargs):
                     task = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
@@ -124,7 +138,9 @@ class _InterruptibleYtdlpResources:
 
                 _YTDLP_ORIGINAL_POPEN = original
                 _YTDLP_ORIGINAL_FRAGMENT = original_fragment
+                _YTDLP_ORIGINAL_EXTERNAL_POPEN = original_external
                 ytdlp_ffmpeg.Popen = TaskPopen
+                ytdlp_external.Popen = TaskExternalPopen
                 FragmentFD.download_and_append_fragments = fragment_download
             _YTDLP_PATCH_USERS += 1
             self.previous = getattr(_YTDLP_TASK_CONTEXT, 'task', None)
@@ -138,6 +154,7 @@ class _InterruptibleYtdlpResources:
             _YTDLP_PATCH_USERS -= 1
             if _YTDLP_PATCH_USERS == 0:
                 ytdlp_ffmpeg.Popen = _YTDLP_ORIGINAL_POPEN
+                ytdlp_external.Popen = _YTDLP_ORIGINAL_EXTERNAL_POPEN
                 FragmentFD.download_and_append_fragments = _YTDLP_ORIGINAL_FRAGMENT
         return False
 
@@ -145,8 +162,9 @@ class _InterruptibleYtdlpResources:
 def _interruptible_ytdlp_resources(
     cancel_event: threading.Event,
     context: ErrorContext,
+    section=None,
 ) -> _InterruptibleYtdlpResources:
-    return _InterruptibleYtdlpResources(cancel_event, context)
+    return _InterruptibleYtdlpResources(cancel_event, context, section)
 
 
 class _DownloadLogger:
@@ -173,16 +191,18 @@ class _DownloadLogger:
 
 def _download_error(message: str) -> tuple[str, str]:
     from yt_downloader.services.media_errors import classify_metadata_error
+    lowered = message.lower()
+    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*429\b", lowered) or 'too many requests' in lowered:
+        return 'rate_limited', '请求过于频繁，请稍后再试。'
+    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*403\b", lowered) or 'forbidden' in lowered:
+        return 'forbidden', '网站拒绝了下载请求，可能与登录权限、访问限制或临时站点策略有关。请稍后重试。'
+    if 'ffmpeg' in lowered and re.search(r'connection (?:to|attempt)[^\n]*failed|unable to connect|connection timed out', lowered):
+        return 'FFMPEG_NETWORK_ERROR', 'FFmpeg 无法连接视频媒体服务器。片段下载需要 FFmpeg 直接访问媒体地址，请检查网络或代理后重试。'
     category, user_message = classify_metadata_error(Exception(message))
     if category != 'TEMPORARY_EXTRACTOR_ERROR':
         return category, user_message
-    lowered = message.lower()
     if "no space" in lowered or "disk full" in lowered:
         return "disk_full", "磁盘空间不足，无法完成下载。"
-    if "429" in lowered or "too many requests" in lowered:
-        return "rate_limited", "请求过于频繁，请稍后再试。"
-    if "403" in lowered or "forbidden" in lowered:
-        return "forbidden", "网站拒绝了下载请求，可能与登录权限、访问限制或临时站点策略有关。请稍后重试。"
     if "ffmpeg" in lowered:
         return "ffmpeg_failed", "FFmpeg 处理视频失败。"
     if "requested format" in lowered:
@@ -316,6 +336,7 @@ class DownloadService:
         last_emit_at = float("-inf")
         last_status: TaskStatus | None = None
         aggregate_progress = AggregateProgressTracker(request.format)
+        section = None
         smoothed_speed: float | None = None
         last_speed_at: float | None = None
 
@@ -329,6 +350,12 @@ class DownloadService:
             nonlocal last_emit_at, last_status, smoothed_speed, last_speed_at
             now = self.clock()
             data = data or {}
+            if section is not None and section.latest is not None and status in {TaskStatus.MERGING, TaskStatus.POST_PROCESSING}:
+                if force and status == last_status:
+                    return
+                progress_callback(replace(section.latest, status=status, percent=100.0, speed=None, eta=None))
+                last_emit_at, last_status = now, status
+                return
             snapshot = aggregate_progress.update(data, finished=finished_component)
             if force and status == last_status:
                 return
@@ -387,6 +414,11 @@ class DownloadService:
                 )
                 emit(stage, data)
             elif status == "finished":
+                if section is not None and section.latest is not None:
+                    section.finished(data)
+                    # Native FFmpegFD has already muxed the selected inputs.
+                    emit(TaskStatus.POST_PROCESSING, force=True)
+                    return
                 format_id = str((data.get("info_dict") or {}).get("format_id") or "")
                 if request.format.audio_format_id and format_id == request.format.video_format_id:
                     emit(TaskStatus.DOWNLOADING_AUDIO, data, force=True, finished_component=True)
@@ -442,8 +474,17 @@ class DownloadService:
                 options.update(cookie_options(request.cookie_profile))
             except ValueError as error:
                 raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
-            with _interruptible_ytdlp_resources(cancel_event, context):
+            def section_progress(progress):
+                nonlocal last_emit_at, last_status
+                progress_callback(progress)
+                last_emit_at, last_status = self.clock(), progress.status
+
+            section = SectionDownloadProgressAdapter(request, section_progress, log=ydl_logger.warning,
+                                                     clock=self.clock) if request.clip_enabled else None
+            with _interruptible_ytdlp_resources(cancel_event, context, section):
                 with self.ydl_factory(options) as ydl:
+                    if section is not None:
+                        section.proxies = getattr(ydl, 'proxies', None)
                     exit_code = ydl.download([request.video.url])
             if getattr(cancel_event, 'is_paused', lambda: False)() and not getattr(cancel_event, 'is_cancelled', lambda: False)():
                 raise OperationPaused(context)
@@ -531,7 +572,8 @@ class DownloadService:
                 cleanup_report = artifacts.cleanup()
                 raise OperationCancelled(context, cleanup_report) from None
             technical = redact_sensitive(str(exc))
-            code, user_message = _download_error(technical)
+            ffmpeg_stderr = '\n'.join(line for line in ydl_logger.lines if line.startswith('FFmpeg:'))
+            code, user_message = _download_error(technical + '\n' + ffmpeg_stderr)
             raise AppError(
                 code,
                 user_message,
