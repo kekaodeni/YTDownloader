@@ -17,6 +17,30 @@ def prepare(window, tmp_path, qapp):
     return page
 
 
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+@pytest.mark.parametrize('managing', [False, True])
+def test_history_click_and_keyboard_selection_have_no_short_focus_strip(quick_window, tmp_path, qapp, mode, managing):
+    page = prepare(quick_window, tmp_path, qapp)
+    quick_window.theme.set_mode(mode)
+    page.manage(managing)
+    row = find_item(quick_window, 'history-first')
+    click_item(quick_window, row)
+    run_frames(qapp, 180)
+    assert page.state['checkedCount'] == int(managing)
+    assert QQmlProperty.read(row, 'border.width') == 1
+    for keyboard in (False, True):
+        if keyboard:
+            find_item(quick_window, 'historyList').forceActiveFocus()
+            QTest.keyClick(quick_window.root, Qt.Key_Down)
+            run_frames(qapp, 160)
+        for record in ('first', 'second'):
+            candidate = find_item(quick_window, 'history-' + record)
+            strips = [child for child in candidate.childItems()
+                      if child.isVisible() and 10 <= child.width() <= 32
+                      and 1 <= child.height() <= 3 and child.y() >= candidate.height()-10]
+            assert not strips
+
+
 def click_center(window, item, qapp):
     point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
     QTest.mouseClick(window.root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)

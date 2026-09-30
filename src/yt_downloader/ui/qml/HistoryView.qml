@@ -156,13 +156,6 @@ Item {
                 // Selection persists while menus/dialogs own keyboard focus.
                 border.width: rowSelected ? 1 : 0
                 border.color: theme.state.accent
-                Rectangle {
-                    objectName: "historyFocus-" + item.id
-                    visible: list.activeFocus && item.id === history.state.selectedId
-                    anchors.left: parent.left; anchors.leftMargin: 12
-                    anchors.bottom: parent.bottom; anchors.bottomMargin: 4
-                    width: 24; height: 2; radius: 1; color: theme.state.accent
-                }
                 Accessible.role: Accessible.ListItem
                 Accessible.name: item.title + "，" + i18n.messages[item.statusKey]
                 HoverHandler {
