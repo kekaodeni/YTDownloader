@@ -48,7 +48,7 @@ ApplicationWindow {
                 Rectangle {
                     width: parent.width; height: 44; radius: 9; color: theme.state.selection
                     y: shell.state.page * 49
-                    Behavior on y { SmoothedAnimation { duration: shell.state.reduceMotion ? 0 : 220; velocity: -1 } }
+                    Behavior on y { SmoothedAnimation { duration: motion.reduced ? 0 : motion.page; velocity: -1 } }
                     Rectangle { x: 0; anchors.verticalCenter: parent.verticalCenter; width: 3; height: 18; radius: 2; color: theme.state.accent }
                 }
                 Column {

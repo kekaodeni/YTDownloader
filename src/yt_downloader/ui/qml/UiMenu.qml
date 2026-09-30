@@ -45,11 +45,6 @@ Menu {
         boundsBehavior: Flickable.StopAtBounds
         ScrollIndicator.vertical: ScrollIndicator { }
     }
-    enter: Transition {
-        ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: shell.state.reduceMotion ? 0 : 180; easing.type: Easing.OutCubic }
-            NumberAnimation { property: "scale"; from: 0.98; to: 1; duration: shell.state.reduceMotion ? 0 : 180; easing.type: Easing.OutCubic }
-        }
-    }
-    exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: shell.state.reduceMotion ? 0 : 140 } }
+    enter: UiPopupEnter { duration: motion.micro }
+    exit: UiPopupExit { duration: motion.micro }
 }

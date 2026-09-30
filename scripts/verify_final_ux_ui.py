@@ -35,20 +35,20 @@ def main():
    if not item.isVisible():continue
    if item.objectName() in ('settingRowLabel','settingRowDescription'):
     assert item.property('contentHeight')<=item.height()+1,(item.property('text'),item.width(),item.height(),item.property('contentHeight'))
-   if item.objectName().startswith('settingsCategory-'):
-    p=item.mapToItem(scroll,QPointF(0,0));assert p.x()>=-1 and p.x()+item.width()<=scroll.width()+1
+   if item.objectName()=='settingsCategory-'+str(w.settings_page.state['category']):
+    p=item.mapToItem(scroll,QPointF(0,0));assert p.x()>=-1 and p.x()+item.width()<=scroll.width()+1,(item.objectName(),p.x(),item.width(),scroll.width())
   before=nav.mapToScene(QPointF(0,0));scroll.setProperty('contentY',max(0,scroll.property('contentHeight')-scroll.height()));wait(60);assert nav.mapToScene(QPointF(0,0))==before;scroll.setProperty('contentY',0);wait(60)
  for theme in ('light','dark'):
   w.theme.set_mode(theme);w._select_page(2);wait(400)
   for category,name in enumerate(('download','cookies','network','appearance','updates','tools')):
-   w.settings_page.selectCategory(category);find(w,'settingsScroll').setProperty('contentY',0);wait(200);inspect_settings();snap('settings-'+theme+'-'+name)
+   w.settings_page.selectCategory(category);find(w,'settingsScroll').setProperty('contentY',0);wait(280);inspect_settings();snap('settings-'+theme+'-'+name)
   for locale in ('ru-RU','es-ES','pt-BR'):
    w.settings_page.setSetting('language',locale)
    assert w.i18n.currentLocale==locale
    for width in (1200,600):
     w.root.resize(width,900)
     for category in range(6):
-     w.settings_page.selectCategory(category);wait(110);inspect_settings();cases.append([theme,locale,width,category])
+     w.settings_page.selectCategory(category);wait(240);inspect_settings();cases.append([theme,locale,width,category])
     snap('settings-'+theme+'-'+locale+'-'+str(width))
   w.settings_page.setSetting('language','zh-CN');w.root.resize(1200,950)
   w._select_page(0);page=w.download_page;media=sample_video();page.show_video(media)

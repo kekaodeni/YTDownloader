@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtQuick import QQuickWindow
 
@@ -60,6 +60,7 @@ class MainWindow(ViewState):
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
                                                ffmpeg_description=ffmpeg_description, translator=self.i18n, parent=self)
         self.settings_page.language_changed.connect(self.i18n.setLanguage)
+        self.settings_page.changed.connect(self._sync_motion)
         self.cookies.editor_requested.connect(self._open_cookie_editor)
         self.cookies.profiles_changed.connect(self._sync_cookie_state)
         self.download_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
@@ -78,6 +79,12 @@ class MainWindow(ViewState):
                             ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies), ('i18n', self.i18n)):
             context.setContextProperty(name, value)
         context.setContextProperty('assetsBase', QUrl.fromLocalFile(str(resource_path('assets')) + '/'))
+        motion_component = QQmlComponent(self.engine, QUrl.fromLocalFile(str(Path(__file__).parent / 'qml' / 'MotionTokens.qml')))
+        self.motion = motion_component.create(context)
+        if self.motion is None:
+            raise RuntimeError('\n'.join(error.toString() for error in motion_component.errors()))
+        self.motion.setParent(self.engine)
+        context.setContextProperty('motion', self.motion)
         self.engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / 'qml' / 'Main.qml')))
         if not self.engine.rootObjects():
             raise RuntimeError('无法加载界面：' + '\n'.join(self.qml_warnings))
@@ -90,6 +97,10 @@ class MainWindow(ViewState):
 
     def _sync_cookie_state(self, _value=None):
         self.download_page.set_cookie_state(self.cookies.profiles)
+
+    @Slot()
+    def _sync_motion(self):
+        self.set_reduce_motion(self.settings_page.state['reduce_motion'])
 
     def _open_cookie_editor(self, profile):
         def save(values, session):

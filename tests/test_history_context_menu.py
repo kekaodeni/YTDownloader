@@ -1,5 +1,6 @@
 from dataclasses import replace
 from PySide6.QtCore import Qt, QPointF, QObject
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 import pytest
 from yt_downloader.core.models import TaskStatus
@@ -48,14 +49,23 @@ def test_management_row_hover_shows_select_cursor_and_preserves_selected_backgro
     point = row.mapToScene(QPointF(row.width() - 4, row.height() / 2)).toPoint()
 
     QTest.mouseMove(quick_window.root,QPointF(0,0).toPoint())
-    run_frames(qapp,60)
+    run_frames(qapp,180)
     QTest.mouseMove(quick_window.root,point)
-    run_frames(qapp,60)
+    run_frames(qapp,40)
+    midpoint = row.property('color')
+    normal = QColor(quick_window.theme.state['canvas'])
+    hovered = QColor(quick_window.theme.state['subtle'])
+    assert midpoint.alpha() == 255
+    for channel in ('red', 'green', 'blue'):
+        value = getattr(midpoint, channel)()
+        endpoints = [getattr(normal, channel)(), getattr(hovered, channel)()]
+        assert min(endpoints) <= value <= max(endpoints)
+    run_frames(qapp,180)  # Wait for the shared 120 ms hover color transition.
     assert row.property('rowCursorShape') == Qt.PointingHandCursor.value
     assert row.property('color').name().lower() == quick_window.theme.state['subtle'].lower()
 
     QTest.mouseClick(quick_window.root,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier,point)
-    run_frames(qapp,60)
+    run_frames(qapp,180)
     assert page.state['checkedCount'] == 1
     assert row.property('color').name().lower() == quick_window.theme.state['selection'].lower()
 

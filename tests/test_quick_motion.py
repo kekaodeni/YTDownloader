@@ -30,7 +30,12 @@ def test_navigation_mouse_and_space_immediately_change_page(quick_window,qapp):
 
 def test_reduced_motion_finishes_navigation_without_decoration(quick_window,qapp):
     quick_window.set_reduce_motion(True);quick_window._select_page(3)
+    assert quick_window.motion.property('pageOffset') == 0
+    assert quick_window.motion.property('movement') == 0
     run_frames(qapp,30)
+    assert find_item(quick_window,'pageHost-3').isEnabled()
+    assert not find_item(quick_window,'pageHost-0').isEnabled()
+    run_frames(qapp,100)  # Reduced motion retains only the shared 80 ms fade.
     assert find_item(quick_window,'pageHost-3').opacity()==1
     assert find_item(quick_window,'pageHost-0').opacity()==0
 

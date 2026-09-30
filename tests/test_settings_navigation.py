@@ -45,7 +45,7 @@ def test_settings_categories_preserve_navigation_and_wrap_rows(quick_window, qap
     position = nav.mapToScene(QPointF())
     for category in range(6):
         quick_window.settings_page.selectCategory(category)
-        run_frames(qapp, 100)
+        run_frames(qapp, 240)
         for index in range(6):
             assert find_item(quick_window, f'settingsCategory-{index}').isVisible() == (index == category)
         scroll = find_item(quick_window, 'settingsScroll')

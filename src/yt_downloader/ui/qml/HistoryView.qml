@@ -53,6 +53,7 @@ Item {
                         color: !selectAllCheck.enabled ? theme.state.subtle
                             : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent
                             : selectAllCheck.hovered ? theme.state.subtle : theme.state.surface
+                        Behavior on color { ColorAnimation { duration: motion.micro } }
                         border.width: selectAllCheck.visualFocus ? 2 : 1
                         border.color: selectAllCheck.visualFocus ? theme.state.accent
                             : selectAllCheck.checkState !== Qt.Unchecked ? theme.state.accent : theme.state.stroke
@@ -148,7 +149,10 @@ Item {
                 width: list.width - 10; height: row.implicitHeight + 24; radius: 10
                 property bool rowSelected: history.state.managing ? item.checked : item.id === history.state.selectedId
                 property int rowCursorShape: hover.cursorShape
-                color: rowSelected ? theme.state.selection : hover.hovered ? theme.state.subtle : "transparent"
+                // Interpolate opaque theme colors; transparent black darkens
+                // the midpoint of an otherwise subtle hover transition.
+                color: rowSelected ? theme.state.selection : hover.hovered ? theme.state.subtle : theme.state.canvas
+                Behavior on color { ColorAnimation { duration: motion.micro } }
                 border.width: rowSelected && list.activeFocus ? 1 : 0
                 border.color: theme.state.accent
                 Accessible.role: Accessible.ListItem
@@ -194,6 +198,7 @@ Item {
                             y: (selectCheck.height - height) / 2
                             width: 18; height: 18; radius: 5
                             color: !selectCheck.enabled ? theme.state.subtle : selectCheck.checked ? theme.state.accent : selectCheck.hovered ? theme.state.subtle : theme.state.surface
+                            Behavior on color { ColorAnimation { duration: motion.micro } }
                             border.width: selectCheck.visualFocus ? 2 : 1
                             border.color: selectCheck.visualFocus ? theme.state.accent : selectCheck.checked ? theme.state.accent : theme.state.stroke
                             Text {

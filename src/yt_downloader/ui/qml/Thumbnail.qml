@@ -13,7 +13,6 @@ Rectangle {
     radius: 10
     clip: true
     onSourceChanged: {
-        blend.stop()
         if (incoming.status === Image.Ready && incoming.opacity > 0.5) current = incoming.source
         incoming.opacity = 0
         incoming.source = source
@@ -29,12 +28,6 @@ Rectangle {
         asynchronous: true
         cache: true
         sourceSize.width: 720; sourceSize.height: 720
-        onStatusChanged: if (status === Image.Ready) blend.restart()
-    }
-    NumberAnimation {
-        id: blend; target: incoming; property: "opacity"; to: 1
-        duration: shell.state.reduceMotion ? 0 : 180
-        easing.type: Easing.OutCubic
-        onFinished: root.current = incoming.source
+        onStatusChanged: if (status === Image.Ready) { opacity = 1; root.current = source }
     }
 }

@@ -24,7 +24,7 @@ Dialog {
         implicitHeight: 66
         UiText { anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 24; anchors.verticalCenter: parent.verticalCenter; text: popup.s.title; role: "SectionTitle"; elide: Text.ElideRight }
     }
-    Overlay.modal: Rectangle { color: "#550C1524" }
+    Overlay.modal: UiDimmer { }
     onOpened: { cancelAction.forceActiveFocus() }
     onClosed: if (restoreFocus) restoreFocus.forceActiveFocus()
     Component.onCompleted: if (s.open) open()
@@ -39,8 +39,8 @@ Dialog {
         }
         function onFocusRequested() { popup.open(); cancelAction.forceActiveFocus() }
     }
-    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: shell.state.reduceMotion ? 0 : 180; easing.type: Easing.OutCubic } }
-    exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: shell.state.reduceMotion ? 0 : 140 } }
+    enter: UiPopupEnter { duration: motion.standard }
+    exit: UiPopupExit { }
     contentItem: ScrollView {
         id: viewport
         implicitHeight: body.implicitHeight

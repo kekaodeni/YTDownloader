@@ -21,6 +21,6 @@ TextField {
         color: control.enabled ? theme.state.surface : theme.state.subtle
         border.color: control.activeFocus ? theme.state.accent : control.hovered ? theme.state.muted : theme.state.stroke
         border.width: control.activeFocus ? 2 : 1
-        Behavior on border.color { ColorAnimation { duration: shell.state.reduceMotion ? 0 : 100 } }
+        Behavior on border.color { ColorAnimation { duration: motion.micro } }
     }
 }

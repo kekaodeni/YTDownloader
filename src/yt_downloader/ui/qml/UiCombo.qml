@@ -26,6 +26,7 @@ ComboBox {
         radius: 8; color: control.enabled ? theme.state.surface : theme.state.subtle
         border.color: control.visualFocus ? theme.state.accent : theme.state.stroke
         border.width: control.visualFocus ? 2 : 1
+        Behavior on border.color { ColorAnimation { duration: motion.micro } }
     }
     delegate: ItemDelegate {
         width: control.width - 12; height: 38
@@ -34,6 +35,7 @@ ComboBox {
         background: Rectangle { radius: 6; color: parent.highlighted ? theme.state.selection : parent.hovered ? theme.state.subtle : "transparent" }
     }
     popup: Popup {
+        objectName: "popup-" + control.objectName
         y: control.height + 5
         width: control.width
         padding: 6
@@ -46,7 +48,7 @@ ComboBox {
             currentIndex: control.highlightedIndex
             ScrollIndicator.vertical: ScrollIndicator { }
         }
-        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: shell.state.reduceMotion ? 0 : 180; easing.type: Easing.OutCubic } }
-        exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: shell.state.reduceMotion ? 0 : 140 } }
+        enter: UiPopupEnter { }
+        exit: UiPopupExit { }
     }
 }

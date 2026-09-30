@@ -5,7 +5,7 @@ Item {
     required property var view
     property int lastDirection: 0
     property int eventCount: 0
-    SmoothedAnimation { id: animation; target: root.view; property: "contentY"; duration: 160; velocity: -1 }
+    SmoothedAnimation { id: animation; target: root.view; property: "contentY"; duration: motion.geometry; velocity: -1 }
     function limit(value) {
         const origin = root.view.originY || 0
         return Math.max(origin, Math.min(origin + Math.max(0, root.view.contentHeight - root.view.height), value))
@@ -18,7 +18,7 @@ Item {
             root.eventCount++
             if (!event.pixelDelta.y && !event.angleDelta.y) { event.accepted = false; return }
             root.view.cancelFlick()
-            if (event.pixelDelta.y !== 0 || shell.state.reduceMotion) {
+            if (event.pixelDelta.y !== 0 || motion.reduced) {
                 animation.stop()
                 root.view.contentY = root.limit(root.view.contentY - (event.pixelDelta.y || event.angleDelta.y / 120 * 64))
                 root.lastDirection = 0
@@ -36,5 +36,5 @@ Item {
     }
     function stop() { animation.stop(); root.lastDirection = 0 }
     Connections { target: root.view; function onDraggingChanged() { if (root.view.dragging) root.stop() } }
-    Connections { target: shell; function onChanged() { if (shell.state.reduceMotion) root.stop() } }
+    Connections { target: shell; function onChanged() { if (motion.reduced) root.stop() } }
 }

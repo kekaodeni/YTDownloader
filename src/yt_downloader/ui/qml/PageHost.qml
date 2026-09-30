@@ -8,8 +8,8 @@ Item {
     z: current ? 1 : 0
     Rectangle { anchors.fill: parent; color: theme.state.canvas; z: -1 }
     transform: Translate {
-        y: root.current || shell.state.reduceMotion ? 0 : 8
-        Behavior on y { SmoothedAnimation { duration: shell.state.reduceMotion ? 0 : 220; velocity: -1 } }
+        y: root.current ? 0 : motion.pageOffset
+        Behavior on y { SmoothedAnimation { duration: motion.reduced ? 0 : motion.page; velocity: -1 } }
     }
-    Behavior on opacity { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 220; easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: motion.page; easing.type: motion.easing } }
 }

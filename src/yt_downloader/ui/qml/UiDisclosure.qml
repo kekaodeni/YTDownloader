@@ -26,7 +26,7 @@ Button {
              : theme.state.surface
         border.width: control.visualFocus ? 2 : 1
         border.color: control.visualFocus ? theme.state.accent : theme.state.stroke
-        Behavior on color { ColorAnimation { duration: shell.state.reduceMotion ? 0 : 100 } }
+        Behavior on color { ColorAnimation { duration: motion.micro } }
     }
 
     contentItem: RowLayout {
@@ -53,7 +53,7 @@ Button {
             Layout.preferredWidth: 14
             Layout.preferredHeight: 14
             rotation: control.expanded ? 0 : -90
-            Behavior on rotation { NumberAnimation { duration: shell.state.reduceMotion ? 0 : 130 } }
+            Behavior on rotation { NumberAnimation { duration: motion.reduced ? 0 : motion.fast } }
         }
     }
 }

@@ -15,12 +15,12 @@ Switch {
         color: control.checked ? theme.state.accent : theme.state.stroke
         border.width: control.visualFocus ? 2 : 0
         border.color: theme.state.text
-        Behavior on color { ColorAnimation { duration: shell.state.reduceMotion ? 0 : 120 } }
+        Behavior on color { ColorAnimation { duration: motion.fast } }
         Rectangle {
             width: 16; height: 16; radius: 8; y: 4
             x: control.checked ? 22 : 4
             color: control.checked ? theme.state.onAccent : theme.state.surface
-            Behavior on x { SmoothedAnimation { duration: shell.state.reduceMotion ? 0 : 140; velocity: -1 } }
+            Behavior on x { SmoothedAnimation { duration: motion.reduced ? 0 : motion.fast; velocity: -1 } }
         }
     }
     contentItem: UiText { text: control.text; leftPadding: 54; color: control.enabled ? theme.state.text : theme.state.disabled }
