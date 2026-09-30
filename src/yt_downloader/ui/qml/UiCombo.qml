@@ -12,6 +12,12 @@ ComboBox {
     font.weight: theme.fontWeight("Body")
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
+    Keys.onPressed: function(event) {
+        if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
+            Qt.callLater(function() { if (control.popup.visible) options.positionViewAtIndex(control.highlightedIndex, ListView.Contain) })
+        }
+        event.accepted = false
+    }
     contentItem: UiText {
         text: control.displayText
         color: control.enabled ? theme.state.text : theme.state.disabled
@@ -29,10 +35,16 @@ ComboBox {
         Behavior on border.color { ColorAnimation { duration: motion.micro } }
     }
     delegate: ItemDelegate {
+        // Native ComboBox connects AbstractButton.hoveredChanged to a
+        // positionViewAtIndex call. Keep pointer feedback separate so a
+        // partially visible row cannot scroll the popup just by hovering.
+        hoverEnabled: false
+        HoverHandler { id: optionHover }
+        objectName: control.objectName + "-option-" + index
         width: control.width - 12; height: 38
         highlighted: control.highlightedIndex === index
         contentItem: UiText { text: modelData; elide: Text.ElideRight }
-        background: Rectangle { radius: 6; color: parent.highlighted ? theme.state.selection : parent.hovered ? theme.state.subtle : "transparent" }
+        background: Rectangle { radius: 6; color: parent.highlighted ? theme.state.selection : optionHover.hovered ? theme.state.subtle : "transparent" }
     }
     popup: Popup {
         objectName: "popup-" + control.objectName
@@ -42,10 +54,13 @@ ComboBox {
         implicitHeight: Math.min(contentItem.implicitHeight + 12, 280)
         background: Rectangle { color: theme.state.elevated; radius: 10; border.color: theme.state.stroke }
         contentItem: ListView {
+            id: options
+            objectName: "options-" + control.objectName
             clip: true
             implicitHeight: contentHeight
             model: control.popup.visible ? control.delegateModel : null
-            currentIndex: control.highlightedIndex
+            // Hover is a visual state, not a request to scroll the viewport.
+            currentIndex: control.currentIndex
             ScrollIndicator.vertical: ScrollIndicator { }
         }
         enter: UiPopupEnter { }

@@ -177,7 +177,7 @@ Item {
                             ColumnLayout { objectName: "settingsCategory-0"; Layout.fillWidth: true; spacing: 22
                                 SettingCard { Layout.fillWidth: true
                                     SettingRow { objectName: "languageField"; Layout.fillWidth: true; label: i18n.messages["settings.language"]; separator: true
-                                        UiCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"]; model: i18n.languages.map(function(language) { return language.name }); currentIndex: Math.max(0, i18n.languages.findIndex(function(language) { return language.locale === settings.state.language })); onActivated: settings.setSetting("language", i18n.languages[currentIndex].locale) }
+                                        UiLanguageCombo { objectName: "languageCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.language"] }
                                     }
                                     SettingRow { Layout.fillWidth: true; label: i18n.messages["settings.theme"]; separator: true
                                         UiCombo { objectName: "themeCombo"; Layout.fillWidth: true; accessibleName: i18n.messages["settings.theme"]; model: [i18n.messages["settings.theme_system"], i18n.messages["settings.theme_light"], i18n.messages["settings.theme_dark"]]; property var values: ["system", "light", "dark"]; currentIndex: Math.max(0, values.indexOf(settings.state.theme)); onActivated: settings.setSetting("theme", values[currentIndex]) }
