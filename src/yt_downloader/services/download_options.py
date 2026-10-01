@@ -106,6 +106,7 @@ def media_options(request):
             result['external_downloader_args'] = {'ffmpeg_o': ['-ss', '0']}
     if request.embed_thumbnail:
         result['embedthumbnail'] = True
+        result['writethumbnail'] = True
     if request.embed_metadata:
         result['addmetadata'] = True
     # Explicit false prevents yt-dlp from implicitly enabling chapters when
@@ -115,6 +116,25 @@ def media_options(request):
         result['addchapters'] = bool(request.embed_chapters or request.sponsorblock_mark)
     if request.remux_container:
         result['remuxvideo'] = str(request.remux_container).lower()
+        result.setdefault('postprocessors', []).append({
+            'key': 'FFmpegVideoRemuxer', 'preferedformat': result['remuxvideo'],
+        })
+    if request.embed_metadata or request.embed_chapters:
+        # YoutubeDL's Python API does not expand the CLI addmetadata/addchapters
+        # flags into processors. Register the native processor explicitly, after
+        # audio conversion/remux so it writes to the actual final container.
+        result.setdefault('postprocessors', []).append({
+            'key': 'FFmpegMetadata',
+            'add_metadata': bool(request.embed_metadata),
+            'add_chapters': bool(request.embed_chapters),
+            'add_infojson': False,
+        })
+    if request.embed_thumbnail:
+        # Match CLI embedding semantics: download the native selected thumbnail,
+        # embed after the final remux/metadata, then remove the temporary image.
+        result.setdefault('postprocessors', []).append({
+            'key': 'EmbedThumbnail', 'already_have_thumbnail': False,
+        })
     if request.sponsorblock_mark:
         result['sponsorblock_mark'] = {'sponsor'}
     return result

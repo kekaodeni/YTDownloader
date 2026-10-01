@@ -251,6 +251,7 @@ class ResolvedMedia:
     collection_quality_formats: tuple[FormatOption, ...] = ()
     collection_quality_mode: CollectionQualityMode | str = ''
     cookie_used: bool = False
+    chapters: tuple[MediaChapter, ...] = ()
 
     @property
     def is_collection(self) -> bool:
@@ -267,6 +268,13 @@ class ResolvedMedia:
         """Cross-extractor identity safe for matching and local file names."""
         identity = '\0'.join((self.extractor, self.webpage_url or self.url, self.video_id))
         return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class MediaChapter:
+    start_time: float
+    end_time: float | None
+    title: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,6 +327,7 @@ class PlaylistEntry:
     embedded: bool = False
     selected_format: FormatOption | None = None
     quality_target: str = 'recommended'
+    chapters: tuple[MediaChapter, ...] = ()
 
     @property
     def entry_kind(self) -> str:
@@ -382,6 +391,7 @@ class DownloadRequest:
     embed_chapters: bool = False
     remux_container: str = ''
     sponsorblock_mark: bool = False
+    metadata_language: str = ''
 
 
 @dataclass(frozen=True, slots=True)

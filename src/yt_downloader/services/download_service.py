@@ -287,7 +287,8 @@ class DownloadService:
             from yt_downloader.services.media_resolver import MediaResolver
             progress_callback(DownloadProgress(request.task_id, TaskStatus.FETCHING_METADATA))
             media = MediaResolver(deno_path=self.deno_path, require_deno=self.require_tools,
-                                  network_policy=self.network_policy, cookie_profile=request.cookie_profile).fetch_metadata(
+                                  network_policy=self.network_policy, cookie_profile=request.cookie_profile,
+                                  metadata_language=request.metadata_language).fetch_metadata(
                                       request.video.url, cancel_event, include_thumbnail=False)
             options = media.audio_formats if request.media_mode == 'audio_only' else media.video_only_formats if request.media_mode == 'video_only' else media.formats
             if media.media_type == 'playlist' or not options:
@@ -465,6 +466,11 @@ class DownloadService:
             "final_path": str(final_path),
         }
         options.update(media_options(request))
+        from yt_downloader.services.metadata_language import youtube_metadata_options
+        options.update(youtube_metadata_options(request.metadata_language))
+        if request.embed_thumbnail:
+            # Download only the child video's image, not a playlist parent cover.
+            options['outtmpl']['pl_thumbnail'] = ''
         if request.playlist_item_index is not None:
             options['noplaylist'] = False
         if self.network_policy:

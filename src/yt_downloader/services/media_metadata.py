@@ -3,7 +3,7 @@ import math
 from collections.abc import Mapping
 
 from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
-from yt_downloader.core.models import (Collection, CollectionQualityMode, PlaylistEntry,
+from yt_downloader.core.models import (Collection, CollectionQualityMode, MediaChapter, PlaylistEntry,
                                        PlaylistMetadata, ResolvedMedia, SubtitleTrack)
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
@@ -30,6 +30,21 @@ def _tracks(value, is_auto=False):
     return tuple(SubtitleTrack(str(language), str(item.get('ext') or ''), url, str(item.get('name') or ''), is_auto)
                  for language, items in value.items() if isinstance(items, list)
                  for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
+
+
+def _chapters(value):
+    """Keep semantic chapters in task/IPC snapshots, without extractor payloads."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    chapters = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        start, end = _number(item.get('start_time')), _number(item.get('end_time'))
+        if start is None or (item.get('end_time') is not None and (end is None or end <= start)):
+            continue
+        chapters.append(MediaChapter(start, end, str(item.get('title') or '')))
+    return tuple(chapters)
 
 
 def resolve_metadata(info, original_url, *, requested_url=None, detected_formats=None, cookie_used=False):
@@ -116,7 +131,8 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
                           str(item.get('ie_key') or item.get('extractor_key') or ''),
                           entry_duration, item_thumbnail or '',
                           not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'},
-                          entry_formats, entry_audio, entry_video_only, has_usable_embedded))
+                          entry_formats, entry_audio, entry_video_only, has_usable_embedded,
+                          chapters=_chapters(item.get('chapters'))))
     selectable_entries = [entry for entry in entries if not entry.unavailable]
     resolved_collection = bool(selectable_entries) and all(entry.formats for entry in selectable_entries)
     collection_quality_mode = (CollectionQualityMode.RESOLVED_COMMON_FORMATS if resolved_collection
@@ -152,4 +168,5 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
         collection_quality_formats=collection_quality_formats,
         collection_quality_mode=collection_quality_mode,
         cookie_used=bool(cookie_used),
+        chapters=_chapters(info.get('chapters')),
     )

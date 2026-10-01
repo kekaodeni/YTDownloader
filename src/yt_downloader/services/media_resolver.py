@@ -27,6 +27,7 @@ from yt_downloader.services.network_policy import NetworkPolicy
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.media_probe import needs_media_probe, probe_cache_key
+from yt_downloader.services.metadata_language import youtube_metadata_options
 
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ class MediaResolver:
         cookie_profile=None,
         cookie_enabled: bool = False,
         ffmpeg_service: FfmpegService | None = None,
+        metadata_language: str = '',
     ) -> None:
         self.ydl_factory = ydl_factory
         self.http_get = http_get
@@ -83,6 +85,7 @@ class MediaResolver:
         self.cookie_profile = cookie_profile
         self.cookie_enabled = bool(cookie_enabled)
         self.ffmpeg_service = ffmpeg_service
+        self.metadata_language = metadata_language
         self._media_probe_cache: dict[str, dict[str, Any]] = {}
 
     def fetch_metadata(
@@ -123,6 +126,7 @@ class MediaResolver:
             "remote_components": [],
         }
         parsed_url = urlsplit(normalized)
+        options.update(youtube_metadata_options(self.metadata_language))
         if parsed_url.hostname and parsed_url.hostname.casefold().endswith("bilibili.com") and "/video/" in parsed_url.path:
             # Bilibili replay video pages expose each segment's formats only in
             # yt-dlp's native playlist entries. Keep ordinary lists flat.

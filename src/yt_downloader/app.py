@@ -267,6 +267,11 @@ class AppController:
         self.updates.ready.connect(self._update_ready)
         self.updates.failed.connect(self._update_failed)
 
+    def _ui_metadata_language(self) -> str:
+        # Use the live UI locale, including the interval before settings autosave.
+        translator = getattr(self.window, 'i18n', None)
+        return getattr(translator, 'currentLocale', self.settings.language)
+
     def fetch_metadata(self, url: str) -> None:
         self._cancel_thumbnail()
         clear_cookie_error = getattr(getattr(self.window, 'cookies', None), 'update', None)
@@ -281,6 +286,7 @@ class AppController:
             cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
             cookie_enabled=bool(self.settings.use_cookies),
             ffprobe_path=str(getattr(getattr(self, 'ffmpeg', None), 'ffprobe_path', None) or ""),
+            metadata_language=self._ui_metadata_language(),
         ))
 
     def _save_cookie_profiles(self, profiles):
@@ -551,6 +557,7 @@ class AppController:
                                       embed_thumbnail=bool(state['embedThumbnail']),
                                       embed_metadata=bool(state['embedMetadata']),
                                       embed_chapters=bool(state['embedChapters']),
+                                      metadata_language=self._ui_metadata_language(),
                                       remux_container=state['remuxContainer'],
                                       sponsorblock_mark=bool(state['sponsorblockMark'] and str(video.extractor_key or '').casefold().startswith('youtube')),
                                       use_native_format=state['mediaMode'] == 'video_audio' and state['qualityAuto'])
@@ -623,7 +630,7 @@ class AppController:
                                     formats=entry.formats, audio_formats=entry.audio_formats,
                                     video_only_formats=entry.video_only_formats, entries=(), playlist=None,
                                     media_type='video', extractor_key=entry.extractor_key or media.extractor_key,
-                                    collection=None)
+                                    collection=None, chapters=entry.chapters)
                 else:
                     child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
                                           entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
@@ -636,6 +643,7 @@ class AppController:
                                           embed_thumbnail=bool(state['embedThumbnail']),
                                           embed_metadata=bool(state['embedMetadata']),
                                           embed_chapters=bool(state['embedChapters']),
+                                          metadata_language=self._ui_metadata_language(),
                                           remux_container=state['remuxContainer'],
                                           sponsorblock_mark=bool(state['sponsorblockMark'] and str(media.extractor_key or '').casefold().startswith('youtube')),
                                           subtitle_format=state['subtitleFormat'], cookie_profile=profile,

@@ -34,6 +34,7 @@ class MetadataProcessConfig:
     cookie_profile: CookieProfile | None = None
     cookie_enabled: bool = False
     ffprobe_path: str = ""
+    metadata_language: str = ''
 
 
 def metadata_process_self_test_entry(
@@ -95,6 +96,7 @@ def metadata_process_entry(
             network_policy=network,
             cookie_profile=config.cookie_profile,
             cookie_enabled=config.cookie_enabled,
+            metadata_language=config.metadata_language,
             ffmpeg_service=(FfmpegService(ffprobe_path=Path(config.ffprobe_path))
                             if config.ffprobe_path else None),
         )
