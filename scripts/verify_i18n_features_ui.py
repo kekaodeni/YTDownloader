@@ -130,19 +130,21 @@ def main():
     window.root.resize(800,700); window.theme.set_mode('light'); window._select_page(2)
     for locale in ('ru-RU','es-ES','pt-BR'):
         window.settings_page.setSetting('language',locale); wait()
-        for name in ('languageField','profileExplainer','defaultDirectory'):
-            item=find(window,name)
-            bounds=item.mapToItem(window.root.contentItem(),QPointF(0,0))
-            if item.width()<=0 or item.height()<=0 or bounds.x() < -1 or bounds.x()+item.width()>window.root.width()+1:
-                raise RuntimeError(f'Long localized Settings control is clipped: {locale}:{name}')
-        for item in window.root.findChildren(QObject):
-            value=item.property('text')
-            if isinstance(value,str) and '[missing:' in value:
-                raise RuntimeError(f'Missing localized QML text in {locale}: {value}')
-            visible = getattr(item, 'isVisible', None)
-            if (locale != 'zh-CN' and isinstance(value,str) and callable(visible) and visible()
-                    and any('\u3400' <= char <= '\u9fff' for char in value)):
-                raise RuntimeError(f'Mixed-language CJK UI text in {locale}: {value}')
+        for category,names in ((0,('languageField',)),(1,('defaultProfileRow','defaultDirectory'))):
+            window.settings_page.selectCategory(category); wait()
+            for name in names:
+                item=find(window,name)
+                bounds=item.mapToItem(window.root.contentItem(),QPointF(0,0))
+                if not item.isVisible() or item.width()<=0 or item.height()<=0 or bounds.x() < -1 or bounds.x()+item.width()>window.root.width()+1:
+                    raise RuntimeError(f'Long localized Settings control is clipped: {locale}:{name}')
+            for item in window.root.findChildren(QObject):
+                value=item.property('text')
+                if isinstance(value,str) and '[missing:' in value:
+                    raise RuntimeError(f'Missing localized QML text in {locale}: {value}')
+                visible = getattr(item, 'isVisible', None)
+                if (locale != 'zh-CN' and isinstance(value,str) and callable(visible) and visible()
+                        and any('\u3400' <= char <= '\u9fff' for char in value)):
+                    raise RuntimeError(f'Mixed-language CJK UI text in {locale}: {value}')
     report={'device_pixel_ratio':dpr,'screenshots':captures,'qml_warnings':list(window.qml_warnings)}
     (args.output/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     window.update(allowClose=True); window.close(); window.dispose(); app.processEvents()

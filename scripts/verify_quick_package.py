@@ -1,6 +1,5 @@
 """Check frozen entrypoints and previews using exclusively isolated app data."""
 import argparse
-from dataclasses import asdict
 import hashlib
 import json
 import os
@@ -9,6 +8,13 @@ import subprocess
 import uuid
 
 from yt_downloader.core.models import AppSettings
+from yt_downloader.services.settings_service import SettingsService
+
+
+def write_isolated_settings(data, videos):
+    data, videos = Path(data).resolve(), Path(videos).resolve()
+    SettingsService(data/'settings.json', default_download_directory=videos).save(
+        AppSettings(download_directory=str(videos), auto_check_updates=False))
 
 
 def verify_identity(exe, expected_version, expected_source_commit):
@@ -38,9 +44,7 @@ def main():
         exe_sha256 = hashlib.file_digest(handle, 'sha256').hexdigest()
     args.output.mkdir(parents=True,exist_ok=False)
     data=args.output/'app-data';data.mkdir(exist_ok=True)
-    settings=asdict(AppSettings(download_directory=str(args.output/'Videos'),auto_check_updates=False))
-    settings['codec_preference']=settings['codec_preference'].value
-    (data/'settings.json').write_text(json.dumps(settings),encoding='utf-8')
+    write_isolated_settings(data, args.output/'Videos')
     if args.history_media:
         from yt_downloader.services.history_service import HistoryRepository
         from yt_downloader.core.models import HistoryRecord, TaskStatus

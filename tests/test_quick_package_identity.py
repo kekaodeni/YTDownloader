@@ -34,3 +34,21 @@ def test_health_must_match_explicit_version_and_transaction(verifier):
     with pytest.raises(ValueError):
         verifier.verify_health(health, '0.4.2', 'another-transaction')
     verifier.verify_health(health, '0.4.2', 'acceptance-unique')
+
+
+@pytest.mark.parametrize('relative', [False, True])
+def test_frozen_verifier_writes_current_settings_schema(verifier, tmp_path, monkeypatch, relative):
+    from yt_downloader.core.models import AppSettings
+    from yt_downloader.services.settings_service import SettingsService
+
+    data, videos = tmp_path/'data', tmp_path/'Videos'
+    monkeypatch.chdir(tmp_path)
+    verifier.write_isolated_settings(Path('data') if relative else data,
+                                     Path('Videos') if relative else videos)
+    payload = json.loads((data/'settings.json').read_text('utf-8'))
+    assert payload['schema_version'] == AppSettings().schema_version
+    assert 'codec_preference' not in payload  # profile projection, not a persisted setting
+    restored = SettingsService(data/'settings.json', default_download_directory=videos).load()
+    assert restored.download_directory == str(videos)
+    assert restored.codec_preference == AppSettings().codec_preference
+    assert not restored.auto_check_updates

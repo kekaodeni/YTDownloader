@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QPointF
+from PySide6.QtCore import QObject, QPointF, QEventLoop, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -18,7 +18,10 @@ from yt_downloader.ui.quick_window import MainWindow
 CAPTURE = True
 
 def wait(ms=300):
-    QTest.qWait(ms)
+    # Qt Quick geometry/animation must settle in the same event loop as the app.
+    loop = QEventLoop()
+    QTimer.singleShot(ms, loop.quit)
+    loop.exec()
 
 
 def collection_fixtures():
@@ -59,7 +62,20 @@ def find_visual(window, name):
     return None
 
 
+def settle_viewport(window):
+    # Metadata acceptance schedules a scroll-to-top transaction. Finish its
+    # rendered layout before assigning the next test scroll position.
+    anchor = find_visual(window, 'viewportAnchor')
+    for _ in range(30):
+        window.grab()
+        wait(25)
+        if not anchor.property('pending') and not anchor.property('mutating'):
+            return
+    raise RuntimeError('Collection viewport did not finish positioning')
+
+
 def bring_item_into_view(window, name, *, y=260):
+    settle_viewport(window)
     item = find_visual(window, name)
     if item is None or not hasattr(item, "mapToScene"):
         raise RuntimeError(f"Cannot find visual item {name}")
@@ -103,6 +119,7 @@ def main():
             raise RuntimeError("Resolved collection did not display the ordinary quality label")
         window.scroll_download_to_top()
         wait(250)
+        settle_viewport(window)
         for control in ("modeCombo", "collectionQualityCombo", "directoryField", "collectionItems", "downloadButton"):
             target = find_visual(window, control)
             if target is None or not target.isVisible():
@@ -117,7 +134,12 @@ def main():
             button_bottom = download_button.mapToScene(
                 QPointF(download_button.width(), download_button.height())).y()
             if button_bottom > window.root.height() + 1:
-                raise RuntimeError("Collection primary button remains clipped after scrolling")
+                window.grab().save(str(args.output / 'collection-scroll-failure.png'))
+                raise RuntimeError(f"Collection primary button remains clipped after scrolling: "
+                                   f"buttonBottom={button_bottom}, windowHeight={window.root.height()}, "
+                                   f"viewHeight={task_list.height()}, contentY={task_list.property('contentY')}, "
+                                   f"originY={task_list.property('originY')}, contentHeight={task_list.property('contentHeight')}, "
+                                   f"pending={find_visual(window, 'viewportAnchor').property('pending')}")
         save(window, args.output / f"{theme}-bilibili-collection.png")
 
         window.download_page.show_video(youtube)
