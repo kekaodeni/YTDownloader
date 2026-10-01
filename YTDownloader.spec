@@ -23,6 +23,7 @@ if missing:
 datas = yt_datas + ejs_datas + curl_datas + [
     (str(root / "assets"), "assets"),
     (str(root / "src" / "yt_downloader" / "ui" / "qml"), "yt_downloader/ui/qml"),
+    (str(root / "src" / "yt_downloader" / "ui" / "translations.json"), "yt_downloader/ui"),
     (str(root / "licenses"), "third_party_licenses"),
     (str(root / "README.md"), "."),
     (str(root / "tools.lock.json"), "."),

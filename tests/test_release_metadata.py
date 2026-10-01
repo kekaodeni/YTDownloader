@@ -20,6 +20,19 @@ def test_package_and_runtime_versions_match() -> None:
     assert '$RelativePath.Replace("\\", "/")' in build_script
 
 
+def test_frozen_spec_includes_the_shared_translation_catalog() -> None:
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    spec = ast.parse((root / 'YTDownloader.spec').read_text(encoding='utf-8'))
+    datas = next(node.value for node in spec.body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == 'datas' for target in node.targets))
+    resource_literals = [node.value for node in ast.walk(datas)
+                         if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+    assert 'translations.json' in resource_literals
+    assert 'yt_downloader/ui' in resource_literals
+
+
 def test_readme_uses_stable_product_name() -> None:
     project_root = Path(__file__).resolve().parents[1]
     assert (project_root / "README.md").read_text(encoding="utf-8").startswith(
