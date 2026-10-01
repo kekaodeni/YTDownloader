@@ -11,6 +11,7 @@ from yt_downloader.updates.archive import SafePackageExtractor
 @pytest.mark.parametrize('version,layout,protocols', [
     ('0.4.2', 'legacy-root', [1, 2]),
     ('0.5.0', 'internal-v1', [2]),
+    ('0.6.0', 'internal-v1', [2]),
 ])
 def test_build_script_serializes_protocol_capability_as_array(version, layout, protocols):
     script=(Path(__file__).resolve().parents[1]/'scripts/build.ps1').read_text(encoding='utf-8')

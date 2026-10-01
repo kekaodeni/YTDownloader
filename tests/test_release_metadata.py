@@ -10,7 +10,7 @@ def test_package_and_runtime_versions_match() -> None:
     project_root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert __version__ == "0.5.0"
+    assert __version__ == "0.6.0"
     assert project["project"]["version"] == __version__
     build_script = (project_root / "scripts" / "build.ps1").read_text(encoding="utf-8")
     assert "--metadata-process-self-test" in build_script
@@ -18,6 +18,18 @@ def test_package_and_runtime_versions_match() -> None:
     assert "Production update trust is not configured" in build_script
     assert 'SafePackageExtractor.validate_tree' in build_script
     assert '$RelativePath.Replace("\\", "/")' in build_script
+
+
+def test_ui_and_updater_use_the_runtime_version(quick_window) -> None:
+    from PySide6.QtCore import QObject
+    from yt_downloader_updater.__main__ import UPDATER_VERSION
+
+    assert UPDATER_VERSION == __version__ == "0.6.0"
+    assert quick_window.state['version'] == __version__
+    assert quick_window.settings_page.state['version'] == __version__
+    texts = [item.property('text') for item in quick_window.root.findChildren(QObject)]
+    assert f'v{__version__}' in texts
+    assert quick_window.i18n.messages['about.version'].replace('{version}', __version__) in texts
 
 
 def test_frozen_spec_includes_the_shared_translation_catalog() -> None:
