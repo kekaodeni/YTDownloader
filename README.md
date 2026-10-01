@@ -10,13 +10,13 @@ YTDownloader is a modern Windows desktop frontend for yt-dlp, with video parsing
 
 ## 界面预览
 
-**下载 · 浅色主题**
+#### 浅色模式
 
-<img src="docs/images/v0.6.0-download.png" alt="YTDownloader v0.6.0 浅色下载页：真实视频解析、画质选择、高级选项与下载任务" width="1000">
+<img src="docs/images/v0.6.0-download-light.png" alt="YTDownloader v0.6.0 下载页 · 浅色主题：视频解析、画质选择、高级选项与下载任务" width="1000">
 
-**设置 · 深色主题**
+#### 深色模式
 
-<img src="docs/images/v0.6.0-settings-dark.png" alt="YTDownloader v0.6.0 深色设置页：分类导航、语言与外观设置" width="1000">
+<img src="docs/images/v0.6.0-download-dark.png" alt="YTDownloader v0.6.0 下载页 · 深色主题：视频解析、画质选择、高级选项与下载任务" width="1000">
 
 ## 主要功能
 
