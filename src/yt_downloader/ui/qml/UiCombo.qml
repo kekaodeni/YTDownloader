@@ -61,9 +61,21 @@ ComboBox {
             implicitHeight: contentHeight
             boundsBehavior: control.subtleOverscroll ? Flickable.StopAtBounds : Flickable.DragAndOvershootBounds
             property real elasticOffset: 0
+            property int feedbackDirection: 0
             contentItem.transform: Translate { y: options.elasticOffset }
-            // Keep native scrolling bounded; the independent pulse never adds
-            // to contentY or accumulates across repeated wheel events.
+            function cancelFeedback() {
+                rebound.stop()
+                elasticOffset = 0
+            }
+            function atFeedbackEdge(direction) {
+                const bottom = originY + Math.max(0, contentHeight - height)
+                return direction > 0 ? contentY <= originY + 0.5 : contentY >= bottom - 0.5
+            }
+            onContentYChanged: {
+                if (rebound.running && !atFeedbackEdge(feedbackDirection)) cancelFeedback()
+            }
+            // One outward gesture starts one complete pulse. Events during
+            // that pulse keep native scrolling, without resetting translation.
             WheelHandler {
                 target: null
                 blocking: false
@@ -71,31 +83,40 @@ ComboBox {
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 onWheel: function(event) {
                     const delta = event.pixelDelta.y || event.angleDelta.y
-                    const bottom = options.originY + Math.max(0, options.contentHeight - options.height)
-                    const atEdge = delta > 0 && options.contentY <= options.originY + 0.5
-                        || delta < 0 && options.contentY >= bottom - 0.5
-                    if (atEdge) {
-                        rebound.stop()
-                        options.elasticOffset = motion.reduced ? 0 : (delta > 0 ? 6 : -6)
-                        if (!motion.reduced) rebound.restart()
+                    if (delta !== 0) {
+                        const direction = delta > 0 ? 1 : -1
+                        if (rebound.running && direction !== options.feedbackDirection) options.cancelFeedback()
+                        if (!motion.reduced && options.atFeedbackEdge(direction) && !rebound.running) {
+                            options.feedbackDirection = direction
+                            rebound.start()
+                        }
                     }
                     event.accepted = false
                 }
             }
-            NumberAnimation {
+            SequentialAnimation {
                 id: rebound
-                target: options
-                property: "elasticOffset"
-                to: 0
-                duration: motion.fast
-                easing.type: motion.easing
+                NumberAnimation {
+                    target: options; property: "elasticOffset"
+                    to: options.feedbackDirection * 4
+                    duration: 50; easing.type: motion.easing
+                }
+                NumberAnimation {
+                    target: options; property: "elasticOffset"
+                    to: 0
+                    duration: 100; easing.type: motion.easing
+                }
+            }
+            Connections {
+                target: motion
+                function onReducedChanged() { if (motion.reduced) options.cancelFeedback() }
             }
             model: control.popup.visible ? control.delegateModel : null
             // Hover is a visual state, not a request to scroll the viewport.
             currentIndex: control.currentIndex
             ScrollBar.vertical: UiScrollBar { compact: true }
         }
-        onClosed: { rebound.stop(); options.elasticOffset = 0 }
+        onClosed: options.cancelFeedback()
         enter: UiPopupEnter { }
         exit: UiPopupExit { }
     }

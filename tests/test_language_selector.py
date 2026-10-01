@@ -5,6 +5,103 @@ import pytest
 from conftest import click_item, find_item, run_frames
 
 
+@pytest.mark.parametrize('edge', ['top', 'bottom'])
+@pytest.mark.parametrize('pixels', [False, True])
+def test_twenty_outward_wheel_events_finish_one_smooth_edge_pulse(quick_window, qapp, edge, pixels):
+    import time
+    from PySide6.QtCore import QTimer
+    from test_quick_scroll import wheel
+    quick_window._select_page(2)
+    quick_window.settings_page.setSetting('language', 'ja-JP')
+    run_frames(qapp)
+    combo = find_item(quick_window, 'languageCombo')
+    click_item(quick_window, combo)
+    run_frames(qapp, 180)
+    popup = find_item(quick_window, 'popup-languageCombo')
+    view = find_item(quick_window, 'options-languageCombo')
+    bar = next(x for x in view.childItems() if x.inherits('QQuickScrollBar'))
+    top = view.property('originY')
+    bottom = top + max(0, view.property('contentHeight')-view.height())
+    view.setProperty('contentY', top if edge == 'top' else bottom)
+    run_frames(qapp, 180)
+    direction = 1 if edge == 'top' else -1
+    baseline = (popup.property('x'), popup.property('y'), popup.property('width'), popup.property('height'),
+                bar.x(), bar.y(), bar.width(), bar.height(), bar.property('size'), bar.property('position'),
+                combo.property('model'), combo.property('currentIndex'))
+    observations = []
+    sent = []
+    started = time.perf_counter()
+    def tick():
+        if len(sent) < 20:
+            wheel(quick_window, view, angle=0 if pixels else direction*120,
+                  pixels=direction*10 if pixels else 0)
+            sent.append(time.perf_counter()-started)
+        observations.append((time.perf_counter()-started,
+                             direction*(view.property('contentItem').mapToItem(view, QPointF()).y()+view.property('contentY')),
+                             view.property('contentY'),
+                             (popup.property('x'), popup.property('y'), popup.property('width'), popup.property('height'),
+                              bar.x(), bar.y(), bar.width(), bar.height(), bar.property('size'), bar.property('position'),
+                              combo.property('model'), combo.property('currentIndex'))))
+    timer = QTimer()
+    timer.timeout.connect(tick)
+    timer.start(4)
+    try:
+        run_frames(qapp, 260)
+    finally:
+        timer.stop()
+    assert len(sent) == 20
+    assert sent[-1] < .14  # Entire burst fits within the 150ms pulse.
+    assert observations[0][1] < .2  # Rise gently, never jump directly to the peak.
+    assert 3.5 <= max(x[1] for x in observations) <= 4.01
+    peak = max(observations, key=lambda x: x[1])
+    assert .035 <= peak[0] <= .085
+    decay = [x[1] for x in observations if .085 <= x[0] <= .18]
+    assert all(b <= a+.02 for a, b in zip(decay, decay[1:]))
+    assert all(abs(x[1]) < .1 for x in observations if x[0] >= .18)
+    assert all(top-.01 <= x[2] <= bottom+.01 and x[3] == baseline for x in observations)
+
+
+def test_edge_feedback_rearms_after_finish_direction_change_or_leaving_edge(quick_window, qapp):
+    from test_quick_scroll import wheel
+    quick_window._select_page(2)
+    run_frames(qapp)
+    click_item(quick_window, find_item(quick_window, 'languageCombo'))
+    run_frames(qapp, 180)
+    view = find_item(quick_window, 'options-languageCombo')
+    top = view.property('originY')
+    view.setProperty('contentY', top)
+
+    wheel(quick_window, view, angle=120)
+    run_frames(qapp, 45)
+    assert view.property('elasticOffset') > 3
+    before = view.property('elasticOffset')
+    wheel(quick_window, view, angle=120)
+    assert view.property('elasticOffset') == before
+    wheel(quick_window, view, angle=-120)
+    assert view.property('elasticOffset') == 0
+    language_wheel(quick_window, view, pixels=-24, native=True)
+    run_frames(qapp, 250)
+    assert view.property('contentY') > top
+    view.setProperty('contentY', top)
+    wheel(quick_window, view, angle=120)
+    run_frames(qapp, 35)
+    assert view.property('elasticOffset') > 1
+    view.setProperty('contentY', top+20)
+    assert view.property('elasticOffset') == 0
+    view.setProperty('contentY', top)
+    wheel(quick_window, view, angle=120)
+    run_frames(qapp, 180)
+    assert view.property('elasticOffset') == 0
+    wheel(quick_window, view, angle=120)
+    run_frames(qapp, 45)
+    assert view.property('elasticOffset') > 3
+    quick_window.settings_page.setSetting('reduce_motion', True)
+    assert view.property('elasticOffset') == 0
+    wheel(quick_window, view, angle=120)
+    run_frames(qapp, 60)
+    assert view.property('elasticOffset') == 0
+
+
 def language_wheel(window, item, angle=0, pixels=0, native=False):
     import time
     from PySide6.QtCore import QCoreApplication, QPoint
@@ -90,12 +187,12 @@ def test_all_languages_have_bounded_non_accumulating_wheel_feedback(quick_window
                 language_wheel(quick_window, view, angle=delta if _ % 2 == 0 else 0,
                       pixels=0 if _ % 2 == 0 else (40 if delta > 0 else -40))
                 offset = view.property('elasticOffset')
-                assert offset == 0 if reduced else 0 < offset * (1 if delta > 0 else -1) <= 6
+                assert offset == 0 if reduced else 0 <= offset * (1 if delta > 0 else -1) <= 4
                 run_frames(qapp, 8)
                 y = view.property('contentY')
                 assert top-10 <= y <= bottom+10
                 translation = view.property('contentItem').mapToItem(view, QPointF()).y()+y
-                assert abs(translation) <= 10
+                assert abs(translation) <= 4.01
                 if reduced:
                     assert abs(translation) < .01
                 assert (popup.property('height'), view.height(), view.property('contentHeight')) == geometry
