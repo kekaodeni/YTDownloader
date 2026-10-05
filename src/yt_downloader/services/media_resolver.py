@@ -151,6 +151,8 @@ class MediaResolver:
                     from itertools import islice
                     extracted = dict(extracted)
                     extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
+                from yt_downloader.services.bilibili_bangumi import enrich_season
+                extracted = enrich_season(ydl, extracted, normalized, cancel_event)
                 info = ydl.sanitize_info(extracted)
                 auth_state = detect_auth_state(
                     ydl, normalized, str(info.get('extractor_key') or info.get('extractor') or ''),

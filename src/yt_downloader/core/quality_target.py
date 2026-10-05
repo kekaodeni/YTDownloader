@@ -16,6 +16,18 @@ def choose_quality(options, target):
     if not options:
         return None
     target = str(target or 'recommended')
+    semantic = re.fullmatch(r'bilibili:(\d+)', target)
+    if semantic:
+        from .formats import bilibili_quality_rank
+        rank = bilibili_quality_rank(int(semantic[1]))
+        if rank is not None:
+            known = [item for item in options if bilibili_quality_rank(item.site_quality) is not None]
+            eligible = [item for item in known if item.quality_rank <= rank]
+            key = lambda item: (item.quality_rank, item.quality_sort_key)
+            if eligible:
+                return max(eligible, key=key)
+            if known:
+                return min(known, key=key)
     if target in {'recommended', '自动推荐'}:
         return next((item for item in options if item.is_recommended), options[0])
     if target in {'highest', '最高质量'}:

@@ -297,6 +297,10 @@ class DownloadService:
             options = tuple(apply_codec_preference(option, request.codec_preference) for option in options)
             from yt_downloader.core.quality_target import choose_quality
             option = choose_quality(options, request.preferred_quality)
+            if (media.extractor_key.casefold() == 'bilibilibangumi' and request.video.thumbnail_url):
+                # The flat season index has the authoritative episode cover;
+                # native child extraction otherwise substitutes the season cover.
+                media = replace(media, thumbnail_url=request.video.thumbnail_url)
             progress_callback(DownloadProgress(request.task_id, TaskStatus.FETCHING_METADATA,
                                               resolved_quality=f'{option.label} · {option.container}',
                                               resolved_thumbnail_url=media.thumbnail_url or '',

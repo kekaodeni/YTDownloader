@@ -31,9 +31,21 @@ _BILIBILI_QUALITY_TIERS: Mapping[int, _BilibiliQualityTier] = {
     112: _BilibiliQualityTier(1080, 70, "1080p 高码率"),
     116: _BilibiliQualityTier(1080, 80, "1080p 60 FPS", "fixed60"),
     120: _BilibiliQualityTier(2160, 90, "2160p 4K", "measured"),
+    122: _BilibiliQualityTier(2160, 95, "2160p 4K SDR增强", "measured"),
     125: _BilibiliQualityTier(0, 100, "", "measured"),
     126: _BilibiliQualityTier(0, 110, "", "measured"),
 }
+
+
+def bilibili_quality_rank(quality):
+    """Share the semantic tier ordering with deferred per-episode fallback."""
+    tier = _BILIBILI_QUALITY_TIERS.get(quality)
+    return tier.rank if tier else None
+
+
+def semantic_quality_target(option):
+    """A known Bilibili tier is stable across episodes, unlike format IDs."""
+    return f'bilibili:{option.site_quality}' if option.quality_rank is not None else option.label
 
 
 def _size(

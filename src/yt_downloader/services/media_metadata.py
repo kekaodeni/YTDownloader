@@ -24,6 +24,19 @@ def _number(value):
     return float(value) if isinstance(value, (float, int)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0 else None
 
 
+def thumbnail_url(info):
+    """Prefer the extractor's primary image, then the largest valid candidate."""
+    primary = _http_url(info.get('thumbnail'))
+    if primary:
+        return primary
+    candidates = [item for item in info.get('thumbnails') or []
+                  if isinstance(item, Mapping) and _http_url(item.get('url'))]
+    best = max(enumerate(candidates),
+               key=lambda pair: ((_number(pair[1].get('width')) or 0) * (_number(pair[1].get('height')) or 1),
+                                 pair[0]), default=None)
+    return _http_url(best[1]['url']) if best else None
+
+
 def _tracks(value, is_auto=False):
     if not isinstance(value, Mapping):
         return ()
@@ -93,16 +106,14 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
                                     str(info.get('title' if is_playlist else 'playlist_title') or ''),
                                     int(index) if index is not None else None,
                                     int(count) if count is not None else None)
-    thumbnail = _http_url(info.get('thumbnail'))
-    if not thumbnail and isinstance(info.get('thumbnails'), list):
-        thumbnail = next((_http_url(item.get('url')) for item in reversed(info['thumbnails'])
-                          if isinstance(item, Mapping) and _http_url(item.get('url'))), None)
-    if not thumbnail and has_embedded_entries:
-        first_entry = next((item for item in raw_entries if isinstance(item, Mapping)), {})
-        thumbnail = _http_url(first_entry.get('thumbnail'))
-        if not thumbnail and isinstance(first_entry.get('thumbnails'), list):
-            thumbnail = next((_http_url(item.get('url')) for item in reversed(first_entry['thumbnails'])
-                              if isinstance(item, Mapping) and _http_url(item.get('url'))), None)
+    reference = info.get('_collection_reference') or {}
+    thumbnail = thumbnail_url(info)
+    if not thumbnail and isinstance(reference, Mapping):
+        thumbnail = thumbnail_url(reference)
+    if not thumbnail and (has_embedded_entries or extractor_key.casefold() in {'bilibilibangumiseason', 'bilibilibangumimedia'}):
+        thumbnail = next((image for item in raw_entries if isinstance(item, Mapping)
+                          and item.get('availability') not in {'private', 'premium_only', 'subscriber_only'}
+                          and (image := thumbnail_url(item))), None)
     webpage_url = _http_url(info.get('webpage_url')) or original_url
     entries = []
     if is_playlist:
@@ -120,10 +131,7 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
                                                         if value.get('acodec') == 'none'],
                                                        duration=entry_duration,
                                                        extractor_key=entry_key)) if embedded_raw else ()
-            item_thumbnail = _http_url(item.get('thumbnail'))
-            if not item_thumbnail and isinstance(item.get('thumbnails'), list):
-                item_thumbnail = next((_http_url(candidate.get('url')) for candidate in reversed(item['thumbnails'])
-                                       if isinstance(candidate, Mapping) and _http_url(candidate.get('url'))), None)
+            item_thumbnail = thumbnail_url(item)
             entry_index = _number(item.get('playlist_index')) or index
             has_usable_embedded = bool(entry_formats or entry_audio or entry_video_only)
             entries.append(PlaylistEntry(str(item.get('id') or index), int(entry_index),
@@ -144,6 +152,15 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
         # the chosen label to their own native candidates at enqueue time.
         collection_quality_formats = tuple(option for option in selectable_entries[0].formats
                                            if option.label in common_labels)
+    elif (is_playlist and extractor_key.casefold() in {'bilibilibangumiseason', 'bilibilibangumimedia'}
+          and isinstance(reference, Mapping)):
+        collection_quality_formats = tuple(normalize_formats(
+            [item for item in reference.get('formats') or []
+             if isinstance(item, Mapping) and not item.get('has_drm')],
+            duration=_number(reference.get('duration')),
+            extractor_key=str(reference.get('extractor_key') or 'BiliBiliBangumi')))
+        if collection_quality_formats:
+            collection_quality_mode = CollectionQualityMode.REFERENCE_EPISODE_FORMATS
     metadata_compatibility = 'VERIFIED' if extractor_key.casefold() in METADATA_VERIFIED_EXTRACTORS or extractor.casefold() in METADATA_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     download_compatibility = 'VERIFIED' if extractor_key.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS or extractor.casefold() in DOWNLOAD_VERIFIED_EXTRACTORS else 'EXPERIMENTAL'
     entries_truncated = is_playlist and len(info.get("entries") or []) > 1000

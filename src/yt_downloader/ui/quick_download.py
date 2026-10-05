@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from yt_downloader.core.errors import CancellationCleanupReport
 from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.formatting import format_bytes, format_duration, format_eta, format_speed
-from yt_downloader.core.formats import apply_codec_preference
+from yt_downloader.core.formats import apply_codec_preference, semantic_quality_target
 from yt_downloader.core.models import AuthState, CodecPreference, DownloadProgress, DownloadRequest, DownloadResult, ParseState, STATUS_TEXT, TASK_STATUS_MESSAGE_IDS, TaskStatus, VideoInfo
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.ui.quick_state import RowModel, ViewState
@@ -336,7 +336,11 @@ class DownloadPresenter(ViewState):
         if not self.video or not self._state['collection']:
             return
         mode = str(self.video.collection_quality_mode or 'DEFERRED_BATCH_TARGET')
-        if mode == 'RESOLVED_COMMON_FORMATS':
+        if mode == 'REFERENCE_EPISODE_FORMATS':
+            options = self.video.collection_quality_formats
+            labels = [option.label for option in options]
+            targets = [semantic_quality_target(option) for option in options]
+        elif mode == 'RESOLVED_COMMON_FORMATS':
             entries = [entry for entry in self.video.entries if not entry.unavailable]
             options_by_entry = [self._entry_options(entry) for entry in entries]
             if options_by_entry and all(options_by_entry):
@@ -350,10 +354,13 @@ class DownloadPresenter(ViewState):
             labels = [self._t(message_id) for message_id in _BATCH_QUALITY_MESSAGE_IDS]
             targets = list(_BATCH_QUALITY_TARGETS)
         current = self._state['collectionQuality']
-        if mode == 'RESOLVED_COMMON_FORMATS' and current not in targets:
+        if mode in {'RESOLVED_COMMON_FORMATS', 'REFERENCE_EPISODE_FORMATS'} and current not in targets:
             from yt_downloader.core.quality_target import choose_quality
             selected = choose_quality(options, current)
-            current = selected.label if selected else (targets[0] if targets else '')
+            if selected:
+                current = semantic_quality_target(selected) if mode == 'REFERENCE_EPISODE_FORMATS' else selected.label
+            else:
+                current = targets[0] if targets else ''
         elif current not in targets:
             current = 'highest' if mode == 'DEFERRED_BATCH_TARGET' else (targets[0] if targets else '')
         index = targets.index(current) if current in targets else 0
@@ -599,7 +606,7 @@ class DownloadPresenter(ViewState):
             self.selectMode('audio_only' if not video.formats and video.audio_formats else 'video_audio')
         options = self.available_formats
         if is_playlist:
-            initial_target = (preferred_quality if self.video.collection_quality_mode == 'RESOLVED_COMMON_FORMATS'
+            initial_target = (preferred_quality if self.video.collection_quality_mode in {'RESOLVED_COMMON_FORMATS', 'REFERENCE_EPISODE_FORMATS'}
                               else 'highest')
             self.update(collectionQuality=initial_target)
             self._refresh_collection_quality_targets()
