@@ -23,8 +23,9 @@ QtObject {
     property bool finishingBoundary: false
     property bool removingLastTask: false
     property bool removalAnimating: false
+    property bool rowsChanging: false
     property SequentialAnimation removalHold: SequentialAnimation {
-        PauseAnimation { duration: motion.fast + 32 }
+        PauseAnimation { duration: (anchor.rowsChanging ? motion.standard : motion.fast) + 32 }
         ScriptAction { script: { anchor.removalAnimating = false; anchor.view.Window.window.update() } }
     }
     onOffsetChanged: if (boundary.running) {
@@ -47,6 +48,7 @@ QtObject {
     }
 
     function prepare(item, shrinkingHeight = 0, removingLast = false) {
+        rowsChanging = false
         boundary.stop()
         finishingBoundary = false
         removingLastTask = removingLast
@@ -72,6 +74,14 @@ QtObject {
         bottomAnchored = !removingLast && view.count > 0 && maximum > 0 && bottomDistance <= 6
         if (view.count === 0 || removingLast) boundaryReserve = Math.max(0, shrinkingHeight)
         schedule()
+    }
+
+    function prepareRows() {
+        // Reserve the old extent through aggregation and disclosure. The
+        // viewport stays put; if the new extent is shorter, clamp smoothly.
+        prepare(header, Math.max(0, view.contentHeight - header.height), true)
+        rowsChanging = true
+        bottomAnchored = false
     }
 
     function schedule() {
@@ -105,7 +115,7 @@ QtObject {
         // Rows can also change height during a download, so do not require
         // the content delta to equal only the header delta.
         const headerDelta = header.height - mutationHeaderHeight
-        if (!removingLastTask && !finishingBoundary && Math.abs(headerDelta) < 0.5) return
+        if (!rowsChanging && !removingLastTask && !finishingBoundary && Math.abs(headerDelta) < 0.5) return
         if (renderedMutationHeader !== header.height || renderedMutationContent !== view.contentHeight) {
             renderedMutationHeader = header.height
             renderedMutationContent = view.contentHeight

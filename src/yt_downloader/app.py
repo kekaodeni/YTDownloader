@@ -732,6 +732,7 @@ class AppController:
         except (OSError, ValueError) as error:
             self.show_error(AppError('collection_prepare_failed', '部分项目无法加入下载，请检查下载目录和历史存储。', redact_sensitive(str(error))))
         finally:
+            self.window.download_page.register_batch(prepared)
             if getattr(self, 'notifications', None):
                 self.notifications.register_batch(prepared)
             for request in prepared:

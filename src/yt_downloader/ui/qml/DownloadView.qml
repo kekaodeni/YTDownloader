@@ -350,16 +350,35 @@ Item {
                 }
                 Item { width: 1; height: root.taskCount > 0 || videoPanel.visible ? 2 : 0 }
             }
-            delegate: TaskCard { width: tasks.width - 20 }
+            delegate: Item {
+                id: taskDelegate
+                required property var item
+                property real entranceOffset: 0
+                transform: Translate { y: taskDelegate.entranceOffset }
+                width: tasks.width - 20
+                height: cardLoader.item ? cardLoader.item.implicitHeight : 0
+                Loader {
+                    id: cardLoader
+                    width: parent.width
+                    sourceComponent: taskDelegate.item.kind === "summary" ? summaryComponent : taskComponent
+                }
+                ListView.onRemove: enabled = false
+                ListView.onReused: { enabled = true; opacity = 1; entranceOffset = 0 }
+                Component { id: taskComponent; TaskCard { item: taskDelegate.item; width: taskDelegate.width } }
+                Component { id: summaryComponent; BatchSummary { item: taskDelegate.item; width: taskDelegate.width } }
+            }
             footer: Item { width: tasks.width; height: viewport.boundaryReserve }
             add: Transition { ParallelAnimation {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: motion.standard; easing.type: motion.easing }
                 NumberAnimation { property: "entranceOffset"; from: motion.reduced ? 0 : 6; to: 0; duration: motion.movement; easing.type: motion.easing }
             } }
-            remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: motion.fast } }
+            remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: motion.standard } }
             displaced: Transition { NumberAnimation { property: "y"; duration: motion.movement; easing.type: motion.easing } }
             Connections {
                 target: download
+                function onTaskRowsChanging() {
+                    viewport.prepareRows()
+                }
                 function onTaskRemoving(taskId) {
                     if (tasks.count === 1 && download.state.ready)
                         viewport.prepare(tasks.headerItem.disclosure, Math.max(0, tasks.contentHeight - tasks.headerItem.height), true)

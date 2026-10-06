@@ -79,6 +79,7 @@ class DownloadPresenter(ViewState):
     open_folder_requested = Signal(str)
     remove_requested = Signal(str)
     taskRemoving = Signal(str)
+    taskRowsChanging = Signal()
     retry_requested = Signal(str)
     browse_requested = Signal()
     cookie_enabled_changed = Signal(bool)
@@ -130,6 +131,12 @@ class DownloadPresenter(ViewState):
         self.parse_state = ParseState.IDLE
         self.cards: dict[str, TaskPresentation] = {}
         self._terminal_task_ids: set[str] = set()
+        self._batches: dict[str, tuple[str, ...]] = {}
+        self._retired_batch_cards: dict[str, TaskPresentation] = {}
+        self._collapsed_batches: set[str] = set()
+        self._dismissed_batches: set[str] = set()
+        self._summary_id = ''
+        self._summary_expanded = False
         self._default_directory = directory
         self._directory_overridden = False
         self._tasks = RowModel(self)
@@ -941,6 +948,96 @@ class DownloadPresenter(ViewState):
         self._terminal_task_ids.discard(request.task_id)
         self._tasks.put(dict(card.values))
 
+        if request.batch_id in self._collapsed_batches:
+            self._refresh_batch_summary(request.batch_id)
+
+    def register_batch(self, requests):
+        """Presentation membership only; the queue still owns independent tasks."""
+        requests = tuple(requests)
+        if not requests:
+            return
+        batch_id = requests[0].batch_id
+        if batch_id in self._batches:
+            return
+        self._dismiss_summary()
+        for task_id in tuple(self._terminal_task_ids):
+            card = self.cards.get(task_id)
+            if (card and card.status in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}
+                    and len(self._batches.get(card.request.batch_id, ())) < 2):
+                self.remove_task(task_id)
+        self._batches[batch_id] = tuple(request.task_id for request in requests)
+
+    def _dismiss_summary(self):
+        if not self._summary_id:
+            return
+        batch_id = self._summary_id.removeprefix('summary:')
+        self.taskRowsChanging.emit()
+        self._tasks.remove(self._summary_id)
+        self._summary_id = ''
+        self._summary_expanded = False
+        self._dismissed_batches.add(batch_id)
+        # Only successful/cancelled presentation snapshots are retired. Failed
+        # cards remain available for same-task retry, independently of History.
+        for task_id in self._batches.get(batch_id, ()):
+            self._retired_batch_cards.pop(task_id, None)
+            card = self.cards.get(task_id)
+            if card and card.status in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}:
+                self.cards.pop(task_id)
+                self._terminal_task_ids.discard(task_id)
+
+    def _refresh_batch_summary(self, batch_id):
+        members = self._batches.get(batch_id, ())
+        if len(members) < 2 or batch_id in self._dismissed_batches:
+            return
+        cards = [card for task_id in members
+                 if (card := self.cards.get(task_id) or self._retired_batch_cards.get(task_id)) is not None]
+        terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        if batch_id not in self._collapsed_batches and (len(cards) != len(members) or any(card.status not in terminal for card in cards)):
+            return
+        compact = [card for card in cards if card.status in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}]
+        if not compact:
+            return
+        summary_id = 'summary:' + batch_id
+        if self._summary_id != summary_id:
+            self._dismiss_summary()
+            self._summary_id = summary_id
+            self._summary_expanded = False
+        summary = dict(id=summary_id, kind='summary',
+                       completed=sum(card.status is TaskStatus.COMPLETED for card in cards),
+                       failed=sum(card.status is TaskStatus.FAILED for card in cards),
+                       cancelled=sum(card.status is TaskStatus.CANCELLED for card in cards),
+                       expanded=self._summary_expanded,
+                       details=[dict(id=card.request.task_id, title=card.values['title'],
+                                     thumbnail=card.values['thumbnail'], quality=card.values['quality'],
+                                     statusKey=card.values['statusKey'], size=card.values.get('sizeTotal', '—')) for card in cards])
+        rows, inserted = [], False
+        compact_ids = {card.request.task_id for card in compact}
+        for row in self._tasks.rows:
+            if row['id'] == summary_id or row['id'] in compact_ids:
+                if not inserted:
+                    rows.append(summary)
+                    inserted = True
+            else:
+                rows.append(row)
+        if not inserted:
+            rows.append(summary)
+        self.taskRowsChanging.emit()
+        self._tasks.replace(rows)
+        self._collapsed_batches.add(batch_id)
+
+    @Slot(str, str)
+    def summaryAction(self, summary_id, action):
+        if summary_id != self._summary_id:
+            return
+        batch_id = summary_id.removeprefix('summary:')
+        if action == 'details':
+            self._summary_expanded = not self._summary_expanded
+            self._refresh_batch_summary(batch_id)
+        elif action == 'folder':
+            task_id = next((key for key in self._batches[batch_id] if key in self.cards), None)
+            if task_id:
+                self.open_folder_requested.emit(str(self.cards[task_id].request.output_directory))
+
     def update_task(self, progress):
         card = self.cards.get(progress.task_id)
         if card:
@@ -1004,21 +1101,33 @@ class DownloadPresenter(ViewState):
             self._mark_terminal(task_id)
 
     def _mark_terminal(self, task_id):
-        for previous in tuple(self._terminal_task_ids):
-            if previous != task_id:
-                self.remove_task(previous)
         self._terminal_task_ids.add(task_id)
+        card = self.cards[task_id]
+        if card.request.batch_id:
+            self._refresh_batch_summary(card.request.batch_id)
+        else:
+            for previous in tuple(self._terminal_task_ids):
+                old = self.cards.get(previous)
+                if previous != task_id and old and not old.request.batch_id and old.status is not TaskStatus.FAILED:
+                    self.remove_task(previous)
 
     def task_started(self, task_id):
         self.update_task(DownloadProgress(task_id, TaskStatus.FETCHING_METADATA))
         for previous in tuple(self._terminal_task_ids):
-            if previous != task_id:
+            old = self.cards.get(previous)
+            if previous != task_id and old and not old.request.batch_id and old.status is not TaskStatus.FAILED:
                 self.remove_task(previous)
 
     def remove_task(self, task_id):
         if task_id in self.cards:
             self.taskRemoving.emit(task_id)
         card = self.cards.get(task_id)
+        if (card and card.request.batch_id in self._batches
+                and card.request.batch_id not in self._dismissed_batches
+                and card.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}):
+            # An explicit Delete hides the card, not the completed outcome.
+            # Move the same presentation object; do not create another state.
+            self._retired_batch_cards[task_id] = card
         self._terminal_task_ids.discard(task_id)
         self.cards.pop(task_id, None)
         self._tasks.remove(task_id)
