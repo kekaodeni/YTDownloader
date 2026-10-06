@@ -936,7 +936,7 @@ class DownloadPresenter(ViewState):
                                                             request.video.thumbnail_url),
                            warningMessages=[],
                            cancel=True, cancelEnabled=True, cancelText='取消', open=False, folder=False)
-        card.progress(DownloadProgress(request.task_id, TaskStatus.PENDING))
+        card.progress(DownloadProgress(request.task_id, TaskStatus.RESUMING if request.resume_partial else TaskStatus.PENDING))
         self.cards[request.task_id] = card
         self._terminal_task_ids.discard(request.task_id)
         self._tasks.put(dict(card.values))
@@ -1042,7 +1042,7 @@ class DownloadPresenter(ViewState):
             self.resume_requested.emit(task_id)
         elif action == 'cancel' and card.values['cancel'] and card.values['cancelEnabled']:
             self.cancel_requested.emit(task_id)
-        elif action == 'retry' and card.values['retry'] and not self._state['busy']:
+        elif action == 'retry' and card.values['retry']:
             self.retry_requested.emit(task_id)
         elif action == 'open' and card.values['open']:
             self.open_file_requested.emit(str(card.file_path or ''))

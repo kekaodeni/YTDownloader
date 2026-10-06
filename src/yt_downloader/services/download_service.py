@@ -280,8 +280,13 @@ class DownloadService:
             options = tuple(apply_codec_preference(option, request.codec_preference) for option in options)
             from yt_downloader.core.quality_target import choose_quality
             option = choose_quality(options, request.preferred_quality)
+            if request.batch_id:
+                media = replace(media, title=request.video.title, video_id=request.video.video_id,
+                                original_url=request.video.original_url or request.video.url,
+                                extractor_key=request.video.extractor_key or media.extractor_key)
             if request.video.canonical_thumbnail_url or request.video.collection_thumbnail_url:
                 media = replace(media,
+                                title=request.video.title,
                                 canonical_thumbnail_url=request.video.canonical_thumbnail_url,
                                 collection_thumbnail_url=request.video.collection_thumbnail_url,
                                 thumbnail_url=request.video.canonical_thumbnail_url or media.thumbnail_url
@@ -320,7 +325,10 @@ class DownloadService:
         final_extension = request.remux_container or request.format.final_ext
         destination = ensure_unique_path(output_directory / f"{safe_stem}.{final_extension}")
         artifacts = TaskArtifactRegistry(output_directory, request.task_id)
-        artifacts.prepare(resume_existing=request.resume_partial)
+        # A retry may follow metadata/auth failure before a workspace existed.
+        # Preserve owned partials when present; safely create a fresh workspace
+        # otherwise. Registry checks still reject reparse points/unowned paths.
+        artifacts.prepare(resume_existing=request.resume_partial and artifacts.workspace.exists())
         final_path = artifacts.download_path(request.format.final_ext)
         output_template = artifacts.output_template
         ydl_logger = _DownloadLogger()
@@ -583,8 +591,7 @@ class DownloadService:
                 cleanup_report = artifacts.cleanup()
                 raise OperationCancelled(context, cleanup_report) from None
             technical = redact_sensitive(str(exc))
-            ffmpeg_stderr = '\n'.join(line for line in ydl_logger.lines if line.startswith('FFmpeg:'))
-            code, user_message = _download_error(technical + '\n' + ffmpeg_stderr)
+            code, user_message = _download_error(technical + '\n' + '\n'.join(ydl_logger.lines))
             raise AppError(
                 code,
                 user_message,

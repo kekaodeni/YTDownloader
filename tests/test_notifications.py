@@ -47,6 +47,21 @@ def test_playlist_notification_aggregation(tmp_path):
     assert len(system) == 1
 
 
+def test_same_task_retry_keeps_batch_notification_context(tmp_path):
+    notification, system, _ = _coordinator(tmp_path)
+    requests = [replace(_request(tmp_path), task_id=str(i), batch_id='retry-batch') for i in range(3)]
+    notification.register_batch(requests)
+    for request in requests[:2]:
+        notification.finished(request, 'completed')
+    notification.finished(requests[2], 'failed')
+    notification.queued(requests[2])
+    notification.finished(requests[2], 'completed')
+    assert system == [('Batch download complete', '2 completed, 1 failed'),
+                      ('Batch download complete', '3 items downloaded')]
+    notification.finished(requests[2], 'completed')
+    assert len(system) == 2
+
+
 @pytest.mark.parametrize('outcome', ['completed', 'failed'])
 def test_foreground_notification_policy(tmp_path, outcome):
     notification, system, internal = _coordinator(tmp_path, foreground=True)

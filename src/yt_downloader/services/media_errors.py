@@ -43,6 +43,10 @@ def classify_metadata_error(error):
 
 def classify_download_error(message: str) -> tuple[str, str]:
     lowered = message.lower()
+    if (re.search(r'\d+ bytes read,\s*\d+ more expected', lowered)
+            or any(text in lowered for text in ('incompleteread', 'connection reset',
+                                               'remote end closed connection', 'premature eof'))):
+        return 'DOWNLOAD_INTERRUPTED', '下载连接中断，请重试。'
     if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*429\b", lowered) or 'too many requests' in lowered:
         return 'rate_limited', '请求过于频繁，请稍后再试。'
     if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*403\b", lowered) or 'forbidden' in lowered:

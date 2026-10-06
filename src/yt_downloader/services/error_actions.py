@@ -18,6 +18,7 @@ ERROR_PRESENTATION = {
     'format_unavailable': ('error.format_stale.title', 'error.format_stale.body', ('REPARSE',)),
     'FORMAT_UNAVAILABLE': ('error.format_stale.title', 'error.format_stale.body', ('REPARSE',)),
     'NETWORK_ERROR': ('error.network.title', 'error.network.body', ('RETRY',)),
+    'DOWNLOAD_INTERRUPTED': ('error.network.title', 'error.interrupted.body', ('RETRY',)),
     'FFMPEG_NETWORK_ERROR': ('error.network.title', 'error.ffmpeg_network.body', ('RETRY',)),
     'TEMPORARY_EXTRACTOR_ERROR': ('error.extractor.title', 'error.extractor.body',
                                   ('RETRY', 'CHECK_APP_UPDATE')),

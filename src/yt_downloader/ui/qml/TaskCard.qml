@@ -51,7 +51,7 @@ Rectangle {
                 Layout.fillWidth: true; spacing: 8
                 UiButton { objectName: "taskPause-" + root.item.id; text: root.item.resumeEnabled ? i18n.messages["task.action.resume"] : i18n.messages["task.action.pause"]; appearance: "normal"; visible: root.item.pauseVisible; enabled: root.item.pauseEnabled || root.item.resumeEnabled; onClicked: download.taskAction(root.item.id, root.item.resumeEnabled ? "resume" : "pause") }
                 UiButton { objectName: "taskCancel-" + root.item.id; text: root.item.status === "CANCELLING" ? i18n.messages["task.status.cancelling"] : i18n.messages["task.action.cancel"]; appearance: "normal"; visible: root.item.cancel; enabled: root.item.cancelEnabled; onClicked: download.taskAction(root.item.id, "cancel") }
-                UiButton { text: i18n.messages["action.retry"]; visible: root.item.retry; enabled: !download.state.busy; onClicked: download.taskAction(root.item.id, "retry") }
+                UiButton { objectName: "taskRetry-" + root.item.id; text: i18n.messages["action.retry"]; visible: root.item.retry; onClicked: download.taskAction(root.item.id, "retry") }
                 UiButton { text: i18n.messages["action.open_file"]; visible: root.item.open; onClicked: download.taskAction(root.item.id, "open") }
                 UiButton { text: i18n.messages["action.open_folder"]; visible: root.item.folder; onClicked: download.taskAction(root.item.id, "folder") }
             }

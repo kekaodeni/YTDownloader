@@ -458,6 +458,7 @@ def test_embedded_collection_retry_uses_the_ordinary_task_retry_action(qapp, tmp
     class Queue:
         def __init__(self): self.requests = []
         def enqueue(self, request): self.requests.append(request)
+        def task_position(self, task_id): return None
 
     page = DownloadPresenter(str(tmp_path), Images())
     request = replace(_request(tmp_path), task_id='embedded-failed', batch_id='', playlist_item_index=2)
@@ -468,9 +469,11 @@ def test_embedded_collection_retry_uses_the_ordinary_task_retry_action(qapp, tmp
     controller.window = SimpleNamespace(download_page=page)
     controller.history = history
     controller.queue = queue
+    controller._persisted_task_stages = {}
     controller.refresh_history = lambda: None
 
     controller._retry_task(request.task_id)
 
-    assert queue.requests == [request]
+    assert queue.requests == [replace(request, resume_partial=True)]
+    assert page.task_status(request.task_id) is TaskStatus.RESUMING
     assert history.statuses == [(request.task_id, TaskStatus.PENDING)]

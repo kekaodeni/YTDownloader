@@ -40,8 +40,11 @@ class NotificationCoordinator:
             batch[request.task_id] = outcome
             if any(value is None for value in batch.values()):
                 return
-            self._batches.pop(request.batch_id)
             counts = {key: list(batch.values()).count(key) for key in ('completed', 'failed', 'cancelled')}
+            # Failed children can retry in place. Retain their membership and
+            # successful siblings so the next attempt remains a batch result.
+            if not counts['failed']:
+                self._batches.pop(request.batch_id)
             key = 'notification.batch_cancelled' if counts['cancelled'] else 'notification.batch_summary' if counts['failed'] else 'notification.batch_success'
             self.notify('notification.batch_complete', self.translator.text(key, counts))
         elif outcome != 'cancelled':

@@ -943,23 +943,18 @@ class AppController:
 
     def _retry_task(self, task_id: str) -> None:
         page = self.window.download_page
-        if page.parse_state in {ParseState.RUNNING, ParseState.SLOW, ParseState.CANCELLING}:
-            return
         request = page.task_request(task_id)
         if request is None or page.task_status(task_id) is not TaskStatus.FAILED:
             return
-        if request.playlist_item_index is not None:
-            self.history.update_status(task_id, TaskStatus.PENDING)
-            self.queue.enqueue(request)
-            self.refresh_history()
+        if self.queue.task_position(task_id) is not None:
             return
-        # Retry is a new parse/selection, not an implicit download. Use the
-        # retained request so deleting a history entry cannot break this action.
-        self._pending_retry = request
-        self.window._select_page(0)
-        page.set_url(request.video.url)
-        self.window.scroll_download_to_top()
-        page.requestParse()
+        # Replay the immutable task snapshot. Native yt-dlp re-extracts signed
+        # URLs; deferred entries resolve in the download worker, never here.
+        self.history.update_status(task_id, TaskStatus.PENDING)
+        self._persisted_task_stages.pop(task_id, None)
+        self.queue.enqueue(replace(request, resume_partial=True))
+        page.resuming_task(task_id)
+        self.refresh_history()
 
     def _delete_history_record(self, record: HistoryRecord) -> None:
         if record.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
