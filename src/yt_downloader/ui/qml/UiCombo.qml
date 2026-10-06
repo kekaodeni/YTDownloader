@@ -12,7 +12,7 @@ ComboBox {
     font.weight: theme.fontWeight("Body")
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
-    property bool subtleOverscroll: false
+    property bool subtleOverscroll: true
     Keys.onPressed: function(event) {
         if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
             Qt.callLater(function() { if (control.popup.visible) options.positionViewAtIndex(control.highlightedIndex, ListView.Contain) })
@@ -59,7 +59,9 @@ ComboBox {
             objectName: "options-" + control.objectName
             clip: true
             implicitHeight: contentHeight
-            boundsBehavior: control.subtleOverscroll ? Flickable.StopAtBounds : Flickable.DragAndOvershootBounds
+            // All dropdowns share bounded native scrolling. The optional pulse
+            // moves only visual content, never the viewport or scrollbar.
+            boundsBehavior: Flickable.StopAtBounds
             property real elasticOffset: 0
             property int feedbackDirection: 0
             contentItem.transform: Translate { y: options.elasticOffset }

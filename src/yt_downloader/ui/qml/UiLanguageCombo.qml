@@ -2,7 +2,6 @@ import QtQuick
 
 UiCombo {
     id: languageSelector
-    subtleOverscroll: true
     readonly property var languages: i18n.languages
     property string pendingLocale: ""
     model: languages.map(function(language) { return language.name })
