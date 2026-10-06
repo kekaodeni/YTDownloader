@@ -4,7 +4,9 @@ from pathlib import Path
 import re
 
 import yt_dlp
-from yt_downloader.core.errors import OperationCancelled
+from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
+from yt_downloader.services.media_errors import classify_download_error
+from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 
@@ -16,6 +18,7 @@ class SubtitleResult:
     warnings: tuple[str, ...] = ()
     embedded: bool = False
     auto_used: bool = False
+    error: AppError | None = None
 
 
 class SubtitleService:
@@ -24,10 +27,26 @@ class SubtitleService:
         self.network_policy = network_policy
 
     def process(self, request, media, workspace, cancel_event):
+        result = self.download_tracks(request, workspace, cancel_event)
+        files, warnings, auto_used = list(result.files), list(result.warnings), result.auto_used
+        if request.subtitle_embed and files:
+            try:
+                candidate = workspace / ('subtitled' + media.suffix)
+                self.ffmpeg.embed_subtitles(media, files, candidate, cancel_event=cancel_event)
+                return SubtitleResult(candidate, (), tuple(warnings), True, auto_used)
+            except OperationCancelled:
+                raise
+            except Exception:
+                warnings.append('字幕嵌入失败；媒体已保留，字幕另存为独立文件。')
+        return SubtitleResult(media, tuple(files), tuple(warnings), False, auto_used)
+
+    def download_tracks(self, request, workspace, cancel_event):
+        """Shared subtitle-only operation; never extracts or downloads media."""
         tracks = select_tracks(request)
         if not tracks:
-            return SubtitleResult(media, warnings=('媒体已保存，但所选语言没有可用字幕。',))
+            return SubtitleResult(workspace, warnings=('媒体已保存，但所选语言没有可用字幕。',))
         files, warnings = [], []
+        last_error = None
         auto_used = False
         options = {'quiet': True, 'no_warnings': True, 'ignoreconfig': True, 'usenetrc': False,
                    'cachedir': False, 'socket_timeout': 15}
@@ -46,15 +65,22 @@ class SubtitleService:
                 source = workspace / f'subtitle-{track.language}.{track.extension}'
                 target = workspace / f'subtitle-{track.language}.{request.subtitle_format}'
                 try:
-                    with ydl.urlopen(track.url) as response, source.open('wb') as output:
-                        size = 0
-                        while chunk := response.read(65536):
-                            if cancel_event.is_set():
-                                raise OperationCancelled()
-                            size += len(chunk)
-                            if size > 16 * 1024 * 1024:
-                                raise ValueError('Subtitle exceeds size limit')
-                            output.write(chunk)
+                    size = 0
+                    if track.data:
+                        payload = track.data.encode('utf-8')
+                        size = len(payload)
+                        if size > 16 * 1024 * 1024:
+                            raise ValueError('Subtitle exceeds size limit')
+                        source.write_bytes(payload)
+                    else:
+                        with ydl.urlopen(track.url) as response, source.open('wb') as output:
+                            while chunk := response.read(65536):
+                                if cancel_event.is_set():
+                                    raise OperationCancelled()
+                                size += len(chunk)
+                                if size > 16 * 1024 * 1024:
+                                    raise ValueError('Subtitle exceeds size limit')
+                                output.write(chunk)
                     if size == 0:
                         raise ValueError('Empty subtitle response')
                     if source != target:
@@ -63,19 +89,12 @@ class SubtitleService:
                     auto_used |= track.is_auto
                 except OperationCancelled:
                     raise
-                except Exception:
+                except Exception as error:
+                    code, message = classify_download_error(str(error))
+                    last_error = error if isinstance(error, AppError) else AppError(code, message, redact_sensitive(str(error)),
+                        ErrorContext(url=request.video.url, stage='Downloading subtitles'))
                     warnings.append(f'{language_name(track.language)}：字幕下载或转换失败，媒体已保留。')
-        if request.subtitle_embed and files:
-            try:
-                candidate = workspace / ('subtitled' + media.suffix)
-                self.ffmpeg.embed_subtitles(media, files, candidate, cancel_event=cancel_event)
-                return SubtitleResult(candidate, (), tuple(warnings), True, auto_used)
-            except OperationCancelled:
-                raise
-            except Exception:
-                # Explicit warning, never silently claim the requested embed succeeded.
-                warnings.append('字幕嵌入失败；媒体已保留，字幕另存为独立文件。')
-        return SubtitleResult(media, tuple(files), tuple(warnings), False, auto_used)
+        return SubtitleResult(workspace, tuple(files), tuple(warnings), False, auto_used, last_error)
 
 
 def language_name(code):

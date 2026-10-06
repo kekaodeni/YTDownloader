@@ -294,7 +294,7 @@ def test_history_select_all_keyboard_and_accessible_state(quick_window, qapp, tm
 
 
 def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.cookies.set_profiles((CookieProfile('fixture', 'Fixture', 'browser',
                                                      browser='firefox', domain_hint='example.org'),))
     run_frames(qapp)
@@ -309,7 +309,7 @@ def test_cookie_help_and_saved_profile_actions_have_button_treatment(quick_windo
 
 
 def test_settings_profiles_follow_v2_information_architecture(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     default_combo = find_item(quick_window, 'defaultDownloadProfile')
@@ -355,7 +355,7 @@ def test_settings_profiles_follow_v2_information_architecture(quick_window, qapp
 @pytest.mark.parametrize('mode,surface', [('light', '#FFFFFF'), ('dark', '#2A2F39')])
 def test_profile_editor_dialog_uses_one_rounded_surface_for_all_corners(quick_window, qapp, mode, surface):
     quick_window.theme.set_mode(mode)
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.newProfile()
     run_frames(qapp)
 
@@ -379,7 +379,7 @@ def test_profile_editor_dialog_uses_one_rounded_surface_for_all_corners(quick_wi
 
 
 def test_profile_editor_footer_stays_inside_rounded_safe_area(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.newProfile()
     run_frames(qapp)
 
@@ -400,7 +400,7 @@ def test_profile_editor_footer_stays_inside_rounded_safe_area(quick_window, qapp
 
 
 def test_profile_editor_subtitle_fields_keep_dependent_disabled_state(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.newProfile()
     run_frames(qapp)
 

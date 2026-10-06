@@ -14,6 +14,7 @@ from yt_downloader import __version__
 from yt_downloader.infrastructure.runtime import resource_path
 from yt_downloader.ui.quick_dialogs import DialogBridge
 from yt_downloader.ui.quick_download import DownloadPresenter
+from yt_downloader.ui.quick_toolbox import ToolboxPresenter
 from yt_downloader.ui.quick_history import HistoryPresenter
 from yt_downloader.ui.quick_images import ImageStore
 from yt_downloader.ui.quick_settings import SettingsPresenter
@@ -37,6 +38,10 @@ class MainWindow(ViewState):
         super().__init__(None, page=0, reduceMotion=settings.reduce_motion, allowClose=False,
                          updateVisible=False, updateText='', version=__version__, projectError='',
                          recoveryVisible=False, recoveryBusy=False, recoveryText='', updateStatus='尚未检查', updateChecking=False, updateAction='检查更新', updateReview=False)
+        self.update(notificationVisible=False, notificationTitle='', notificationBody='')
+        self._notification_timer = QTimer(self)
+        self._notification_timer.setSingleShot(True)
+        self._notification_timer.timeout.connect(lambda: self.update(notificationVisible=False))
         self._busy = False
         self._update_busy = False
         self._closing_after_cancel = False
@@ -55,6 +60,7 @@ class MainWindow(ViewState):
         self.cookies = CookiePresenter(self, translator=self.i18n)
         self.dialogs.sessionsChanged.connect(self._finish_close)
         self.download_page = DownloadPresenter(settings.download_directory, self.images, self, translator=self.i18n)
+        self.toolbox_page = ToolboxPresenter(settings.download_directory, self.images, self, translator=self.i18n)
         self.history_page = HistoryPresenter(self.dialogs, self, self.i18n)
         self.i18n.languageChanged.connect(self.history_page.refresh_localized)
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
@@ -65,6 +71,8 @@ class MainWindow(ViewState):
         self.cookies.profiles_changed.connect(self._sync_cookie_state)
         self.download_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
             '选择下载目录', self.download_page.state['directory'], lambda value: self.download_page.setField('directory', value)))
+        self.toolbox_page.browse_requested.connect(lambda: self.dialogs.pick_directory(
+            '选择下载目录', self.toolbox_page.state['directory'], lambda value: self.toolbox_page.setField('directory', value)))
         self.settings_page.browse_requested.connect(self._browse_setting)
         QQuickWindow.setTextRenderType(QQuickWindow.TextRenderType.QtTextRendering)
         if QQuickStyle.name() != 'Basic':
@@ -76,6 +84,7 @@ class MainWindow(ViewState):
         self.engine.addImageProvider('thumbnails', self.images)
         context = self.engine.rootContext()
         for name, value in (('shell', self), ('theme', self.theme), ('download', self.download_page),
+                            ('toolbox', self.toolbox_page),
                             ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies), ('i18n', self.i18n)):
             context.setContextProperty(name, value)
         context.setContextProperty('assetsBase', QUrl.fromLocalFile(str(resource_path('assets')) + '/'))
@@ -97,6 +106,7 @@ class MainWindow(ViewState):
 
     def _sync_cookie_state(self, _value=None):
         self.download_page.set_cookie_state(self.cookies.profiles)
+        self.toolbox_page.set_cookie_state(self.cookies.profiles)
 
     @Slot()
     def _sync_motion(self):
@@ -141,7 +151,7 @@ class MainWindow(ViewState):
     @Slot()
     def openCookieSettings(self):
         self.settings_page.selectCategory(2)
-        self._select_page(2)
+        self._select_page(3)
 
     @Slot()
     def _open_cookie_picker(self):
@@ -177,7 +187,7 @@ class MainWindow(ViewState):
 
     @Slot(int)
     def _select_page(self, index):
-        if 0 <= index < 4:
+        if 0 <= index < 5:
             self.update(page=index)
 
     def apply_theme(self, _theme):
@@ -186,6 +196,10 @@ class MainWindow(ViewState):
 
     def show(self):
         self.root.show()
+
+    def show_notification(self, title, body):
+        self.update(notificationVisible=True, notificationTitle=title, notificationBody=body)
+        self._notification_timer.start(4500)
 
     def hide(self):
         self.root.hide()
@@ -215,7 +229,7 @@ class MainWindow(ViewState):
 
     def _refresh_localized_shell(self, _locale=None):
         if hasattr(self, 'i18n'):
-            self.update(updateStatus=self.i18n.sourceText(self._update_status_source),
+            self.update(notificationVisible=False, updateStatus=self.i18n.sourceText(self._update_status_source),
                         updateAction=self.i18n.text('update.action_pending' if self._update_ready
                                                     else 'update.action_progress' if self._state['updateReview']
                                                     else 'update.action_check'),

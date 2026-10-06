@@ -74,7 +74,7 @@ def test_every_static_qml_translation_reference_has_all_locale_values(qapp):
 
 
 def test_settings_language_switch_updates_live_qml_binding(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     language_field = find_item(quick_window, 'languageField')
     combo = find_item(quick_window, 'languageCombo')
@@ -91,7 +91,7 @@ def test_settings_language_switch_updates_live_qml_binding(quick_window, qapp):
 
 
 def test_settings_text_field_calls_presenter_slot_without_qml_warning(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     field = find_item(quick_window, 'defaultDirectory')
 
@@ -200,7 +200,7 @@ def test_runtime_feedback_source_messages_are_catalogued(qapp, source, expected)
 ])
 def test_long_localized_settings_copy_remains_in_layout(quick_window, qapp, locale, theme):
     quick_window.root.resize(540, 700)
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.theme.set_mode(theme)
     quick_window.i18n.setLanguage(locale)
     quick_window.settings_page.selectCategory(0)

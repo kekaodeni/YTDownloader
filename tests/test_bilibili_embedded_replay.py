@@ -229,7 +229,7 @@ def test_embedded_batch_request_uses_page_url_and_native_playlist_item(tmp_path)
     request = controller.queue.requests[0]
     assert request.video.url == URL
     assert request.playlist_item_index == 1
-    assert request.batch_id == ''
+    assert request.batch_id  # internal notification aggregation, no parent TaskCard
     assert request.format.format_selector
     assert request.resolve_before_download is False
 

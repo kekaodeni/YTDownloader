@@ -253,6 +253,7 @@ class ResolvedMedia:
     collection_quality_mode: CollectionQualityMode | str = ''
     cookie_used: bool = False
     chapters: tuple[MediaChapter, ...] = ()
+    thumbnails: tuple[ThumbnailOption, ...] = ()
 
     @property
     def is_collection(self) -> bool:
@@ -272,6 +273,14 @@ class ResolvedMedia:
 
 
 @dataclass(frozen=True, slots=True)
+class ThumbnailOption:
+    url: str
+    width: int | None = None
+    height: int | None = None
+    preference: float = 0
+
+
+@dataclass(frozen=True, slots=True)
 class MediaChapter:
     start_time: float
     end_time: float | None
@@ -285,6 +294,7 @@ class SubtitleTrack:
     url: str
     name: str = ''
     is_auto: bool = False
+    data: str = ''
 
     @property
     def language_code(self):
@@ -329,6 +339,8 @@ class PlaylistEntry:
     selected_format: FormatOption | None = None
     quality_target: str = 'recommended'
     chapters: tuple[MediaChapter, ...] = ()
+    availability: str = ''
+    title_missing: bool = False
 
     @property
     def entry_kind(self) -> str:
@@ -502,6 +514,8 @@ class AppSettings:
     default_download_profile_id: str = 'auto'
     custom_download_profiles: tuple[DownloadProfile, ...] = ()
     language: str = 'zh-CN'
+    prevent_duplicate_downloads: bool = True
+    system_notifications: bool = True
 
     @property
     def default_profile(self) -> DownloadProfile:

@@ -19,57 +19,7 @@ Item {
             Item { Layout.fillWidth: true }
             UiText { text: root.taskCount > 0 ? i18n.messages["download.task_count"].replace("{count}", root.taskCount) : ""; role: "Caption"; color: theme.state.muted }
         }
-        RowLayout {
-            Layout.fillWidth: true; spacing: 10
-            UiField {
-                id: urlField; objectName: "urlInput"
-                Layout.fillWidth: true; implicitHeight: 46
-                placeholderText: i18n.messages["download.url_placeholder"]
-                text: download.state.url
-                enabled: !download.state.busy
-                Accessible.name: i18n.messages["download.url_placeholder"]
-                onTextChanged: download.setField("url", text)
-                onAccepted: download.requestParse()
-                rightPadding: clearUrl.visible ? 40 : 12
-                UiButton { id: clearUrl; objectName: "clearUrl"; width: 32; height: 32; anchors.right: parent.right; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; visible: urlField.text.length > 0; text: "×"; hint: i18n.messages["download.link_clear"]; appearance: "quiet"; onClicked: download.setField("url", "") }
-            }
-            UiButton {
-                objectName: "parseButton"
-                text: download.state.parseText; appearance: "primary"; implicitHeight: 46
-                enabled: !download.state.cancelling
-                onClicked: download.requestParse()
-            }
-        }
-        UiText { Layout.fillWidth: true; visible: download.state.clipboardHint.length > 0 && !download.state.busy; text: download.state.clipboardHint; role: "Caption"; color: theme.state.muted; elide: Text.ElideRight }
-        RowLayout {
-            Layout.fillWidth: true; spacing: 8
-            UiText { text: i18n.messages["download.login_status"]; role: "Caption" }
-            UiText {
-                objectName: "cookieAuthStatus"
-                visible: text.length > 0
-                text: download.state.cookieAuthStatus
-                role: "Caption"
-                color: download.state.cookieAuthSeverity === "success" ? theme.state.success : download.state.cookieAuthSeverity === "error" ? theme.state.accent : theme.state.secondary
-            }
-            Item { Layout.fillWidth: true }
-            UiSwitch { objectName: "useCookieSwitch"; text: i18n.messages["download.use_cookie"]; enabled: !download.state.busy; checked: download.state.cookieEnabled; onToggled: download.setCookieEnabled(checked) }
-            UiButton { objectName: "cookieManagementButton"; text: i18n.messages["download.manage_cookie"]; appearance: "normal"; enabled: !download.state.busy; onClicked: shell.openCookieSettings() }
-            UiButton { objectName: "cookieRetry"; text: i18n.messages["download.reparse"]; visible: download.state.cookieAuthInvalid; enabled: !download.state.busy; onClicked: download.requestParse() }
-        }
-        UiText {
-            objectName: "cookieAuthWarning"
-            Layout.fillWidth: true
-            visible: download.state.cookieAuthWarning.length > 0 || download.state.cookieHint.length > 0
-            text: download.state.cookieAuthWarning.length > 0 ? download.state.cookieAuthWarning : download.state.cookieHint
-            role: "Caption"
-            color: download.state.cookieAuthInvalid || download.state.cookieAuthWarning.length > 0 ? theme.state.accent : theme.state.secondary
-            wrapMode: Text.Wrap
-        }
-        ColumnLayout {
-            Layout.fillWidth: true; visible: download.state.busy; spacing: 8
-            UiProgress { Layout.fillWidth: true; indeterminate: true }
-            UiText { Layout.fillWidth: true; text: download.state.parseHint || (download.state.cancelling ? i18n.messages["download.stop_parsing"] : i18n.messages["download.fetching_info"]); color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
-        }
+        MediaInputBar { controller: download }
         ListView {
             id: tasks
             objectName: "taskList"
@@ -109,6 +59,11 @@ Item {
                             Layout.fillWidth: true; spacing: 12
                             UiText { objectName: "videoTitle"; Layout.fillWidth: true; text: download.state.title; role: "CardTitle"; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
                             UiText { Layout.fillWidth: true; text: download.state.meta; color: theme.state.secondary; role: "Secondary"; elide: Text.ElideRight }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 4; visible: !download.state.collection && download.state.archiveStatus.length > 0
+                                UiText { objectName: "archiveStatus"; text: download.state.archiveStatus; role: "Caption"; color: theme.state.success; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                UiText { text: download.state.archiveDetail; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            }
                             UiText { objectName: "compatibilityHint"; Layout.fillWidth: true; visible: text.length > 0; text: download.state.compatibilityHint; color: theme.state.muted; role: "Caption"; wrapMode: Text.Wrap }
                             UiText { Layout.fillWidth: true; visible: text.length > 0; text: download.state.mediaHint; color: theme.state.secondary; role: "Caption"; wrapMode: Text.Wrap }
                             UiText { text: i18n.messages["download.content"]; role: "Caption" }
@@ -170,17 +125,29 @@ Item {
                                         tristate: true
                                         checkState: download.state.collectionSelectState
                                         nextCheckState: function() { return download.state.collectionSelectState }
-                                        enabled: download.state.collectionSelectableCount > 0
+                                        enabled: download.state.collectionVisibleSelectableCount > 0
                                         Accessible.name: i18n.messages["history.select_all"]
                                         Accessible.description: checkState === Qt.Checked ? i18n.messages["history.selection.all"] : checkState === Qt.PartiallyChecked ? i18n.messages["history.selection.partial"] : i18n.messages["history.selection.unselected"]
                                         onClicked: download.selectAllEntries(checkState !== Qt.Checked)
                                     }
                                     UiText { text: i18n.messages["collection.selected_count"].replace("{selected}", download.state.selectedCount).replace("{total}", download.state.collectionSelectableCount); role: "Caption"; color: theme.state.secondary }
+                                    Item { Layout.fillWidth: true }
+                                    UiCombo {
+                                        objectName: "collectionFilter"
+                                        Layout.preferredWidth: Math.min(implicitWidth, 190)
+                                        accessibleName: i18n.messages["playlist.filter"]
+                                        model: [i18n.messages["playlist.filter_all"], i18n.messages["playlist.filter_new"], i18n.messages["playlist.downloaded"]]
+                                        currentIndex: ["all", "not_downloaded", "downloaded"].indexOf(download.state.collectionFilter)
+                                        onActivated: download.selectCollectionFilter(["all", "not_downloaded", "downloaded"][currentIndex])
+                                    }
                                 }
+                                UiText { Layout.fillWidth: true; visible: download.state.skippedDownloadedCount > 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap; text: i18n.messages["playlist.skipped"].replace("{count}", download.state.skippedDownloadedCount) }
+                                UiText { Layout.fillWidth: true; visible: collectionList.count === 0; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap; text: i18n.messages["playlist.empty_filter"] }
                                 ListView {
+                                    id: collectionList
                                     objectName: "collectionItems"
                                     Layout.fillWidth: true; Layout.preferredHeight: Math.min(count * 76, 380)
-                                    model: download.entries; clip: true; reuseItems: true
+                                    model: download.filteredEntries; clip: true; reuseItems: true
                                     boundsBehavior: Flickable.StopAtBounds; spacing: 3
                                     ScrollBar.vertical: UiScrollBar {}
                                     delegate: Rectangle {
@@ -203,10 +170,13 @@ Item {
                                             ColumnLayout {
                                                 Layout.fillWidth: true; spacing: 3
                                                 UiText { objectName: "collectionEntryTitle-" + item.index; Layout.fillWidth: true; text: item.title; elide: Text.ElideRight; maximumLineCount: 1 }
-                                                UiText { Layout.fillWidth: true; text: item.unavailable ? i18n.messages["collection.unavailable"] : item.detail; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
+                                                UiText { Layout.fillWidth: true; text: item.archiveDetail || item.detail; role: "Caption"; color: theme.state.secondary; elide: Text.ElideRight }
                                             }
+                                            UiText { text: i18n.messages[item.statusKey] || ""; role: "Caption"; color: item.downloaded ? theme.state.accent : theme.state.secondary }
                                         }
                                         HoverHandler { id: rowHover }
+                                        ToolTip.visible: rowHover.hovered && item.archiveTooltip.length > 0
+                                        ToolTip.text: item.archiveTooltip
                                         TapHandler {
                                             id: entryTap
                                             acceptedButtons: Qt.LeftButton
@@ -364,7 +334,7 @@ Item {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Item { Layout.fillWidth: true }
-                                UiButton { objectName: "downloadButton"; text: download.state.collection ? i18n.messages["collection.start_download"].replace("{count}", download.state.selectedCount) : i18n.messages["download.start"]; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && (download.state.collection ? download.state.selectedCount > 0 : download.state.formats.length > 0 && download.state.clipValid) && !download.state.busy; onClicked: download.requestDownload() }
+                                UiButton { objectName: "downloadButton"; text: download.state.collection ? i18n.messages["collection.start_download"].replace("{count}", download.state.selectedCount) : download.state.archiveDuplicate ? i18n.messages["archive.download_again"] : i18n.messages["download.start"]; icon.source: assetsBase + "icons/arrow_download_regular.svg"; appearance: "primary"; enabled: download.state.ready && (download.state.collection ? download.state.selectedCount > 0 : download.state.formats.length > 0 && download.state.clipValid) && !download.state.busy; onClicked: download.requestDownload() }
                             }
                         }
                     }

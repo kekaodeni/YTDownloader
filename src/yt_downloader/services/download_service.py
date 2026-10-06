@@ -43,6 +43,7 @@ from yt_downloader.services.download_options import media_options, prepare_reque
 from yt_downloader.services.subtitle_service import SubtitleService, SubtitleResult
 from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
 from yt_downloader.services.section_progress import SectionDownloadProgressAdapter, observed_section_popen, is_section_ffmpeg
+from yt_downloader.services.media_errors import classify_download_error as _download_error
 
 
 logger = logging.getLogger(__name__)
@@ -189,25 +190,7 @@ class _DownloadLogger:
         self._write(logging.ERROR, message)
 
 
-def _download_error(message: str) -> tuple[str, str]:
-    from yt_downloader.services.media_errors import classify_metadata_error
-    lowered = message.lower()
-    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*429\b", lowered) or 'too many requests' in lowered:
-        return 'rate_limited', '请求过于频繁，请稍后再试。'
-    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*403\b", lowered) or 'forbidden' in lowered:
-        return 'forbidden', '网站拒绝了下载请求，可能与登录权限、访问限制或临时站点策略有关。请稍后重试。'
-    if 'ffmpeg' in lowered and re.search(r'connection (?:to|attempt)[^\n]*failed|unable to connect|connection timed out', lowered):
-        return 'FFMPEG_NETWORK_ERROR', 'FFmpeg 无法连接视频媒体服务器。片段下载需要 FFmpeg 直接访问媒体地址，请检查网络或代理后重试。'
-    category, user_message = classify_metadata_error(Exception(message))
-    if category != 'TEMPORARY_EXTRACTOR_ERROR':
-        return category, user_message
-    if "no space" in lowered or "disk full" in lowered:
-        return "disk_full", "磁盘空间不足，无法完成下载。"
-    if "ffmpeg" in lowered:
-        return "ffmpeg_failed", "FFmpeg 处理视频失败。"
-    if "requested format" in lowered:
-        return "format_unavailable", "所选画质已不可用，请重新解析视频。"
-    return "download_failed", "下载未能完成。"
+# Compatibility name for existing callers and focused regressions.
 
 
 def _release_cancelled_stack_resources(error: BaseException) -> None:

@@ -15,7 +15,7 @@ def test_navigation_press_preserves_background_and_only_scales(quick_window, qap
     quick_window.theme.set_mode(mode)
     quick_window.settings_page.setSetting('reduce_motion', reduced)
     if secondary:
-        quick_window._select_page(2)
+        quick_window._select_page(3)
     run_frames(qapp)
     index = 0 if selected else 1
     item = find_item(quick_window, f'{"settingsNav" if secondary else "nav"}-{index}')
@@ -37,7 +37,7 @@ def test_navigation_press_preserves_background_and_only_scales(quick_window, qap
 
 
 def test_settings_starts_with_appearance_and_has_no_selected_focus_outline(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     assert find_item(quick_window, 'languageCombo').isVisible()
     assert not find_item(quick_window, 'defaultDownloadProfile').isVisible()
@@ -47,7 +47,7 @@ def test_settings_starts_with_appearance_and_has_no_selected_focus_outline(quick
 
 
 def test_settings_has_keyboard_secondary_navigation_and_one_category(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     page = find_item(quick_window, 'settingsPage')
     nav = find_item(quick_window, 'settingsNavigation')
@@ -77,7 +77,7 @@ def test_settings_has_keyboard_secondary_navigation_and_one_category(quick_windo
 @pytest.mark.parametrize('locale', ['zh-CN', 'ru-RU', 'es-ES'])
 def test_settings_categories_preserve_navigation_and_wrap_rows(quick_window, qapp, theme, locale):
     quick_window.root.resize(600, 700)
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.theme.set_mode(theme)
     quick_window.i18n.setLanguage(locale)
     run_frames(qapp, 350)
@@ -115,7 +115,7 @@ def test_main_and_settings_share_sliding_selected_surface(quick_window, qapp, re
         assert main.y() == 49
     else:
         assert 0 < main.y() < 49
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     selected = find_item(quick_window, 'settingsNavigation-selection')
     quick_window.settings_page.selectCategory(4)

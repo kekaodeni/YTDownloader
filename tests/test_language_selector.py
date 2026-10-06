@@ -11,7 +11,7 @@ def test_twenty_outward_wheel_events_finish_one_smooth_edge_pulse(quick_window, 
     import time
     from PySide6.QtCore import QTimer
     from test_quick_scroll import wheel
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.setSetting('language', 'ja-JP')
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
@@ -63,7 +63,7 @@ def test_twenty_outward_wheel_events_finish_one_smooth_edge_pulse(quick_window, 
 
 def test_edge_feedback_rearms_after_finish_direction_change_or_leaving_edge(quick_window, qapp):
     from test_quick_scroll import wheel
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     click_item(quick_window, find_item(quick_window, 'languageCombo'))
     run_frames(qapp, 180)
@@ -130,7 +130,7 @@ def language_wheel(window, item, angle=0, pixels=0, native=False):
 @pytest.mark.parametrize('velocity', [2200., -2200.])
 def test_language_native_inertia_cannot_expose_large_blank_region(quick_window, qapp, velocity):
     from PySide6.QtCore import QMetaObject, Q_ARG, QTimer
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     click_item(quick_window, find_item(quick_window, 'languageCombo'))
     run_frames(qapp, 160)
@@ -153,7 +153,7 @@ def test_language_native_inertia_cannot_expose_large_blank_region(quick_window, 
 
 
 def test_keyboard_selection_without_opening_popup_refreshes_locale(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
     combo.forceActiveFocus()
@@ -166,7 +166,7 @@ def test_keyboard_selection_without_opening_popup_refreshes_locale(quick_window,
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 @pytest.mark.parametrize('reduced', [False, True])
 def test_all_languages_have_bounded_non_accumulating_wheel_feedback(quick_window, qapp, mode, reduced):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.theme.set_mode(mode)
     quick_window.settings_page.setSetting('reduce_motion', reduced)
     run_frames(qapp)
@@ -219,7 +219,7 @@ def test_all_languages_have_bounded_non_accumulating_wheel_feedback(quick_window
 @pytest.mark.parametrize('subtle', [False, True])
 @pytest.mark.parametrize('pixels', [0, -24])
 def test_language_wheel_still_scrolls_inside_native_bounds(quick_window, qapp, subtle, pixels):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
     combo.setProperty('subtleOverscroll', subtle)
@@ -234,7 +234,7 @@ def test_language_wheel_still_scrolls_inside_native_bounds(quick_window, qapp, s
 
 
 def test_keyboard_type_search_reveals_option_without_hover_scrolling(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
     click_item(quick_window, combo)
@@ -251,7 +251,7 @@ def test_keyboard_type_search_reveals_option_without_hover_scrolling(quick_windo
 
 
 def test_language_hover_does_not_reposition_or_change_popup(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.setSetting('language', 'th-TH')
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
@@ -273,7 +273,7 @@ def test_language_hover_does_not_reposition_or_change_popup(quick_window, qapp):
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 def test_all_ten_languages_can_be_selected_and_reopened_with_native_names(quick_window, qapp, mode):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.theme.set_mode(mode)
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
@@ -298,7 +298,7 @@ def test_all_ten_languages_can_be_selected_and_reopened_with_native_names(quick_
 
 
 def test_language_refresh_waits_until_popup_finishes_closing(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     combo = find_item(quick_window, 'languageCombo')
     click_item(quick_window, combo)

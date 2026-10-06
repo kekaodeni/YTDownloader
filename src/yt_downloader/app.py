@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from dataclasses import replace
 import json
 import logging
+import sqlite3
 from pathlib import Path
 import os
 import subprocess
@@ -27,7 +28,7 @@ from yt_downloader.core.filename import sanitize_filename
 from yt_downloader.core.models import DownloadProgress, DownloadRequest, FormatOption, HistoryRecord, ParseState, TaskStatus, VideoInfo
 from yt_downloader.infrastructure.logging_config import configure_logging, install_exception_hook
 from yt_downloader.infrastructure.paths import AppPaths, default_videos_directory
-from yt_downloader.infrastructure.runtime import find_tool
+from yt_downloader.infrastructure.runtime import find_tool, resource_path
 from yt_downloader.infrastructure.shell import open_path, reveal_in_folder
 from yt_downloader.infrastructure.system_info import build_system_info
 from yt_downloader.infrastructure.self_test import run_packaged_self_test
@@ -139,6 +140,12 @@ class AppController:
             logger.exception("History database unavailable; using in-memory history")
             self.history = _MemoryHistory()
         self.ffmpeg = FfmpegService(configured_directory=self.settings.ffmpeg_directory or None)
+        from yt_downloader.services.archive_service import ArchiveRepository
+        try:
+            self.archive = ArchiveRepository(paths.history)
+        except (OSError, RuntimeError, sqlite3.Error):
+            logger.exception('Download archive unavailable; History remains independent')
+            self.archive = None
         self.deno_path = find_tool("deno")
         self.network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
         self.media = MediaResolver(
@@ -159,6 +166,9 @@ class AppController:
             theme=self.theme,
         )
         self.window.download_page.update(cookieEnabled=self.settings.use_cookies)
+        self.window.download_page.configure_archive(self.archive, enabled=self.settings.prevent_duplicate_downloads)
+        self.window.toolbox_page.update(cookieEnabled=self.settings.use_cookies)
+        self._refresh_archive_count()
         self.window.history_page.configure_thumbnails(self.ffmpeg, self.paths.cache / "history-previews")
         from yt_downloader.services.cookie_service import CookieProfileStore
         self.cookie_store = CookieProfileStore(self.paths.data / 'cookie-profiles.json')
@@ -195,6 +205,17 @@ class AppController:
         )
         self._update_dialog: UpdateDialog | None = None
         self._update_install_pending = False
+        from yt_downloader.workers.toolbox_controller import ToolboxController
+        self.toolbox = ToolboxController(self.window.toolbox_page, self._metadata_config,
+                                         self._toolbox_service, self.window)
+        from yt_downloader.services.notification_service import NotificationCoordinator
+        from yt_downloader.infrastructure.windows_notifications import WindowsNotificationSink
+        self.notification_sink = WindowsNotificationSink(resource_path('assets', 'app-icon.png'), self.window)
+        self.notifications = NotificationCoordinator(self.window.i18n, self.notification_sink,
+            is_foreground=lambda: self.window.root.isActive() and not (self.window.root.windowState() & Qt.WindowMinimized),
+            enabled=lambda: self.window.settings_page.state['system_notifications'], inline=self.window.show_notification)
+        self.toolbox.completed.connect(lambda request, result: self.notifications.notify('notification.complete', request.video.title))
+        self.toolbox.failed.connect(lambda request: self.notifications.notify('notification.failed', request.video.title))
         self._wire()
         self.refresh_history()
         restored_update = self.updates.restore_verified_package()
@@ -219,6 +240,11 @@ class AppController:
         download.resume_requested.connect(self.queue.resume_task)
         download.open_file_requested.connect(self._open_file)
         download.open_folder_requested.connect(self._reveal_file)
+        self.window.toolbox_page.open_file_requested.connect(self._open_file)
+        self.window.toolbox_page.open_folder_requested.connect(self._reveal_file)
+        self.window.toolbox_page.cookie_enabled_changed.connect(self._save_cookie_use)
+        self.toolbox.error.connect(self._toolbox_error)
+        self.toolbox.busy_changed.connect(lambda _busy: self._sync_background_busy())
         download.remove_requested.connect(self._remove_task_requested)
         download.retry_requested.connect(self._retry_task)
         history = self.window.history_page
@@ -232,6 +258,7 @@ class AppController:
         history.clear_terminal_requested.connect(self._clear_terminal_history)
         settings = self.window.settings_page
         settings.save_requested.connect(self.save_settings)
+        settings.clear_archive_requested.connect(self._confirm_clear_archive)
         settings.network_test_requested.connect(self.test_network_connection)
         settings.theme_preview_requested.connect(self.theme.set_mode)
         self.theme.theme_changed.connect(self.window.apply_theme)
@@ -239,6 +266,7 @@ class AppController:
         settings.copy_system_info_requested.connect(self.copy_system_info)
         self.window.check_update_requested.connect(lambda: self.updates.check(manual=True))
         self.queue.task_queued.connect(download.add_task)
+        self.queue.task_queued.connect(self.notifications.queued)
         self.queue.task_started.connect(download.task_started)
         self.queue.cancelling.connect(self._cancelling)
         self.queue.pausing.connect(download.pausing_task)
@@ -249,8 +277,9 @@ class AppController:
         self.queue.completed.connect(self._completed)
         self.queue.failed.connect(self._failed)
         self.queue.cancelled.connect(self._cancelled)
-        self.queue.busy_changed.connect(self.window.set_download_busy)
+        self.queue.busy_changed.connect(lambda _busy: self._sync_background_busy())
         self.window.cancel_all_requested.connect(self.queue.cancel_all)
+        self.window.cancel_all_requested.connect(self.toolbox.cancel)
         self.window.cancel_update_requested.connect(self.updates.cancel)
         self.metadata_process.state_changed.connect(download.set_parse_state)
         self.metadata_process.result.connect(self._metadata_result)
@@ -278,16 +307,39 @@ class AppController:
         if callable(clear_cookie_error):
             clear_cookie_error(authRequired=False)
         token = self._metadata_gate.begin(url.strip())
-        self.metadata_process.start(token, url, MetadataProcessConfig(
+        self.metadata_process.start(token, url, self._metadata_config(self.window.download_page))
+
+    def _metadata_config(self, page, *, require_formats=True):
+        return MetadataProcessConfig(
             deno_path=str(self.deno_path or ""),
             proxy_mode=self.settings.proxy_mode,
             custom_proxy_url=self.settings.custom_proxy_url,
             require_deno=True,
-            cookie_profile=self.window.download_page.selected_cookie_profile(self.window.cookies),
+            cookie_profile=page.selected_cookie_profile(self.window.cookies),
             cookie_enabled=bool(self.settings.use_cookies),
             ffprobe_path=str(getattr(getattr(self, 'ffmpeg', None), 'ffprobe_path', None) or ""),
             metadata_language=self._ui_metadata_language(),
-        ))
+            require_formats=require_formats,
+        )
+
+    def _toolbox_service(self):
+        from yt_downloader.services.toolbox_service import ToolboxService
+        from yt_downloader.services.subtitle_service import SubtitleService
+        network = NetworkPolicy(self.settings.proxy_mode, self.settings.custom_proxy_url)
+        return ToolboxService(MediaResolver(network_policy=network),
+                              SubtitleService(self.ffmpeg.ffmpeg_path, network))
+
+    def _toolbox_error(self, error, retry):
+        # All errors share the same categorization/dialog. Tool re-parse and retry
+        # stay in Toolbox rather than navigating to Download.
+        def in_toolbox(action):
+            self.window._select_page(2)
+            action()
+        self.show_error(error, retry_callback=lambda: in_toolbox(retry),
+                        reparse_callback=lambda: in_toolbox(self.window.toolbox_page.requestParse))
+
+    def _sync_background_busy(self):
+        self.window.set_download_busy(self.queue.is_busy or self.toolbox.is_busy)
 
     def _save_cookie_profiles(self, profiles):
         try:
@@ -303,8 +355,14 @@ class AppController:
             self.settings_service.save(changed)
             self.settings = changed
             self.window.settings_page.update(use_cookies=bool(enabled))
+            for page in (self.window.download_page, self.window.toolbox_page):
+                if page.state['cookieEnabled'] != bool(enabled):
+                    page.update(cookieEnabled=bool(enabled))
+                    page._invalidate_media()
+                    page._refresh_cookie_hint()
         except (OSError, ValueError):
-            self.window.download_page.update(cookieEnabled=self.settings.use_cookies)
+            for page in (self.window.download_page, self.window.toolbox_page):
+                page.update(cookieEnabled=self.settings.use_cookies)
             self.window.cookies.update(message='Cookie 使用偏好保存失败，原设置已保留。')
 
     def _confirm_cookie_delete(self, profile):
@@ -400,6 +458,7 @@ class AppController:
         self._thumbnail_gate.current = None
 
     def _shutdown_background_operations(self) -> None:
+        self.toolbox.shutdown()
         self._cancel_thumbnail()
         self.metadata_process.shutdown()
         self.updates.cancel()
@@ -487,7 +546,7 @@ class AppController:
             self.updates.check(manual=True)
 
     def _request_update_install(self) -> None:
-        busy = self.queue.is_busy or self.metadata_process.is_running or bool(self._thumbnail_workers or self._settings_workers)
+        busy = self.queue.is_busy or self.toolbox.is_busy or self.metadata_process.is_running or bool(self._thumbnail_workers or self._settings_workers)
         if busy:
             self.window.dialogs.confirm(
                 "任务仍在进行", "默认会继续当前任务。也可以明确取消任务、完成清理后退出并更新。",
@@ -502,13 +561,14 @@ class AppController:
         self._update_install_pending = True
         self.queue.cancel_all()
         self.metadata_process.cancel()
+        self.toolbox.cancel()
         self._cancel_thumbnail()
         QTimer.singleShot(100, self._finish_update_install_when_idle)
 
     def _finish_update_install_when_idle(self) -> None:
         if not self._update_install_pending:
             return
-        if self.queue.is_busy or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
+        if self.queue.is_busy or self.toolbox.is_busy or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
             QTimer.singleShot(100, self._finish_update_install_when_idle)
             return
         self._update_install_pending = False
@@ -519,7 +579,7 @@ class AppController:
             self.show_error(AppError('update_install_unavailable', '当前运行环境不支持自动安装，请从发布页面手动升级。', 'AUTO_INSTALL capability unavailable'))
 
     def _launch_prepared_updater(self, command) -> None:
-        if self.queue.is_busy or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
+        if self.queue.is_busy or getattr(getattr(self, 'toolbox', None), 'is_busy', False) or self.metadata_process.is_running or self._thumbnail_workers or self._settings_workers:
             self.updates._set_state(UpdateState.READY_TO_INSTALL)
             self.show_error(AppError('update_tasks_started', '有新任务开始，请在任务结束后再次更新。', 'Tasks started during update preparation'))
             return
@@ -610,6 +670,7 @@ class AppController:
         # Deferred placeholders are presentation only. Actual formats are resolved
         # by the existing worker after acquiring a slot in the shared queue.
         placeholder = FormatOption(page._t('format.resolve_after_parse'), None, None, 'none', 'none', '', '', '', None, False, '')
+        prepared = []
         try:
             for entry in entries:
                 quality_target = entry.quality_target
@@ -649,6 +710,7 @@ class AppController:
                                           subtitle_format=state['subtitleFormat'], cookie_profile=profile,
                                           cookie_profile_id=profile.id if profile else '',
                                           playlist_id=media.playlist.id if media.playlist else '', playlist_title=media.title,
+                                          batch_id=batch_id,
                                           resolve_before_download=not embedded,
                                           preferred_quality=quality_target,
                                           codec_preference=codec_preference,
@@ -661,10 +723,14 @@ class AppController:
                                        source_site=urlsplit(child.url).hostname or '', playlist_id=request.playlist_id,
                                        playlist_title=media.title, batch_id=batch_id)
                 self.history.upsert(record)
-                self.queue.enqueue(request)
+                prepared.append(request)
         except (OSError, ValueError) as error:
             self.show_error(AppError('collection_prepare_failed', '部分项目无法加入下载，请检查下载目录和历史存储。', redact_sensitive(str(error))))
         finally:
+            if getattr(self, 'notifications', None):
+                self.notifications.register_batch(prepared)
+            for request in prepared:
+                self.queue.enqueue(request)
             self.refresh_history()
 
     def _progress(self, progress) -> None:
@@ -686,6 +752,7 @@ class AppController:
             logger.exception("Failed to persist cancelling task")
 
     def _completed(self, result) -> None:
+        request = self.window.download_page.task_request(result.task_id)
         getattr(self, "_persisted_task_stages", {}).pop(result.task_id, None)
         self.window.download_page.complete_task(result)
         try:
@@ -704,11 +771,22 @@ class AppController:
         except Exception:
             logger.exception("Failed to persist completed task")
         self.refresh_history()
+        if getattr(self, 'notifications', None):
+            self.notifications.finished(request, 'completed')
+        if getattr(self, 'archive', None) is not None and request:
+            try:
+                self.archive.record_download(request, result)
+                self.window.download_page.refresh_archive()
+                self._refresh_archive_count()
+            except Exception:
+                logger.exception('Failed to persist successful media in archive')
         if result.task_id in self._remove_intents:
             self._remove_intents.discard(result.task_id)
             self.window.download_page.remove_task(result.task_id)
 
     def _failed(self, task_id: str, error: AppError) -> None:
+        if getattr(self, 'notifications', None):
+            self.notifications.finished(self.window.download_page.task_request(task_id), 'failed')
         getattr(self, "_persisted_task_stages", {}).pop(task_id, None)
         self.window.download_page.fail_task(task_id, TaskStatus.FAILED)
         try:
@@ -722,6 +800,8 @@ class AppController:
         self.show_error(error, retry_callback=lambda task_id=task_id: self._retry_task(task_id))
 
     def _cancelled(self, task_id: str, cleanup_report) -> None:
+        if getattr(self, 'notifications', None):
+            self.notifications.finished(self.window.download_page.task_request(task_id), 'cancelled')
         getattr(self, "_persisted_task_stages", {}).pop(task_id, None)
         self.window.download_page.fail_task(task_id, TaskStatus.CANCELLED, cleanup_report)
         summary = (
@@ -759,6 +839,8 @@ class AppController:
             self.settings_service.save(settings)
             self.network.configure(settings.proxy_mode, settings.custom_proxy_url)
             self.settings = settings
+            self.window.download_page.configure_archive(getattr(self, 'archive', None), enabled=settings.prevent_duplicate_downloads)
+            self.window.toolbox_page.set_default_directory(settings.download_directory)
             self.theme.set_mode(settings.theme)
             self.window.settings_page.mark_saved(settings)
             self.window.download_page.set_default_directory(settings.download_directory)
@@ -770,6 +852,24 @@ class AppController:
         except (OSError, ValueError) as exc:
             logger.warning("Settings were not saved: %s", exc)
             self.window.settings_page.mark_save_failed(str(exc))
+
+    def _refresh_archive_count(self):
+        archive = getattr(self, 'archive', None)
+        self.window.settings_page.update(archiveAvailable=archive is not None,
+                                         archiveCount=archive.count() if archive else 0)
+
+    def _confirm_clear_archive(self):
+        self.window.dialogs.confirm('清除下载归档', '清除后将不再识别此前下载的媒体。历史记录和本地文件将保留。',
+                                    '清除下载归档', self._clear_archive_answer)
+
+    def _clear_archive_answer(self, accepted):
+        if accepted and self.archive:
+            try:
+                self.archive.clear()
+                self.window.download_page.refresh_archive()
+                self._refresh_archive_count()
+            except (OSError, sqlite3.Error) as error:
+                self.show_error(AppError('archive_clear_failed', '无法清除下载归档。', redact_sensitive(str(error))))
 
     def test_network_connection(self, mode: str, custom_proxy_url: str) -> None:
         try:
@@ -949,7 +1049,7 @@ class AppController:
         except Exception as exc:
             self.show_error(AppError("history_update_failed", "视频封面已写入，但历史记录更新失败。", repr(exc)))
 
-    def show_error(self, error: AppError, *, title_text: str = "下载失败", retry_callback=None) -> None:
+    def show_error(self, error: AppError, *, title_text: str = "下载失败", retry_callback=None, reparse_callback=None) -> None:
         from yt_downloader.services.error_actions import error_presentation
 
         title_id, body_id, actions = error_presentation(error.code, retry_available=retry_callback is not None)
@@ -965,6 +1065,8 @@ class AppController:
             ffmpeg_version=str(self.ffmpeg.ffmpeg_path or "Unavailable"),
         )
         callbacks = self._error_action_callbacks(error, retry_callback)
+        if reparse_callback and 'REPARSE' in callbacks:
+            callbacks['REPARSE'] = reparse_callback
         dialog = ErrorDialog(error, report, self.window, title_text=title_text,
                              retry_callback=retry_callback, actions=error.recommended_actions,
                              action_callbacks=callbacks)
@@ -992,7 +1094,7 @@ class AppController:
             elif action == 'RETRY':
                 callbacks[action] = retry_callback or (lambda url=error.context.url: self._reparse_error_url(url))
             elif action == 'CHECK_APP_UPDATE':
-                callbacks[action] = lambda: (self.window._select_page(3), self.updates.check(manual=True))
+                callbacks[action] = lambda: (self.window._select_page(4), self.updates.check(manual=True))
         return callbacks
 
 
@@ -1028,7 +1130,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--update-health-check", nargs=2, metavar=("TRANSACTION_ID", "MARKER"), help=argparse.SUPPRESS)
     parser.add_argument("--render-preview", type=Path, help="save a window preview image and exit")
     parser.add_argument("--theme", choices=("system", "light", "dark"), help="temporary theme override for visual testing")
-    parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "settings", "about"), default="download")
+    parser.add_argument("--preview-page", choices=("download", "download-demo", "history", "toolbox", "settings", "about"), default="download")
     known, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
     if known.self_test:
         paths = AppPaths.discover()
@@ -1070,7 +1172,7 @@ def main(argv: list[str] | None = None) -> int:
             return run_metadata_process_self_test(app)
         if known.theme:
             controller.theme.set_mode(known.theme)
-        page_indexes = {"download": 0, "download-demo": 0, "history": 1, "settings": 2, "about": 3}
+        page_indexes = {"download": 0, "download-demo": 0, "history": 1, "toolbox": 2, "settings": 3, "about": 4}
         controller.window._select_page(page_indexes[known.preview_page])
         if known.preview_page == "download-demo":
             option = FormatOption(

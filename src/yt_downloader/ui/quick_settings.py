@@ -20,6 +20,7 @@ class SettingsPresenter(ViewState):
     copy_system_info_requested = Signal()
     browse_requested = Signal(str)
     language_changed = Signal(str)
+    clear_archive_requested = Signal()
 
     def __init__(self, settings, *, ytdlp_version, ffmpeg_description, translator=None, parent=None):
         values = asdict(settings)
@@ -37,7 +38,8 @@ class SettingsPresenter(ViewState):
                          profileDraftSubtitleEmbed=False, profileDraftSubtitleFormat='srt',
                          profileDraftSubtitleLanguages=[], profileMessage='',
                          ffmpegDescription=ffmpeg_description, saveVisible=False, saveText='',
-                         networkBusy=False, networkText='', networkSuccess=False, category=0)
+                         networkBusy=False, networkText='', networkSuccess=False, category=0,
+                         archiveCount=0, archiveAvailable=True)
         self._tool_process = None
         self._refresh_tools()
         self._translator = translator
@@ -90,7 +92,8 @@ class SettingsPresenter(ViewState):
     @Slot(str, 'QVariant')
     def edit(self, name, value):
         editable = {'download_directory', 'theme', 'reduce_motion', 'ffmpeg_directory',
-                    'max_concurrent_downloads', 'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'auto_check_updates', 'language'}
+                    'max_concurrent_downloads', 'proxy_mode', 'custom_proxy_url', 'concurrent_fragments', 'auto_check_updates', 'language',
+                    'prevent_duplicate_downloads', 'system_notifications'}
         if name not in editable or self._state[name] == value:
             return
         self.update(**{name: value})
@@ -127,7 +130,9 @@ class SettingsPresenter(ViewState):
                            auto_check_updates=bool(v['auto_check_updates']), use_cookies=bool(v['use_cookies']),
                            default_download_profile_id=str(v['defaultProfileId']),
                            custom_download_profiles=self._custom_profiles,
-                           language=str(v['language']))
+                           language=str(v['language']),
+                           prevent_duplicate_downloads=bool(v['prevent_duplicate_downloads']),
+                           system_notifications=bool(v['system_notifications']))
 
     def _profile_option(self, profile, builtin):
         content = self._t({'video_audio': 'settings.content_video_audio',

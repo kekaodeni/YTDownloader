@@ -39,3 +39,23 @@ def classify_metadata_error(error):
     if any(isinstance(item, (requests.RequestException, ConnectionError, TimeoutError)) for item in chain) or any(text in message for text in ('timed out', 'connection refused', 'connection reset', 'name resolution', 'getaddrinfo failed', 'network is unreachable', 'unable to connect', 'certificate verify failed')):
         return 'NETWORK_ERROR', '网络连接失败，请检查网络或代理后重试。'
     return 'TEMPORARY_EXTRACTOR_ERROR', '解析器暂时无法获取媒体信息，请重试或更新 yt-dlp。'
+
+
+def classify_download_error(message: str) -> tuple[str, str]:
+    lowered = message.lower()
+    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*429\b", lowered) or 'too many requests' in lowered:
+        return 'rate_limited', '请求过于频繁，请稍后再试。'
+    if re.search(r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+error)?|server returned)\s*:?\s*403\b", lowered) or 'forbidden' in lowered:
+        return 'forbidden', '网站拒绝了下载请求，可能与登录权限、访问限制或临时站点策略有关。请稍后重试。'
+    if 'ffmpeg' in lowered and re.search(r'connection (?:to|attempt)[^\n]*failed|unable to connect|connection timed out', lowered):
+        return 'FFMPEG_NETWORK_ERROR', 'FFmpeg 无法连接视频媒体服务器。片段下载需要 FFmpeg 直接访问媒体地址，请检查网络或代理后重试。'
+    category, user_message = classify_metadata_error(Exception(message))
+    if category != 'TEMPORARY_EXTRACTOR_ERROR':
+        return category, user_message
+    if "no space" in lowered or "disk full" in lowered:
+        return "disk_full", "磁盘空间不足，无法完成下载。"
+    if "ffmpeg" in lowered:
+        return "ffmpeg_failed", "FFmpeg 处理视频失败。"
+    if "requested format" in lowered:
+        return "format_unavailable", "所选画质已不可用，请重新解析视频。"
+    return "download_failed", "下载未能完成。"

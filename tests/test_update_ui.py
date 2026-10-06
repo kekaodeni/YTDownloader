@@ -4,7 +4,7 @@ from yt_downloader import __version__
 
 
 def test_about_owns_manual_check_and_uses_real_version(quick_window, qtbot, qapp):
-    quick_window._select_page(3)
+    quick_window._select_page(4)
     run_frames(qapp)
     button = find_item(quick_window, 'aboutUpdateAction')
     assert quick_window.state['version'] == __version__

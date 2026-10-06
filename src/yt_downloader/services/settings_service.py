@@ -132,6 +132,8 @@ class SettingsService:
             default_download_profile_id=default_profile_id,
             custom_download_profiles=custom_profiles,
             language=(str(data.get('language') or 'zh-CN') if str(data.get('language') or 'zh-CN') in SUPPORTED_LOCALES else 'zh-CN'),
+            prevent_duplicate_downloads=bool(data.get('prevent_duplicate_downloads', True)),
+            system_notifications=bool(data.get('system_notifications', True)),
         ), source_schema
 
     def save(self, settings: AppSettings) -> None:

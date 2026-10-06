@@ -94,6 +94,7 @@ class MediaResolver:
         cancel_event: threading.Event | None = None,
         *,
         include_thumbnail: bool = True,
+        require_formats: bool = True,
     ) -> ResolvedMedia:
         try:
             normalized = normalize_media_url(url)
@@ -126,6 +127,8 @@ class MediaResolver:
             "remote_components": [],
         }
         parsed_url = urlsplit(normalized)
+        if not require_formats:
+            options['ignore_no_formats_error'] = True
         options.update(youtube_metadata_options(self.metadata_language))
         if parsed_url.hostname and parsed_url.hostname.casefold().endswith("bilibili.com") and "/video/" in parsed_url.path:
             # Bilibili replay video pages expose each segment's formats only in
@@ -163,7 +166,7 @@ class MediaResolver:
             media = resolve_metadata(info, normalized, requested_url=url.strip(),
                                      detected_formats=detected_formats,
                                      cookie_used=cookie_used)
-            if not media.formats and not media.audio_formats and media.media_type not in {'playlist', 'multi_video'}:
+            if require_formats and not media.formats and not media.audio_formats and media.media_type not in {'playlist', 'multi_video'}:
                 raw_formats = info.get('formats')
                 drm = info.get('has_drm') or any(item.get('has_drm') for item in (raw_formats or []) if isinstance(item, Mapping))
                 raise AppError(

@@ -35,6 +35,7 @@ class MetadataProcessConfig:
     cookie_enabled: bool = False
     ffprobe_path: str = ""
     metadata_language: str = ''
+    require_formats: bool = True
 
 
 def metadata_process_self_test_entry(
@@ -100,7 +101,7 @@ def metadata_process_entry(
             ffmpeg_service=(FfmpegService(ffprobe_path=Path(config.ffprobe_path))
                             if config.ffprobe_path else None),
         )
-        video = service.fetch_metadata(url, cancel_event, include_thumbnail=False)
+        video = service.fetch_metadata(url, cancel_event, include_thumbnail=False, require_formats=config.require_formats)
         send_connection.send(("result", video))
     except OperationCancelled:
         send_connection.send(("cancelled", None))

@@ -26,6 +26,8 @@ multiprocessing.freeze_support()
 
 if "--self-test" in sys.argv[1:]:
     from yt_downloader.cli_self_test import main  # noqa: E402
+elif "--notification-self-test" in sys.argv[1:]:
+    from yt_downloader.cli_notification_self_test import main  # noqa: E402
 elif "--metadata-helper-self-test-child" in sys.argv[1:]:
     from yt_downloader.cli_metadata_self_test import run_helper_child as main  # noqa: E402
 elif "--metadata-process-self-test" in sys.argv[1:]:

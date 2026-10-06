@@ -107,7 +107,9 @@ class DownloadPresenter(ViewState):
                          collectionQualityIndex=0, collectionQualityLabels=[],
                          collectionQualityTargets=[], collectionQualityMode='',
                          collectionKind='',
-                         collectionSelectableCount=0, collectionSelectState=0,
+                         archiveDuplicate=False, archiveStatus='', archiveDetail='',
+                         collectionSelectableCount=0, collectionSelectState=0, skippedDownloadedCount=0,
+                         collectionVisibleSelectableCount=0, collectionFilter='all',
                          cookieEnabled=False, cookieHint='', cookieAuthStatus='',
                          cookieAuthWarning='', cookieAuthInvalid=False, cookieAuthSeverity='')
         self._translator = translator
@@ -132,7 +134,12 @@ class DownloadPresenter(ViewState):
         self._directory_overridden = False
         self._tasks = RowModel(self)
         self._entries = RowModel(self)
+        from yt_downloader.ui.collection_filter import CollectionFilter
+        self._filtered_entries = CollectionFilter(self._entries, self)
+        self._initializing_media = False
         self._selected_entries = set()
+        self._archive = None
+        self._prevent_duplicates = True
         self._cookie_profiles = ()
         self._active_cookie_profile = None
         self._subtitle_preferences = {'enabled': False, 'auto': False, 'embed': False}
@@ -153,6 +160,47 @@ class DownloadPresenter(ViewState):
     def _t(self, key, params=None):
         return self._translator.text(key, params) if self._translator else key
 
+    def configure_archive(self, archive, *, enabled=True):
+        self._archive = archive
+        self._prevent_duplicates = bool(enabled)
+        self.refresh_archive()
+
+    def refresh_archive(self):
+        if self.video and self.video.is_collection:
+            self._refresh_collection_archive()
+        record = None
+        if self.video and not self.video.is_collection and self._archive:
+            kind = 'audio' if self._state['mediaMode'] == 'audio_only' else 'video'
+            record = self._archive.lookup(self.video.extractor_key or self.video.extractor,
+                                          self.video.video_id, kind)
+        duplicate = bool(record and self._prevent_duplicates and not self._state['clipEnabled'])
+        self.update(archiveDuplicate=duplicate,
+                    archiveStatus=self._t('archive.file_present' if record.file_exists else 'archive.file_missing') if record else '',
+                    archiveDetail=f'{record.downloaded_at[:10]} · {record.quality_label}' if record else '')
+
+    def _refresh_collection_archive(self, *, initialize_selection=False):
+        from yt_downloader.services.archive_service import canonical_identity
+        kind = 'audio' if self._state['mediaMode'] == 'audio_only' else 'video'
+        identities = [canonical_identity(entry.extractor_key or self.video.extractor_key, entry.id, kind)
+                      for entry in self.video.entries]
+        records = self._archive.lookup_many(identities) if self._archive else {}
+        for index, (entry, identity) in enumerate(zip(self.video.entries, identities)):
+            row = self._entries.get(index)
+            record = records.get(identity)
+            status = ('playlist.login_required' if entry.availability in {'premium_only', 'subscriber_only', 'needs_auth'}
+                      else 'playlist.unavailable' if row['unavailable'] else
+                      'playlist.downloaded' if record else 'playlist.available')
+            if initialize_selection and self._archive:
+                if not row['unavailable'] and not (record and self._prevent_duplicates):
+                    self._selected_entries.add(index)
+                else:
+                    self._selected_entries.discard(index)
+            self._entries.put(dict(row, selected=index in self._selected_entries,
+                downloaded=bool(record), statusKey=status,
+                archiveDetail=f'{record.quality_label} · {record.downloaded_at[:10]}' if record else '',
+                archiveTooltip=f'{record.quality_label} · {record.downloaded_at}\n{record.output_path}' if record else ''))
+        self._sync_collection_selection()
+
     def _set_cookie_status(self, key='', params=None, *, warning_key='', warning_params=None,
                            warning_external='', invalid=False, severity=''):
         self._cookie_status_key = key
@@ -166,6 +214,8 @@ class DownloadPresenter(ViewState):
 
     @Slot(str)
     def _refresh_localized(self, _locale=None):
+        if self.video and not self.video.is_collection:
+            self.refresh_archive()
         if self._translated_state:
             self.update(**{field: self._t(message_id, params)
                            for field, (message_id, params) in self._translated_state.items()})
@@ -174,7 +224,7 @@ class DownloadPresenter(ViewState):
             for index, entry in enumerate(self.video.entries):
                 row = self._entries.get(index)
                 if row:
-                    self._entries.put(dict(row, detail=self._collection_entry_detail(entry)))
+                    self._entries.put(dict(row, title=self._collection_entry_title(entry), detail=self._collection_entry_detail(entry)))
         if self._format_option is not None:
             self._format_summary = self._technical_summary(self._format_option)
         if self._format_summary or self._format_size_key:
@@ -253,6 +303,7 @@ class DownloadPresenter(ViewState):
         self._set_cookie_status()
         self._set_text('meta', None)
         self.update(ready=False, title='', formats=[], technical='', collection=False, playlist=False,
+                    archiveDuplicate=False, archiveStatus='', archiveDetail='',
                     selectedCount=0, playlistCount=0, collectionSelectableCount=0,
                     collectionSelectState=0)
         self._subtitle_state(reset_selection=True)
@@ -274,6 +325,17 @@ class DownloadPresenter(ViewState):
     @Property(QObject, constant=True)
     def entries(self):
         return self._entries
+
+    @Property(QObject, constant=True)
+    def filteredEntries(self):
+        return self._filtered_entries
+
+    @Slot(str)
+    def selectCollectionFilter(self, choice):
+        if choice in {'all', 'not_downloaded', 'downloaded'}:
+            self._filtered_entries.set_choice(choice)
+            self.update(collectionFilter=choice)
+            self._sync_collection_selection()
 
     @Slot(int, bool)
     def selectEntry(self, index, selected):
@@ -314,8 +376,8 @@ class DownloadPresenter(ViewState):
     def selectAllEntries(self, selected):
         if self.video:
             selected = bool(selected)
-            for index, entry in enumerate(self.video.entries):
-                row = self._entries.get(index)
+            for row in [self._filtered_entries.get(i) for i in range(self._filtered_entries.rowCount())]:
+                index = row['index']
                 if row.get('unavailable'):
                     continue
                 if selected:
@@ -328,9 +390,14 @@ class DownloadPresenter(ViewState):
 
     def _sync_collection_selection(self):
         selectable = sum(not self._entries.get(i).get('unavailable') for i in range(self._entries.count))
-        selected = len(self._selected_entries)
-        state = 2 if selectable and selected == selectable else 1 if selected else 0
-        self.update(collectionSelectableCount=selectable, collectionSelectState=state)
+        visible = [self._filtered_entries.get(i) for i in range(self._filtered_entries.rowCount())]
+        visible = [row for row in visible if not row['unavailable']]
+        selected = sum(row['selected'] for row in visible)
+        state = 2 if visible and selected == len(visible) else 1 if selected else 0
+        self.update(collectionSelectableCount=selectable, collectionSelectState=state,
+                    collectionVisibleSelectableCount=len(visible), selectedCount=len(self._selected_entries))
+        self.update(skippedDownloadedCount=sum(bool(row.get('downloaded')) and not row['selected']
+                                               for row in self._entries.rows) if self._prevent_duplicates else 0)
 
     def _refresh_collection_quality_targets(self):
         if not self.video or not self._state['collection']:
@@ -412,6 +479,8 @@ class DownloadPresenter(ViewState):
         self.update(**{fields[name]: value})
         if name == 'clipEnabled' or name in {'embedMetadata', 'embedChapters'}:
             self._validate_clip_state()
+        if name == 'clipEnabled':
+            self.refresh_archive()
 
     @Slot(str, str)
     def setAdvancedField(self, name, value):
@@ -523,6 +592,8 @@ class DownloadPresenter(ViewState):
         self.update(clipLongFormat=long_format, clipStart=start, clipEnd=end)
 
     def show_video(self, video, *, preferred_quality='recommended', profile=None):
+        self._initializing_media = True
+        self.selectCollectionFilter('all')
         self._sync_clip_time_format(video)
         self.video = video
         self._format_codec_preference = CodecPreference(profile.codec_preference) if profile else CodecPreference.AUTO
@@ -540,9 +611,10 @@ class DownloadPresenter(ViewState):
         auth_warning_external = ''
         self._selected_entries.clear()
         is_playlist = video.is_collection
-        self._entries.replace([dict(id=str(index), index=index, title=entry.title,
+        self._entries.replace([dict(id=str(index), index=index, title=self._collection_entry_title(entry),
                                    url=entry.url, thumbnail=entry.thumbnail, unavailable=entry.unavailable,
                                    selected=False, embedded=entry.embedded,
+                                   downloaded=False, statusKey='playlist.available', archiveDetail='', archiveTooltip='',
                                    detail=self._collection_entry_detail(entry))
                               for index, entry in enumerate(video.entries)])
         self.update(playlist=is_playlist, collection=is_playlist, collectionKind=video.collection_kind,
@@ -631,6 +703,12 @@ class DownloadPresenter(ViewState):
                 self._subtitle_state()
         self._validate_clip_state()
 
+        self._initializing_media = False
+        if is_playlist:
+            self._refresh_collection_archive(initialize_selection=True)
+        else:
+            self.refresh_archive()
+
     def _collection_entry_detail(self, entry):
         details = []
         if entry.duration is not None:
@@ -642,6 +720,9 @@ class DownloadPresenter(ViewState):
         elif not entry.unavailable:
             details.append(self._t('collection.entry_pending'))
         return ' · '.join(details) or (self._t('collection.entry_unavailable') if entry.unavailable else self._t('collection.entry_item'))
+
+    def _collection_entry_title(self, entry):
+        return self._t('playlist.untitled') if getattr(entry, 'title_missing', False) else entry.title
 
     @property
     def available_formats(self):
@@ -689,6 +770,8 @@ class DownloadPresenter(ViewState):
             self.update(selectedCount=len(self._selected_entries))
             self._sync_collection_selection()
             self._refresh_collection_quality_targets()
+        if not self._initializing_media:
+            self.refresh_archive()
         self._subtitle_state()
 
     @Slot(bool)

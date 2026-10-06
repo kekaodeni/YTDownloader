@@ -88,6 +88,23 @@ Item {
                                         UiCombo { Layout.fillWidth: true; accessibleName: i18n.messages["settings.fragment_count"]; model: [i18n.messages["settings.fragments_auto"], "1", "2", "4", "8"]; property var values: [0,1,2,4,8]; currentIndex: Math.max(0, values.indexOf(settings.state.concurrent_fragments)); onActivated: settings.setSetting("concurrent_fragments", values[currentIndex]) }
                                     }
                                 }
+                                SettingCard { Layout.fillWidth: true; title: i18n.messages["archive.title"]
+                                    SettingRow { Layout.fillWidth: true; label: i18n.messages["archive.prevent"]; description: i18n.messages["archive.description"]
+                                        UiSwitch { objectName: "preventDuplicateDownloads"; checked: settings.state.prevent_duplicate_downloads; onToggled: settings.setSetting("prevent_duplicate_downloads", checked) }
+                                    }
+                                    UiText { Layout.fillWidth: true; role: "Caption"; text: settings.state.archiveAvailable ? i18n.messages["archive.count"].replace("{count}", settings.state.archiveCount) : i18n.messages["archive.unavailable"]; color: theme.state.secondary; wrapMode: Text.Wrap }
+                                    UiButton {
+                                        id: clearArchive; objectName: "clearDownloadArchive"; Layout.maximumWidth: parent.width
+                                        text: i18n.messages["archive.clear"]; implicitHeight: Math.max(38, implicitContentHeight + 16)
+                                        contentItem: UiText { text: clearArchive.text; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: clearArchive.palette.buttonText }
+                                        enabled: settings.state.archiveAvailable && settings.state.archiveCount > 0; onClicked: settings.clear_archive_requested()
+                                    }
+                                }
+                                SettingCard { Layout.fillWidth: true; title: i18n.messages["notification.settings"]
+                                    SettingRow { Layout.fillWidth: true; label: i18n.messages["notification.enable"]
+                                        UiSwitch { objectName: "systemNotifications"; checked: settings.state.system_notifications; onToggled: settings.setSetting("system_notifications", checked) }
+                                    }
+                                }
                             }
                         }
                     }

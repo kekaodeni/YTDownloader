@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from yt_downloader.core.formats import normalize_formats, normalize_audio_formats
 from yt_downloader.core.models import (Collection, CollectionQualityMode, MediaChapter, PlaylistEntry,
-                                       PlaylistMetadata, ResolvedMedia, SubtitleTrack)
+                                       PlaylistMetadata, ResolvedMedia, SubtitleTrack, ThumbnailOption)
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 
 
@@ -40,9 +40,24 @@ def thumbnail_url(info):
 def _tracks(value, is_auto=False):
     if not isinstance(value, Mapping):
         return ()
-    return tuple(SubtitleTrack(str(language), str(item.get('ext') or ''), url, str(item.get('name') or ''), is_auto)
+    return tuple(SubtitleTrack(str(language), str(item.get('ext') or ''), _http_url(item.get('url')) or '',
+                               str(item.get('name') or ''), is_auto, str(item.get('data') or ''))
                  for language, items in value.items() if isinstance(items, list)
-                 for item in items if isinstance(item, Mapping) and (url := _http_url(item.get('url'))))
+                 for item in items if isinstance(item, Mapping) and
+                 (_http_url(item.get('url')) or (isinstance(item.get('data'), str) and item['data'])))
+
+
+def _thumbnails(info):
+    candidates = {}
+    for item in info.get('thumbnails') or ():
+        if not isinstance(item, Mapping) or not (url := _http_url(item.get('url'))):
+            continue
+        width, height = _number(item.get('width')), _number(item.get('height'))
+        candidates[url] = ThumbnailOption(url, int(width) if width else None,
+                                         int(height) if height else None, _number(item.get('preference')) or 0)
+    if primary := _http_url(info.get('thumbnail')):
+        candidates.setdefault(primary, ThumbnailOption(primary))
+    return tuple(candidates.values())
 
 
 def _chapters(value):
@@ -135,12 +150,13 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
             entry_index = _number(item.get('playlist_index')) or index
             has_usable_embedded = bool(entry_formats or entry_audio or entry_video_only)
             entries.append(PlaylistEntry(str(item.get('id') or index), int(entry_index),
-                          str(item.get('title') or '此项目暂时不可用'), url,
-                          str(item.get('ie_key') or item.get('extractor_key') or ''),
+                          str(item.get('title') or '未命名媒体'), url,
+                          str(item.get('ie_key') or item.get('extractor_key') or extractor_key),
                           entry_duration, item_thumbnail or '',
-                          not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only'},
+                          not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only', 'needs_auth'},
                           entry_formats, entry_audio, entry_video_only, has_usable_embedded,
-                          chapters=_chapters(item.get('chapters'))))
+                          chapters=_chapters(item.get('chapters')), availability=str(item.get('availability') or ''),
+                          title_missing=not bool(item.get('title'))))
     selectable_entries = [entry for entry in entries if not entry.unavailable]
     resolved_collection = bool(selectable_entries) and all(entry.formats for entry in selectable_entries)
     collection_quality_mode = (CollectionQualityMode.RESOLVED_COMMON_FORMATS if resolved_collection
@@ -186,4 +202,5 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
         collection_quality_mode=collection_quality_mode,
         cookie_used=bool(cookie_used),
         chapters=_chapters(info.get('chapters')),
+        thumbnails=_thumbnails(info),
     )

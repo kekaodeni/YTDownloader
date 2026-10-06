@@ -45,10 +45,10 @@ ApplicationWindow {
                 objectName: "mainNavigation"
                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: branding.bottom
                 anchors.leftMargin: 10; anchors.rightMargin: 10; anchors.topMargin: 30
-                height: 4 * 49
+                height: 5 * 49
                 compact: window.compact
                 currentIndex: shell.state.page
-                model: [{key:"nav.download", icon:"arrow_download", filled:true}, {key:"nav.history", icon:"history", filled:true}, {key:"nav.settings", icon:"settings", filled:true}, {key:"nav.about", icon:"info", filled:true}]
+                model: [{key:"nav.download", icon:"arrow_download", filled:true}, {key:"nav.history", icon:"history", filled:true}, {key:"nav.toolbox", icon:"folder", filled:true}, {key:"nav.settings", icon:"settings", filled:true}, {key:"nav.about", icon:"info", filled:true}]
                 onActivated: function(index) { shell._select_page(index) }
             }
             UiText { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 20; text: "v" + shell.state.version; role: "Caption"; color: theme.state.muted; visible: !window.compact }
@@ -68,8 +68,9 @@ ApplicationWindow {
                 Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                 PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 0; current: shell.state.page === 0; DownloadView { anchors.fill: parent } }
                 PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 1; current: shell.state.page === 1; HistoryView { anchors.fill: parent } }
-                PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 2; current: shell.state.page === 2; SettingsView { anchors.fill: parent } }
-                PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 3; current: shell.state.page === 3; AboutView { anchors.fill: parent } }
+                PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 2; current: shell.state.page === 2; ToolboxView { anchors.fill: parent } }
+                PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 3; current: shell.state.page === 3; SettingsView { anchors.fill: parent } }
+                PageHost { anchors.fill: parent; objectName: "pageHost-" + pageIndex; property int pageIndex: 4; current: shell.state.page === 4; AboutView { anchors.fill: parent } }
             }
         }
     }
@@ -84,6 +85,20 @@ ApplicationWindow {
     Instantiator {
         model: dialogs.model
         delegate: DialogView { required property var item; session: item.session; parent: window.Overlay.overlay }
+    }
+    Rectangle {
+        objectName: "notificationToast"
+        opacity: shell.state.notificationVisible ? 1 : 0
+        visible: opacity > 0.001
+        Behavior on opacity { NumberAnimation { duration: motion.standard; easing.type: motion.easing } }
+        anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 24
+        width: Math.min(parent.width - 48, 380); height: notificationContent.implicitHeight + 32
+        color: theme.state.surface; radius: 12; border.color: theme.state.stroke
+        ColumnLayout {
+            id: notificationContent; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 6
+            UiText { Layout.fillWidth: true; text: shell.state.notificationTitle; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
+            UiText { Layout.fillWidth: true; text: shell.state.notificationBody; role: "Caption"; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; color: theme.state.secondary }
+        }
     }
     FolderDialog {
         id: folder

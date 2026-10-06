@@ -24,7 +24,7 @@ def test_scroll_activity_lingers_then_returns_to_idle(quick_window, qapp, tmp_pa
 
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_scrollbar_has_fixed_hit_area_and_never_shifts_content_on_hover(quick_window, qapp, theme):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.selectCategory(1)
     quick_window.theme.set_mode(theme)
     run_frames(qapp)
@@ -42,7 +42,7 @@ def test_scrollbar_has_fixed_hit_area_and_never_shifts_content_on_hover(quick_wi
 
 @pytest.mark.parametrize('reduced', [False, True])
 def test_scrollbar_drag_minimum_auto_hide_and_keyboard(quick_window, qapp, reduced):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.selectCategory(1)
     quick_window.settings_page.setSetting('reduce_motion', reduced)
     run_frames(qapp)

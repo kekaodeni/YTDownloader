@@ -5,7 +5,7 @@ from conftest import find_item, run_frames, click_item
 
 
 def test_settings_category_crossfade_keeps_both_instances_visible(quick_window, qapp):
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     run_frames(qapp)
     old = find_item(quick_window, 'settingsCategory-0')
     new = find_item(quick_window, 'settingsCategory-2')
@@ -25,7 +25,7 @@ def test_settings_navigation_never_has_blank_frame_and_preserves_scroll(quick_wi
     assert quick_window.state['reduceMotion'] == reduced
     assert quick_window.motion.property('reduced') == reduced
     quick_window.root.resize(700, 560)
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     first_scroll = find_item(quick_window, 'settingsScroll')
@@ -68,8 +68,8 @@ def test_settings_navigation_never_has_blank_frame_and_preserves_scroll(quick_wi
 @pytest.mark.parametrize('reduced', [False, True])
 def test_main_navigation_keeps_stable_instances_and_motion_policy(quick_window, qapp, reduced):
     quick_window.settings_page.setSetting('reduce_motion', reduced)
-    hosts = [find_item(quick_window, f'pageHost-{n}') for n in range(4)]
-    for n in (1, 2, 3, 0):
+    hosts = [find_item(quick_window, f'pageHost-{n}') for n in range(5)]
+    for n in (1, 2, 3, 4, 0):
         quick_window._select_page(n)
         run_frames(qapp, 60)
         assert max(h.opacity() for h in hosts) >= .45
@@ -80,7 +80,7 @@ def test_main_navigation_keeps_stable_instances_and_motion_policy(quick_window, 
 
 def test_popup_and_modal_use_short_fade_without_changing_focus_contract(quick_window, qapp):
     from PySide6.QtCore import QMetaObject
-    quick_window._select_page(2)
+    quick_window._select_page(3)
     quick_window.settings_page.selectCategory(1)
     run_frames(qapp)
     combo = find_item(quick_window, 'defaultDownloadProfile')

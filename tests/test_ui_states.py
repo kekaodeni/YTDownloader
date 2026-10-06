@@ -169,7 +169,7 @@ def test_error_action_callbacks_open_cookie_reparse_and_check_app_update(quick_w
                             error_presentation('COOKIE_REQUIRED')[2])
     callbacks = controller._error_action_callbacks(cookie_error)
     callbacks['OPEN_COOKIE_MANAGER']()
-    assert quick_window.state['page'] == 2
+    assert quick_window.state['page'] == 3
 
     with qtbot.waitSignal(quick_window.download_page.parse_requested) as parsed:
         controller._reparse_error_url(cookie_error.context.url)
@@ -181,7 +181,7 @@ def test_error_action_callbacks_open_cookie_reparse_and_check_app_update(quick_w
                                error_presentation('TEMPORARY_EXTRACTOR_ERROR')[2])
     callbacks = controller._error_action_callbacks(extractor_error)
     callbacks['CHECK_APP_UPDATE']()
-    assert quick_window.state['page'] == 3
+    assert quick_window.state['page'] == 4
     assert update_calls == [True]
 
 def test_task_card_enters_cancelling_immediately(quick_window, tmp_path):

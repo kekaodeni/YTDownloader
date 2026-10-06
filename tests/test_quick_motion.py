@@ -15,7 +15,7 @@ def test_rapid_navigation_uses_latest_target_and_disables_outgoing(quick_window,
     QTimer.singleShot(60,lambda:quick_window._select_page(2))
     QTimer.singleShot(90,lambda:quick_window._select_page(0))
     run_frames(qapp,450)
-    for i in range(4):
+    for i in range(5):
         host=find_item(quick_window,f'pageHost-{i}')
         assert host.opacity() == (1 if i==0 else 0)
         assert host.isEnabled() == (i==0)

@@ -434,7 +434,8 @@ def test_controller_enqueues_selected_collection_items_as_regular_tasks(qtbot, t
         'https://cdn.example/entry-0.jpg', 'https://cdn.example/entry-2.jpg']
     assert all(r.video.thumbnail_url != media.thumbnail_url for r in service.requests)
     assert media.entries[0].thumbnail == 'https://cdn.example/entry-0.jpg'
-    assert all(request.batch_id == '' for request in service.requests)
+    assert service.requests[0].batch_id
+    assert len({request.batch_id for request in service.requests}) == 1
     assert all(r.playlist_id == 'list' for r in controller.history.list_records())
 
 
