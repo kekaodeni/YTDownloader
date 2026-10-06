@@ -208,11 +208,11 @@ class AppController:
         from yt_downloader.workers.toolbox_controller import ToolboxController
         self.toolbox = ToolboxController(self.window.toolbox_page, self._metadata_config,
                                          self._toolbox_service, self.window)
-        from yt_downloader.services.notification_service import NotificationCoordinator
+        from yt_downloader.services.notification_service import NotificationCoordinator, is_app_foreground
         from yt_downloader.infrastructure.windows_notifications import WindowsNotificationSink
         self.notification_sink = WindowsNotificationSink(resource_path('assets', 'app-icon.png'), self.window)
         self.notifications = NotificationCoordinator(self.window.i18n, self.notification_sink,
-            is_foreground=lambda: self.window.root.isActive() and not (self.window.root.windowState() & Qt.WindowMinimized),
+            is_foreground=lambda: is_app_foreground(self.window.root, app),
             enabled=lambda: self.window.settings_page.state['system_notifications'], inline=self.window.show_notification)
         self.toolbox.completed.connect(lambda request, result: self.notifications.notify('notification.complete', request.video.title))
         self.toolbox.failed.connect(lambda request: self.notifications.notify('notification.failed', request.video.title))

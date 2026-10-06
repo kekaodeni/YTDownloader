@@ -2,6 +2,14 @@
 from collections import OrderedDict
 
 
+def is_app_foreground(window, application):
+    """Only a visible, active, non-minimized application owns foreground UI."""
+    from PySide6.QtCore import Qt
+    return (window.isVisible() and window.isActive()
+            and not (window.windowState() & Qt.WindowMinimized)
+            and application.applicationState() == Qt.ApplicationActive)
+
+
 class NotificationCoordinator:
     def __init__(self, translator, sink, *, is_foreground, enabled, inline):
         self.translator, self.sink = translator, sink
@@ -40,7 +48,7 @@ class NotificationCoordinator:
             self.notify('notification.complete' if outcome == 'completed' else 'notification.failed', request.video.title)
 
     def notify(self, title_key, body):
-        if not self.enabled():
+        if not self.enabled() or self.is_foreground():
             return
         title = self.translator.text(title_key)
-        (self.inline if self.is_foreground() else self.sink.send)(title, body)
+        self.sink.send(title, body)

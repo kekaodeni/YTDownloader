@@ -16,9 +16,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from PySide6.QtCore import QObject, QThreadPool, Signal
 from yt_downloader.workers.function_worker import FunctionWorker
-
-
-AUMID = 'YTDownloader.Desktop'
+from yt_downloader.infrastructure.windows_app_identity import AUMID, DISPLAY_NAME, register_shortcut, set_process_identity
 
 
 def toast_xml(title, body):
@@ -38,8 +36,9 @@ def send_windows_toast(title, body, icon_path='', *, app_id=AUMID):
     if sys.platform != 'win32':
         return {'supported': False}
     import winreg
+    identity = register_shortcut(icon_path)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, 'Software\\Classes\\AppUserModelId\\' + app_id) as key:
-        winreg.SetValueEx(key, 'DisplayName', 0, winreg.REG_SZ, 'YTDownloader')
+        winreg.SetValueEx(key, 'DisplayName', 0, winreg.REG_SZ, DISPLAY_NAME)
         if icon_path:
             winreg.SetValueEx(key, 'IconUri', 0, winreg.REG_SZ, str(icon_path))
     tag = uuid.uuid4().hex[:16]
@@ -74,7 +73,7 @@ $found = @($history | Where-Object { $_.Tag -eq $p.tag }).Count -gt 0
         raise RuntimeError('Windows toast bridge timed out') from None
     if result.returncode:
         raise RuntimeError(f'Windows toast bridge failed ({result.returncode})')
-    return json.loads(result.stdout.strip())
+    return {**json.loads(result.stdout.strip()), 'identity': identity}
 
 
 class WindowsNotificationSink(QObject):
@@ -82,6 +81,7 @@ class WindowsNotificationSink(QObject):
 
     def __init__(self, icon_path='', parent=None):
         super().__init__(parent)
+        set_process_identity()
         self.icon_path = str(icon_path)
         self.workers = []
 
