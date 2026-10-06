@@ -430,8 +430,11 @@ def test_controller_enqueues_selected_collection_items_as_regular_tasks(qtbot, t
     assert len(service.requests) == 2
     assert all(r.media_mode == 'audio_only' for r in service.requests)
     assert all(str(r.codec_preference) == 'h264' for r in service.requests)
-    assert [r.video.thumbnail_url for r in service.requests] == [
+    # Concurrent workers may start in either order; identity is per child.
+    assert sorted(r.video.thumbnail_url for r in service.requests) == [
         'https://cdn.example/entry-0.jpg', 'https://cdn.example/entry-2.jpg']
+    assert all(r.video.canonical_thumbnail_url == r.video.thumbnail_url for r in service.requests)
+    assert all(r.video.collection_thumbnail_url == media.thumbnail_url for r in service.requests)
     assert all(r.video.thumbnail_url != media.thumbnail_url for r in service.requests)
     assert media.entries[0].thumbnail == 'https://cdn.example/entry-0.jpg'
     assert service.requests[0].batch_id

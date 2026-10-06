@@ -2,10 +2,12 @@
 from collections import OrderedDict
 import hashlib
 import logging
+import os
 from pathlib import Path
 import threading
 import uuid
-from PySide6.QtCore import QObject, QThreadPool, Signal, QUrl
+from PySide6.QtCore import QObject, QThreadPool, Signal, QUrl, Qt
+from PySide6.QtGui import QImage
 from yt_downloader.workers.function_worker import FunctionWorker
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 def media_key(path):
     path = Path(path)
     info = path.stat()
-    return hashlib.sha256(f'{path.resolve()}|{info.st_mtime_ns}|{info.st_size}'.encode('utf-8')).hexdigest()
+    return hashlib.sha256(f'cover-v2|{path.resolve()}|{info.st_mtime_ns}|{info.st_size}'.encode('utf-8')).hexdigest()
 
 
 def render_thumbnail(ffmpeg, media, directory, key, cancel):
@@ -24,11 +26,18 @@ def render_thumbnail(ffmpeg, media, directory, key, cancel):
     if destination.is_file():
         return destination
     probe = ffmpeg.probe(media, cancel_event=cancel)
+    # Matroska exposes WebP (and other image attachments) as `attachment`,
+    # rather than the attached_pic video stream used by PNG/JPEG covers.
+    attachment = next((s for s in probe.get('streams', [])
+                       if s.get('codec_type') == 'attachment'
+                       and str(s.get('tags', {}).get('filename', '')).startswith('cover.')
+                       and str(s.get('tags', {}).get('mimetype', '')).startswith('image/')), None)
     streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
     if not streams:
         raise ValueError('No video stream available for history thumbnail')
     stream = next((s for s in streams if ffmpeg._is_cover_stream(s)), next((s for s in streams if not s.get('disposition', {}).get('attached_pic')), streams[0]))
     temporary = directory / f'{key}.{uuid.uuid4().hex}.tmp.jpg'
+    attached_image = temporary.with_suffix('.cover')
     arguments = [str(ffmpeg.ffmpeg_path), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y']
     if not stream.get('disposition', {}).get('attached_pic'):
         duration = float(probe.get('format', {}).get('duration') or 0)
@@ -37,7 +46,16 @@ def render_thumbnail(ffmpeg, media, directory, key, cancel):
     arguments += ['-i', str(media), '-map', f"0:{stream['index']}", '-frames:v', '1',
                   '-vf', 'scale=360:360:force_original_aspect_ratio=decrease', '-q:v', '3', str(temporary)]
     try:
-        ffmpeg._run(arguments, cancel_event=cancel, timeout=30, stage='History thumbnail')
+        if attachment:
+            ffmpeg._run([str(ffmpeg.ffmpeg_path), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+                         f'-dump_attachment:{attachment["index"]}', str(attached_image),
+                         '-i', str(media), '-map', '0:V:0', '-frames:v', '1', '-f', 'null', os.devnull],
+                        cancel_event=cancel, timeout=30, stage='History thumbnail')
+            image = QImage(str(attached_image))
+            if image.isNull() or not image.scaled(360, 360, Qt.KeepAspectRatio, Qt.SmoothTransformation).save(str(temporary), 'JPEG', 90):
+                raise ValueError('Embedded cover cannot be decoded')
+        else:
+            ffmpeg._run(arguments, cancel_event=cancel, timeout=30, stage='History thumbnail')
         if not temporary.is_file() or not temporary.stat().st_size:
             raise ValueError('Empty history thumbnail')
         if media_key(media) != key:
@@ -50,6 +68,7 @@ def render_thumbnail(ffmpeg, media, directory, key, cancel):
         return destination
     finally:
         temporary.unlink(missing_ok=True)
+        attached_image.unlink(missing_ok=True)
 
 
 class HistoryImageCache(QObject):

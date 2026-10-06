@@ -280,10 +280,13 @@ class DownloadService:
             options = tuple(apply_codec_preference(option, request.codec_preference) for option in options)
             from yt_downloader.core.quality_target import choose_quality
             option = choose_quality(options, request.preferred_quality)
-            if (media.extractor_key.casefold() == 'bilibilibangumi' and request.video.thumbnail_url):
-                # The flat season index has the authoritative episode cover;
-                # native child extraction otherwise substitutes the season cover.
-                media = replace(media, thumbnail_url=request.video.thumbnail_url)
+            if request.video.canonical_thumbnail_url or request.video.collection_thumbnail_url:
+                media = replace(media,
+                                canonical_thumbnail_url=request.video.canonical_thumbnail_url,
+                                collection_thumbnail_url=request.video.collection_thumbnail_url,
+                                thumbnail_url=request.video.canonical_thumbnail_url or media.thumbnail_url
+                                              or request.video.collection_thumbnail_url or None,
+                                thumbnail_bytes=None)
             progress_callback(DownloadProgress(request.task_id, TaskStatus.FETCHING_METADATA,
                                               resolved_quality=f'{option.label} · {option.container}',
                                               resolved_thumbnail_url=media.thumbnail_url or '',
@@ -419,9 +422,20 @@ class DownloadService:
                     )
 
         def postprocessor_hook(data: dict[str, Any]) -> None:
+            nonlocal request
             if cancel_event.is_set():
                 raise OperationCancelled(context)
             name = str(data.get("postprocessor") or "")
+            if name == 'CollectionCover':
+                return  # Metadata-only preparation isn't media post-processing.
+            if name == 'EmbedThumbnail' and data.get('status') == 'started':
+                selected = next((item for item in reversed((data.get('info_dict') or {}).get('thumbnails') or [])
+                                 if item.get('filepath')), None)
+                if selected:
+                    path = Path(selected['filepath'])
+                    if path.is_file() and path.stat().st_size <= 32 * 1024 * 1024:
+                        request = replace(request, video=replace(request.video,
+                                          thumbnail_url=selected['url'], thumbnail_bytes=path.read_bytes()))
             stage = TaskStatus.MERGING if "merger" in name.lower() and data.get("status") == "started" else TaskStatus.POST_PROCESSING
             emit(stage, data, force=True)
 
@@ -476,6 +490,10 @@ class DownloadService:
                                                      clock=self.clock) if request.clip_enabled else None
             with _interruptible_ytdlp_resources(cancel_event, context, section):
                 with self.ydl_factory(options) as ydl:
+                    if request.embed_thumbnail and (request.video.canonical_thumbnail_url or request.video.collection_thumbnail_url):
+                        from yt_downloader.services.collection_cover import CollectionCoverPP
+                        ydl.add_post_processor(CollectionCoverPP(ydl, request.video.canonical_thumbnail_url,
+                                                                 request.video.collection_thumbnail_url), when='video')
                     if section is not None:
                         section.proxies = getattr(ydl, 'proxies', None)
                     exit_code = ydl.download([request.video.url])

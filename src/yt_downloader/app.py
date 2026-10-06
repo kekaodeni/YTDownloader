@@ -691,10 +691,15 @@ class AppController:
                                     formats=entry.formats, audio_formats=entry.audio_formats,
                                     video_only_formats=entry.video_only_formats, entries=(), playlist=None,
                                     media_type='video', extractor_key=entry.extractor_key or media.extractor_key,
-                                    collection=None, chapters=entry.chapters)
+                                    collection=None, chapters=entry.chapters,
+                                    thumbnail_bytes=None, thumbnails=(),
+                                    canonical_thumbnail_url=entry.thumbnail,
+                                    collection_thumbnail_url=media.thumbnail_url or '')
                 else:
                     child = ResolvedMedia(entry.id, entry.url, entry.title, media.channel, entry.duration,
-                                          entry.thumbnail or None, None, (), extractor_key=entry.extractor_key)
+                                          entry.thumbnail or None, None, (), extractor_key=entry.extractor_key,
+                                          canonical_thumbnail_url=entry.thumbnail,
+                                          collection_thumbnail_url=media.thumbnail_url or '')
                     selected_format = placeholder
                 request = DownloadRequest(uuid.uuid4().hex, child, selected_format, output,
                                           sanitize_filename(entry.title), media_mode=state['mediaMode'],

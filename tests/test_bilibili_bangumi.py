@@ -215,6 +215,8 @@ def test_bangumi_task_snapshot_keeps_own_cover_and_semantic_target(qapp, tmp_pat
     assert request.resolve_before_download and request.preferred_quality == 'bilibili:112'
     assert request.video.url == media.entries[16].url
     assert request.video.thumbnail_url == media.entries[16].thumbnail
+    assert request.video.canonical_thumbnail_url == media.entries[16].thumbnail
+    assert request.video.collection_thumbnail_url == media.thumbnail_url
     assert request.video.formats == ()
 
 
@@ -256,7 +258,8 @@ def test_deferred_episode_download_uses_own_formats_and_preserves_own_cover(tmp_
     request = replace(template, resolve_before_download=True, preferred_quality='bilibili:112',
                       cookie_profile=profile,
                       video=replace(template.video, url=child.url,
-                                    thumbnail_url='https://images.example/episode17.png'))
+                                    thumbnail_url='https://images.example/episode17.png',
+                                    canonical_thumbnail_url='https://images.example/episode17.png'))
     progress = []
     result = DownloadService(ydl_factory=FakeYDL, require_tools=False,
                              media_validator=lambda _: True).download(request, progress.append, threading.Event())

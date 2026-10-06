@@ -230,11 +230,17 @@ def test_final_mkv_contains_requested_native_chapters_and_metadata(tmp_path, sou
         assert 'Metadata' not in chain
 
 
-def _download_native_fixture(tmp_path, source_media, *, playlist_item_index=None, **flags):
+def _download_native_fixture(tmp_path, source_media, *, playlist_item_index=None,
+                             canonical_thumbnail_url='', collection_thumbnail_url='', **flags):
     infofile = tmp_path / 'source.info.json'
     infofile.write_text(json.dumps(source_media, ensure_ascii=False), encoding='utf-8')
     entry = source_media['entries'][playlist_item_index - 1] if playlist_item_index else source_media
     media = resolve_metadata(entry, source_media['webpage_url'])
+    if canonical_thumbnail_url or collection_thumbnail_url:
+        from dataclasses import replace
+        media = replace(media, canonical_thumbnail_url=canonical_thumbnail_url,
+                        collection_thumbnail_url=collection_thumbnail_url,
+                        thumbnail_url=canonical_thumbnail_url or media.thumbnail_url)
     request = DownloadRequest('cover-pp', media, media.formats[0], tmp_path / 'out', '成品',
                               remux_container='mkv', playlist_item_index=playlist_item_index, **flags)
     chain, thumbnails = [], []
@@ -362,3 +368,62 @@ def test_collection_children_embed_their_own_cover_not_parent_or_sibling(tmp_pat
         assert probe['format']['tags']['title'] == child['title']
         hashes.append(hashlib.sha256(thumbnails[0][1]).hexdigest())
     assert hashes[0] != hashes[1]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('missing_canonical', [False, True])
+def test_collection_canonical_cover_survives_native_reextraction(tmp_path, source_media, missing_canonical):
+    from copy import deepcopy
+    info = deepcopy(source_media)
+    base = info['thumbnail'].rsplit('/', 1)[0]
+    canonical = base + ('/missing.webp' if missing_canonical else '/cover.webp')
+    # Full extraction supplies a different, larger artwork. The row's own
+    # canonical cover must win regardless of dimensions or preference.
+    info['thumbnail'] = base + '/second.webp'
+    info['thumbnails'] = [{'url': info['thumbnail'], 'id': 'artwork',
+                          'width': 9999, 'height': 9999, 'preference': 999}]
+    result, probe, _chain, thumbnails = _download_native_fixture(
+        tmp_path, info, canonical_thumbnail_url=canonical,
+        collection_thumbnail_url=base + '/low.png', embed_thumbnail=True,
+        embed_metadata=True, embed_chapters=True)
+    expected = info['thumbnail'] if missing_canonical else canonical
+    _assert_real_cover(tmp_path, result, probe, thumbnails, expected)
+    assert result.resolved_media.thumbnail_url == expected
+    assert result.resolved_media.thumbnail_bytes
+    assert len(probe['chapters']) == 3
+    assert probe['format']['tags']['title'] == info['title']
+
+
+@pytest.mark.integration
+def test_parent_cover_only_used_after_child_sources_fail(tmp_path, source_media):
+    from copy import deepcopy
+    info = deepcopy(source_media)
+    base = info['thumbnail'].rsplit('/', 1)[0]
+    info['thumbnail'] = base + '/missing-child.webp'
+    info['thumbnails'] = [{'id': 'missing', 'url': info['thumbnail']}]
+    parent = base + '/low.png'
+    result, probe, _chain, thumbnails = _download_native_fixture(
+        tmp_path, info, canonical_thumbnail_url=base + '/missing-canonical.webp',
+        collection_thumbnail_url=parent, embed_thumbnail=True)
+    # PNG is exposed by the Matroska demuxer as an attached-picture video.
+    cover = next(s for s in probe['streams'] if s.get('tags', {}).get('filename') == 'cover.png')
+    extracted = tmp_path / 'parent-attachment.png'
+    subprocess.run([str(FfmpegService().ffmpeg_path), '-v', 'error', '-y', '-i', str(result.file_path),
+                    '-map', f'0:{cover["index"]}', '-c', 'copy', '-frames:v', '1', str(extracted)],
+                   check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    assert thumbnails[0][2] == parent
+    assert extracted.read_bytes() == thumbnails[0][1]
+    assert result.resolved_media.thumbnail_url == parent
+
+
+@pytest.mark.integration
+def test_history_thumbnail_matches_native_webp_cover(tmp_path, source_media):
+    from yt_downloader.ui.quick_history_images import render_thumbnail, media_key
+    from yt_downloader.infrastructure.windows_thumbnail import images_visually_similar
+    from PIL import Image
+    from io import BytesIO
+    result, _probe, _chain, thumbnails = _download_native_fixture(tmp_path, source_media, embed_thumbnail=True)
+    thumbnail = render_thumbnail(FfmpegService(), result.file_path, tmp_path/'history',
+                                 media_key(result.file_path), threading.Event())
+    with Image.open(BytesIO(thumbnails[0][1])) as expected, Image.open(thumbnail) as actual:
+        assert images_visually_similar(expected, actual)

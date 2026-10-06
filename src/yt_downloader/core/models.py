@@ -254,6 +254,9 @@ class ResolvedMedia:
     cookie_used: bool = False
     chapters: tuple[MediaChapter, ...] = ()
     thumbnails: tuple[ThumbnailOption, ...] = ()
+    # Collection row identity survives a child's independent native extraction.
+    canonical_thumbnail_url: str = ''
+    collection_thumbnail_url: str = ''
 
     @property
     def is_collection(self) -> bool:
