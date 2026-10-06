@@ -39,6 +39,34 @@ def test_playlist_duplicate_default_selection(qapp, tmp_path):
     assert page.state['selectedCount'] == 2
 
 
+def test_missing_archive_file_restores_playlist_selection(qapp, tmp_path):
+    page = _page(tmp_path)
+    media = page.video
+    next(tmp_path.glob('*.mp4')).unlink()
+    page.show_video(media)
+    row = page.entries.get(0)
+    assert not row['downloaded'] and row['selected']
+    assert row['statusKey'] == 'playlist.available'
+    assert row['archiveDetail'] == row['archiveTooltip'] == ''
+    assert page.state['selectedCount'] == 2
+    assert page.state['skippedDownloadedCount'] == 0
+    page.selectCollectionFilter('downloaded')
+    assert page.filteredEntries.rowCount() == 0
+    page.selectCollectionFilter('not_downloaded')
+    assert page.filteredEntries.rowCount() == 4
+    assert page._archive.count() == 1
+
+
+def test_history_delete_keeps_active_archive(qapp, tmp_path):
+    from yt_downloader.services.history_service import HistoryRepository
+    page = _page(tmp_path)
+    HistoryRepository(tmp_path / 'history.db').clear_terminal()
+    page.show_video(page.video)
+    assert page.entries.get(0)['downloaded']
+    assert not page.entries.get(0)['selected']
+    assert page.state['skippedDownloadedCount'] == 1
+
+
 def test_playlist_filter_all(qapp, tmp_path):
     page = _page(tmp_path)
     page.selectCollectionFilter('all')

@@ -171,11 +171,11 @@ class DownloadPresenter(ViewState):
         record = None
         if self.video and not self.video.is_collection and self._archive:
             kind = 'audio' if self._state['mediaMode'] == 'audio_only' else 'video'
-            record = self._archive.lookup(self.video.extractor_key or self.video.extractor,
+            record = self._archive.lookup_active(self.video.extractor_key or self.video.extractor,
                                           self.video.video_id, kind)
         duplicate = bool(record and self._prevent_duplicates and not self._state['clipEnabled'])
         self.update(archiveDuplicate=duplicate,
-                    archiveStatus=self._t('archive.file_present' if record.file_exists else 'archive.file_missing') if record else '',
+                    archiveStatus=self._t('archive.file_present') if record else '',
                     archiveDetail=f'{record.downloaded_at[:10]} · {record.quality_label}' if record else '')
 
     def _refresh_collection_archive(self, *, initialize_selection=False):
@@ -183,7 +183,7 @@ class DownloadPresenter(ViewState):
         kind = 'audio' if self._state['mediaMode'] == 'audio_only' else 'video'
         identities = [canonical_identity(entry.extractor_key or self.video.extractor_key, entry.id, kind)
                       for entry in self.video.entries]
-        records = self._archive.lookup_many(identities) if self._archive else {}
+        records = self._archive.lookup_active_many(identities) if self._archive else {}
         for index, (entry, identity) in enumerate(zip(self.video.entries, identities)):
             row = self._entries.get(index)
             record = records.get(identity)

@@ -90,6 +90,28 @@ def test_archive_playlist_batch_lookup(tmp_path):
     assert list(records) == [canonical_identity('Youtube', 'dQw4w9WgXcQ')]
 
 
+def test_active_archive_batch_checks_only_matching_outputs(tmp_path, monkeypatch):
+    from yt_downloader.services.archive_service import ArchiveRepository
+    archive = ArchiveRepository(tmp_path / 'history.db')
+    request, result = _success(tmp_path)
+    archive.record_download(request, result)
+    identities = [('Youtube', str(i), 'video') for i in range(1000)]
+    identities.append(('Youtube', request.video.video_id, 'video'))
+    lookups, stats = [], []
+    lookup = archive.lookup_many
+    stat = Path.stat
+    def batch(ids):
+        lookups.append(len(ids))
+        return lookup(ids)
+    def check(path, *args, **kwargs):
+        stats.append(path)
+        return stat(path, *args, **kwargs)
+    monkeypatch.setattr(archive, 'lookup_many', batch)
+    monkeypatch.setattr(Path, 'stat', check)
+    assert len(archive.lookup_active_many(identities)) == 1
+    assert lookups == [1001] and stats == [result.file_path]
+
+
 def test_archive_migration(tmp_path):
     from yt_downloader.services.archive_service import ArchiveRepository
     from yt_downloader.services.history_service import HistoryRepository
@@ -141,6 +163,59 @@ def test_archive_override_redownload(qapp, tmp_path):
     # No native download_archive option can silently skip the explicit action.
     from yt_downloader.services.download_options import media_options
     assert 'download_archive' not in media_options(request)
+
+
+def test_archive_missing_file_is_not_downloaded(qapp, tmp_path):
+    from types import SimpleNamespace
+    from yt_downloader.services.archive_service import ArchiveRepository
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    archive = ArchiveRepository(tmp_path / 'history.db')
+    request, result = _success(tmp_path)
+    archive.record_download(request, result)
+    page = DownloadPresenter(str(tmp_path), SimpleNamespace(add=lambda _: ''))
+    page.configure_archive(archive)
+    page.show_video(request.video)
+    assert page.state['archiveDuplicate']
+    result.file_path.unlink()
+    page.show_video(request.video)
+    assert not page.state['archiveDuplicate']
+    assert page.state['archiveStatus'] == page.state['archiveDetail'] == ''
+    assert archive.count() == 1 and archive.lookup('Youtube', request.video.video_id)
+    assert archive.lookup_active('Youtube', request.video.video_id) is None
+
+
+def test_redownload_refreshes_archive_output(qapp, tmp_path):
+    from types import SimpleNamespace
+    from yt_downloader.services.archive_service import ArchiveRepository
+    from yt_downloader.ui.quick_download import DownloadPresenter
+    archive = ArchiveRepository(tmp_path / 'history.db')
+    request, result = _success(tmp_path)
+    archive.record_download(request, result)
+    result.file_path.unlink()
+    output = tmp_path / 'new-output.mkv'
+    output.write_bytes(b'media')
+    archive.record_download(request, replace(result, file_path=output))
+    page = DownloadPresenter(str(tmp_path), SimpleNamespace(add=lambda _: ''))
+    page.configure_archive(archive)
+    page.show_video(request.video)
+    assert page.state['archiveDuplicate']
+    assert archive.count() == 1
+    assert archive.lookup('Youtube', request.video.video_id).output_path == str(output)
+    archive.clear()
+    page.show_video(request.video)
+    assert not page.state['archiveDuplicate'] and output.is_file()
+
+
+def test_archive_zero_size_or_directory_is_not_active(tmp_path):
+    from yt_downloader.services.archive_service import ArchiveRepository
+    archive = ArchiveRepository(tmp_path / 'history.db')
+    request, result = _success(tmp_path)
+    archive.record_download(request, result)
+    result.file_path.write_bytes(b'')
+    assert not archive.lookup('Youtube', request.video.video_id).file_exists
+    result.file_path.unlink()
+    result.file_path.mkdir()
+    assert not archive.lookup('Youtube', request.video.video_id).file_exists
 
 
 def test_v060_database_migration(tmp_path):

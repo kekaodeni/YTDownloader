@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields
 import json
 from pathlib import Path
 import sqlite3
+import stat
 
 from yt_downloader.core.models import TaskStatus
 from yt_downloader.services.error_report_service import redact_sensitive
@@ -31,7 +32,13 @@ class ArchiveRecord:
 
     @property
     def file_exists(self):
-        return Path(self.output_path).is_file()
+        # The recorded final path is authoritative. Missing/inaccessible/empty
+        # outputs leave the success record intact, but cannot block a download.
+        try:
+            output = Path(self.output_path).stat()
+            return stat.S_ISREG(output.st_mode) and output.st_size > 0
+        except (OSError, ValueError):
+            return False
 
 
 class ArchiveRepository:
@@ -115,6 +122,15 @@ class ArchiveRepository:
     def lookup(self, extractor_key, media_id, content_kind='video'):
         identity = canonical_identity(extractor_key, media_id, content_kind)
         return self.lookup_many([identity]).get(identity)
+
+    def lookup_active_many(self, identities):
+        """One SQL batch, then one cheap stat per matching recorded output."""
+        return {identity: record for identity, record in self.lookup_many(identities).items()
+                if record.file_exists}
+
+    def lookup_active(self, extractor_key, media_id, content_kind='video'):
+        identity = canonical_identity(extractor_key, media_id, content_kind)
+        return self.lookup_active_many([identity]).get(identity)
 
     def count(self):
         with self._connection() as connection:
