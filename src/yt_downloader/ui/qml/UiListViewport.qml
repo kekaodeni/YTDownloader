@@ -112,6 +112,9 @@ QtObject {
             view.Window.window.update()
             return
         }
+        // The last native empty-list polish may reset contentY before its
+        // notifications arrive. Commit our boundary target, not that reset.
+        if (finishingBoundary) restore()
         offset = view.contentY - view.originY
         headerHeight = header.height
         mutating = false

@@ -15,6 +15,35 @@ from scripts.verify_quick_ui import sample_video
 from yt_downloader.core.models import DownloadRequest
 
 
+def test_boundary_completion_keeps_logical_offset_after_native_layout_reset(quick_window, qapp):
+    """A last empty-ListView polish must not become the new scroll anchor."""
+    from PySide6.QtCore import QSignalBlocker
+    page = quick_window.download_page
+    page.show_video(sample_video())
+    run_frames(qapp)
+    view = find_item(quick_window, 'taskList')
+    anchor = find_item(quick_window, 'viewportAnchor')
+    header = view.property('headerItem')
+    expected = min(150, max(0, view.property('contentHeight') - view.height()))
+    assert expected > 0
+    view.setProperty('contentY', view.property('originY') + expected)
+    anchor.setProperty('offset', expected)
+    anchor.setProperty('pending', True)
+    anchor.setProperty('mutating', True)
+    anchor.setProperty('finishingBoundary', True)
+    anchor.setProperty('renderedMutationHeader', header.height())
+    anchor.setProperty('renderedMutationContent', view.property('contentHeight'))
+    # Model the native final polish that resets an empty list before its
+    # geometry notifications are delivered to the viewport transaction.
+    with QSignalBlocker(view):
+        view.setProperty('contentY', view.property('originY'))
+    QMetaObject.invokeMethod(anchor, 'finishMutation', Qt.DirectConnection)
+    run_frames(qapp, 80)
+    assert not quick_window.grab().isNull()
+    assert abs(view.property('contentY') - view.property('originY') - expected) < 1
+    assert not anchor.property('pending') and not anchor.property('mutating')
+
+
 def add_anchor_test_tasks(page):
     video = sample_video()
     for index in range(3):
