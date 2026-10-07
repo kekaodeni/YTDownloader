@@ -123,8 +123,11 @@ def test_real_youtube_redacted_sample():
     raw=json.loads((Path(__file__).parent/'fixtures'/'youtube_8kIJ7QLTSRc_formats.json').read_text('utf-8'))
     result=normalize_formats(raw,extractor_key='Youtube')
     assert [o.label for o in result]==['2160p 4K 60 FPS','1440p 2K 60 FPS','1080p 60 FPS',
-                                     '720p 60 FPS','720p','480p','360p','240p','144p']
+                                     '720p 60 FPS','480p','360p','240p','144p']
     assert len({o.label for o in result})==len(result)
+    tier720=next(o for o in result if o.semantic_height==720)
+    assert set(tier720.candidate_video_format_ids)=={'136','247','298','302','398'}
+    assert tier720.display_fps==60 and tier720.video_format_id in {'298','302','398'}
     for o in result:
         raw_selected=next(f for f in raw if f['format_id']==o.video_format_id)
         assert (o.width,o.height,o.fps)==(raw_selected['width'],raw_selected['height'],raw_selected['fps'])

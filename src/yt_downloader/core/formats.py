@@ -106,6 +106,21 @@ def _youtube_range_label(item: Mapping[str, Any]) -> str:
             "hdr10+": "HDR10+", "hlg": "HLG", "dv": "杜比视界"}.get(value, value.upper())
 
 
+def _youtube_preferred_renditions(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prefer the highest FPS family; let yt-dlp order codecs within it.
+
+    Keep all candidates on the option, including lower-FPS fallbacks. Nearby
+    measured rates (29.97/30, 59.94/60) belong to the same rendition family.
+    """
+    def fps_rank(item: Mapping[str, Any]) -> int:
+        _, semantic_fps, _ = _youtube_semantic_quality(item)
+        fps = semantic_fps or item.get("fps")
+        return round(fps) if isinstance(fps, (int, float)) else 0
+
+    highest = max(map(fps_rank, candidates))
+    return [item for item in candidates if fps_rank(item) == highest]
+
+
 def _option_for_selection(
     resolved, candidates, duration, quality_tier=None, orientation=None, site_quality=None,
     youtube=False,
@@ -183,7 +198,8 @@ def _option_for_selection(
         if is_portrait:
             label += " 竖屏"
     elif youtube_height is not None:
-        semantic_fps = youtube_fps or (float(round(fps)) if fps is not None and fps >= 50 else None)
+        effective_fps = youtube_fps or fps
+        semantic_fps = 60.0 if effective_fps is not None and effective_fps >= 50 else None
         label = _quality_label(None, youtube_height, semantic_fps)
         if range_label := _youtube_range_label(video):
             label += f" {range_label}"
@@ -293,7 +309,10 @@ def normalize_formats(
             if semantic_height is None and display_height is not None and display_height < 144:
                 continue
             effective_fps = semantic_fps or fps
-            bucket = round(effective_fps) if effective_fps is not None and effective_fps >= 50 else 30
+            # A semantic tier is one user choice, not one choice per FPS.
+            # Unlabelled formats retain the existing physical/FPS fallback.
+            bucket = (None if semantic_height is not None else
+                      round(effective_fps) if effective_fps is not None and effective_fps >= 50 else 30)
             portrait = width is not None and height is not None and height > width
             key = ("youtube", semantic_height or display_height, bucket,
                    _youtube_range_label(item), portrait)
@@ -318,7 +337,9 @@ def normalize_formats(
             site_quality = group_key[4]
             quality_tier = None
             orientation = None
-        resolved = resolver.resolve(candidates, audios, CodecPreference.AUTO)
+        preferred = (_youtube_preferred_renditions(candidates)
+                     if group_key[0] == "youtube" and group_key[2] is None else candidates)
+        resolved = resolver.resolve(preferred, audios, CodecPreference.AUTO)
         if resolved is None:
             continue
         option = _option_for_selection(resolved, candidates, duration, quality_tier, orientation, site_quality,
@@ -327,7 +348,7 @@ def normalize_formats(
             continue
         variants = []
         for preference in (CodecPreference.AV1, CodecPreference.VP9, CodecPreference.H264):
-            alternate = resolver.resolve(candidates, audios, preference)
+            alternate = resolver.resolve(preferred, audios, preference)
             alternate_option = (_option_for_selection(
                 alternate, candidates, duration, quality_tier, orientation, site_quality,
                 youtube=group_key[0] == "youtube",
