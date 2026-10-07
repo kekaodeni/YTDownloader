@@ -179,6 +179,7 @@ class FormatOption:
     detected_height: int | None = None
     detected_fps: float | None = None
     display_metadata_source: str = "yt-dlp"
+    semantic_quality_source: str = "raw-dimensions"
 
     @property
     def display_height(self) -> int | None:
@@ -194,7 +195,7 @@ class FormatOption:
 
     @property
     def display_fps(self) -> float | None:
-        if self.quality_rank is not None:
+        if self.quality_rank is not None or self.semantic_fps is not None:
             return self.semantic_fps
         return self.fps if self.fps is not None else self.detected_fps
 

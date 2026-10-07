@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import re
 from typing import Any, Iterable, Mapping
 
 from .models import CodecFormatVariant, CodecPreference, FormatOption, SizeKind
@@ -81,8 +82,33 @@ def _quality_label(width: int | None, height: int | None, fps: float | None) -> 
     return f"{vertical_resolution}p{suffix}{fps_text}{orientation}"
 
 
+def _youtube_semantic_quality(item: Mapping[str, Any]) -> tuple[int | None, float | None, str]:
+    """Read YouTube's qualityLabel exposed by yt-dlp; never infer it from itags.
+
+    Numeric `quality` is an extractor ranking, and `resolution` is physical.
+    The synthesized `format` can retain the note in parentheses when the note
+    itself is absent. Ambiguous/missing labels retain the physical fallback.
+    """
+    for field, text in (("format-note", str(item.get("format_note") or "")),
+                        ("format", " ".join(re.findall(r"\(([^()]*)\)", str(item.get("format") or ""))))):
+        matches = {(int(height), float(fps) if fps else None)
+                   for height, fps in re.findall(r"(?<![\w.])(\d{3,4})p(\d{2,3})?(?!\w)", text, re.I)
+                   if 144 <= int(height) <= 8640 and (not fps or 1 < int(fps) <= 240)}
+        if len(matches) == 1:
+            height, fps = matches.pop()
+            return height, fps, f"youtube-{field}"
+    return None, None, "raw-dimensions"
+
+
+def _youtube_range_label(item: Mapping[str, Any]) -> str:
+    value = str(item.get("dynamic_range") or "").casefold()
+    return {"sdr": "", "": "", "hdr": "HDR", "hdr10": "HDR",
+            "hdr10+": "HDR10+", "hlg": "HLG", "dv": "杜比视界"}.get(value, value.upper())
+
+
 def _option_for_selection(
     resolved, candidates, duration, quality_tier=None, orientation=None, site_quality=None,
+    youtube=False,
 ):
     video = dict(resolved.video)
     video_id = str(video.get("format_id") or "")
@@ -128,6 +154,8 @@ def _option_for_selection(
     is_portrait = (display_raw_height is not None and display_width is not None and display_raw_height > display_width
                    if orientation is None else orientation)
     semantic_fps = None
+    youtube_height, youtube_fps, youtube_source = (_youtube_semantic_quality(video) if youtube
+                                                  else (None, None, ""))
     if quality_tier and quality_tier.fps_mode == "fixed60":
         semantic_fps = 60.0
     elif quality_tier and quality_tier.fps_mode == "measured" and fps is not None and fps >= 50:
@@ -154,10 +182,19 @@ def _option_for_selection(
             label += " 60 FPS"
         if is_portrait:
             label += " 竖屏"
+    elif youtube_height is not None:
+        semantic_fps = youtube_fps or (float(round(fps)) if fps is not None and fps >= 50 else None)
+        label = _quality_label(None, youtube_height, semantic_fps)
+        if range_label := _youtube_range_label(video):
+            label += f" {range_label}"
+        if is_portrait:
+            label += " 竖屏"
     else:
         label = _quality_label(width or detected_width, height or detected_height, fps or detected_fps)
         if label == "未知清晰度" and detected.get("source") == "original":
             label = "原始画质"
+        if youtube and (range_label := _youtube_range_label(video)):
+            label += f" {range_label}"
     return FormatOption(
         label=label,
         height=height, fps=fps, vcodec=str(video.get("vcodec") or "unknown"), acodec=acodec,
@@ -171,13 +208,15 @@ def _option_for_selection(
         audio_size_is_estimate=audio_size_is_estimate, video_protocol=str(video.get("protocol") or ""),
         audio_protocol=str(audio.get("protocol") or "") if audio else "",
         site_quality=site_quality,
-        semantic_height=quality_tier.nominal_height if quality_tier and quality_tier.nominal_height else None,
+        semantic_height=(quality_tier.nominal_height or None) if quality_tier else youtube_height,
         semantic_fps=semantic_fps,
         quality_rank=quality_tier.rank if quality_tier else None,
         semantic_portrait=is_portrait if quality_tier else None,
         dynamic_range=str(video.get("dynamic_range") or ""),
         detected_width=detected_width, detected_height=detected_height, detected_fps=detected_fps,
         display_metadata_source=str(detected.get("source") or "yt-dlp"),
+        semantic_quality_source=("bilibili-qn" if quality_tier else youtube_source if youtube_height
+                                 else str(detected.get("source") or "raw-dimensions")),
         size_kind=(SizeKind.UNKNOWN if estimated is None else SizeKind.ESTIMATED
                    if size_is_estimate else SizeKind.EXACT),
     )
@@ -249,6 +288,15 @@ def normalize_formats(
                             or quality_tier.fps_mode == "measured" and fps is not None and fps >= 50
                             else 0)
             key = ("bilibili", raw_site_quality, dynamic_range, semantic_fps, portrait)
+        elif extractor_key.casefold() == "youtube":
+            semantic_height, semantic_fps, _ = _youtube_semantic_quality(item)
+            if semantic_height is None and display_height is not None and display_height < 144:
+                continue
+            effective_fps = semantic_fps or fps
+            bucket = round(effective_fps) if effective_fps is not None and effective_fps >= 50 else 30
+            portrait = width is not None and height is not None and height > width
+            key = ("youtube", semantic_height or display_height, bucket,
+                   _youtube_range_label(item), portrait)
         else:
             if display_height is not None and display_height < 144:
                 continue
@@ -264,6 +312,8 @@ def normalize_formats(
             site_quality = group_key[1]
             quality_tier = _BILIBILI_QUALITY_TIERS[site_quality]
             orientation = group_key[4]
+        elif group_key[0] == "youtube":
+            site_quality = quality_tier = orientation = None
         else:
             site_quality = group_key[4]
             quality_tier = None
@@ -271,7 +321,8 @@ def normalize_formats(
         resolved = resolver.resolve(candidates, audios, CodecPreference.AUTO)
         if resolved is None:
             continue
-        option = _option_for_selection(resolved, candidates, duration, quality_tier, orientation, site_quality)
+        option = _option_for_selection(resolved, candidates, duration, quality_tier, orientation, site_quality,
+                                       youtube=group_key[0] == "youtube")
         if option is None:
             continue
         variants = []
@@ -279,6 +330,7 @@ def normalize_formats(
             alternate = resolver.resolve(candidates, audios, preference)
             alternate_option = (_option_for_selection(
                 alternate, candidates, duration, quality_tier, orientation, site_quality,
+                youtube=group_key[0] == "youtube",
             ) if alternate else None)
             if alternate_option is None or alternate_option.video_format_id == option.video_format_id:
                 continue
