@@ -13,6 +13,9 @@ class ErrorContext:
     stage: str = ""
     traceback_text: str = ""
     log_excerpt: str = ""
+    auth_state: str = 'NOT_APPLICABLE'
+    cookie_used: bool = False
+    cookie_site: str = ''
 
 
 @dataclass(frozen=True, slots=True)

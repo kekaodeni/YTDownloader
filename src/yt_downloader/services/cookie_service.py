@@ -17,6 +17,32 @@ class ReadOnlyCookieYoutubeDL(yt_dlp.YoutubeDL):
         # YoutubeDL normally writes the cookiefile on close; user files are inputs only.
         pass
 
+    def urlopen(self, request):
+        # Observe the native extractor's authenticated request; never construct
+        # an API endpoint, read response bodies, or retain Cookie values.
+        url = request if isinstance(request, str) else getattr(request, 'url', '')
+        headers = getattr(request, 'headers', {})
+        host = (urlsplit(url).hostname or '').casefold()
+        if host in {'x.com', 'api.x.com', 'twitter.com', 'api.twitter.com'}:
+            self.cookie_auth_evidence = set()
+            authenticated = headers.get('x-twitter-auth-type') == 'OAuth2Session'
+            try:
+                cookies = self.cookiejar.get_cookies_for_url(url)
+                authenticated = authenticated and any(
+                    c.name == 'auth_token' and c.value and not c.is_expired() for c in cookies)
+            except Exception:
+                authenticated = False
+            if authenticated:
+                self.cookie_used_sites = {'x.com'}
+        elif host == 'cdn.syndication.twimg.com':
+            # A successful guest fallback cannot validate the preceding session.
+            self.cookie_auth_evidence = set()
+        response = super().urlopen(request)
+        if host in {'x.com', 'api.x.com', 'twitter.com', 'api.twitter.com'}:
+            if authenticated and 200 <= getattr(response, 'status', 0) < 300:
+                self.cookie_auth_evidence = {'x.com'}
+        return response
+
 
 def cookie_options(profile):
     if profile is None or profile.source_type == 'none':
@@ -73,6 +99,18 @@ def _site_host(host: str) -> str:
         if any(host == domain or host.endswith('.' + domain) for domain in domains):
             return site
     return host
+
+
+def cookie_site_domain(url: str) -> str:
+    return _site_host(urlsplit(url).hostname or '')
+
+
+def cookie_site_name(url: str, profile=None) -> str:
+    host = cookie_site_domain(url)
+    if host.endswith('.douyin.com'):
+        host = 'douyin.com'
+    return {'youtube.com': 'YouTube', 'bilibili.com': 'Bilibili', 'x.com': 'X',
+            'douyin.com': 'Douyin'}.get(host, profile.name if profile and profile.name else host)
 
 
 def route_cookie_profile(profiles, url) -> CookieRoute:

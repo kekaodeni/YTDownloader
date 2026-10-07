@@ -221,6 +221,8 @@ class DownloadPresenter(ViewState):
 
     @Slot(str)
     def _refresh_localized(self, _locale=None):
+        if self._cookie_status_key:
+            self._cookie_status_params['site'] = self._cookie_site_name()
         if self.video and not self.video.is_collection:
             self.refresh_archive()
         if self._translated_state:
@@ -245,7 +247,7 @@ class DownloadPresenter(ViewState):
     def set_cookie_state(self, profiles, _legacy_default=None):
         changed = tuple(profiles) != self._cookie_profiles
         self._cookie_profiles = tuple(profiles)
-        if changed and self.video is not None:
+        if changed:
             self._invalidate_media()
         self._refresh_cookie_hint()
 
@@ -264,41 +266,68 @@ class DownloadPresenter(ViewState):
         route = None
         if not self._state['cookieEnabled'] or not self._state['url'].strip():
             hint = ''
-            if self._cookie_status_key == 'download.cookie_pending':
-                self._set_cookie_status()
+            self._set_cookie_status()
         else:
             route = self._cookie_route()
             hint = (self._t('download.cookie_route_conflict') if route.status == 'conflict'
                     else self._t('download.cookie_route_missing') if route.status == 'missing' else '')
-        if self._state['cookieEnabled'] and route and route.profile:
+        if self._state['cookieEnabled'] and route:
             site = self._cookie_site_name()
-            if site and not self._cookie_status_key:
+            if route.status != 'matched':
+                self._set_cookie_status('download.cookie_conflict' if route.status == 'conflict'
+                                        else 'download.cookie_missing', {'site': site}, severity='neutral')
+            elif site and self._cookie_status_key in {'', 'download.cookie_missing', 'download.cookie_conflict'}:
                 self._set_cookie_status('download.cookie_pending', {'site': site}, severity='neutral')
         self.update(cookieHint=hint)
 
     def _cookie_site_name(self):
-        from urllib.parse import urlsplit
-        host = (urlsplit(self._state['url']).hostname or '').casefold().removeprefix('www.')
-        if host == 'youtube.com' or host.endswith('.youtube.com') or host in {'youtu.be', 'youtube-nocookie.com'}:
-            return 'YouTube'
-        if host == 'bilibili.com' or host.endswith('.bilibili.com') or host in {'b23.tv', 'bili2233.cn'}:
-            return 'Bilibili'
-        return ''
+        from yt_downloader.services.cookie_service import cookie_site_name
+        profile = self._active_cookie_profile or self._cookie_route().profile
+        url = self._state['url'] or (self.video.url if self.video else '')
+        name = cookie_site_name(url, profile)
+        if not self._state['url'] and self.video and self.video.extractor_key.casefold().startswith('bilibili'):
+            name = 'Bilibili'
+        return self._t('cookie.site_bilibili') if name == 'Bilibili' else self._t('cookie.site_douyin') if name == 'Douyin' else name
 
-    def set_cookie_parse_error(self, code, user_message=''):
-        site = self._cookie_site_name()
-        if not site:
+    def _show_auth_state(self, state, *, cookie_used=False):
+        if not self._state['cookieEnabled']:
+            self._set_cookie_status()
             return
+        state = AuthState(state)
+        if state is AuthState.NOT_APPLICABLE:
+            if self._active_cookie_profile or self._cookie_route().profile:
+                state = AuthState.UNKNOWN
+            else:
+                self._set_cookie_status()
+                self._refresh_cookie_hint()
+                return
+        key, warning, severity = {
+            AuthState.VALID: ('download.cookie_valid', '', 'success'),
+            AuthState.INVALID: ('download.cookie_invalid', 'download.cookie_expired_hint', 'error'),
+            AuthState.UNKNOWN: ('download.cookie_unknown' if cookie_used else 'download.cookie_unknown_unused', '', 'neutral'),
+        }[state]
+        self._set_cookie_status(key, {'site': self._cookie_site_name()}, warning_key=warning,
+                                invalid=state is AuthState.INVALID, severity=severity)
+
+    def set_cookie_parse_error(self, code, user_message='', *, auth_state=AuthState.NOT_APPLICABLE,
+                               cookie_used=False):
+        site = self._cookie_site_name()
+        if not site or not self._state['cookieEnabled']:
+            return
+        self._show_auth_state(AuthState.INVALID if code == 'COOKIE_INVALID' else auth_state,
+                              cookie_used=cookie_used)
+        if self._state['cookieAuthInvalid']:
+            self._set_cookie_status('download.cookie_invalid', {'site': site},
+                                    warning_key='download.cookie_login_hint', invalid=True, severity='error')
         if code in {'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
             self._set_cookie_status('download.cookie_read_failed', {'site': site},
                                     warning_key='download.cookie_read_hint', warning_external=user_message,
                                     severity='error')
-        elif code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED'}:
-            self._set_cookie_status('download.cookie_auth_required', {'site': site},
-                                    warning_key='download.cookie_login_hint', warning_external=user_message,
-                                    invalid=True, severity='error')
 
     def _invalidate_media(self):
+        if self.parse_state in {ParseState.RUNNING, ParseState.SLOW}:
+            self.set_parse_state(ParseState.CANCELLING)
+            self.parse_cancel_requested.emit()
         self.video = None
         self._active_cookie_profile = None
         self._format_summary = ''
@@ -538,9 +567,9 @@ class DownloadPresenter(ViewState):
             self._active_cookie_profile = self._cookie_route().profile if self._state['cookieEnabled'] else None
             site = self._cookie_site_name()
             if site and self._active_cookie_profile:
-                self._set_cookie_status('download.cookie_pending', {'site': site}, severity='neutral')
+                self._set_cookie_status('download.cookie_verifying', {'site': site}, severity='neutral')
             else:
-                self._set_cookie_status()
+                self._refresh_cookie_hint()
             self.parse_requested.emit(self._state['url'].strip())
 
     def set_loading(self, loading):
@@ -548,6 +577,9 @@ class DownloadPresenter(ViewState):
 
     def set_parse_state(self, state):
         self.parse_state = state
+        if state is ParseState.CANCELLED and self._cookie_status_key == 'download.cookie_verifying':
+            self._set_cookie_status()
+            self._refresh_cookie_hint()
         if state is ParseState.RUNNING:
             self.video = None
             self.update(ready=False, thumbnail='')
@@ -604,18 +636,6 @@ class DownloadPresenter(ViewState):
         self._sync_clip_time_format(video)
         self.video = video
         self._format_codec_preference = CodecPreference(profile.codec_preference) if profile else CodecPreference.AUTO
-        is_bilibili = str(video.extractor_key or '').casefold().startswith('bilibili')
-        auth_state = (AuthState(video.auth_state)
-                      if is_bilibili and self._state['cookieEnabled'] else AuthState.NOT_APPLICABLE)
-        auth_messages = {
-            AuthState.VALID: ('download.cookie_valid', '', 'success'),
-            AuthState.INVALID: ('download.cookie_invalid', 'download.cookie_expired_hint', 'error'),
-            AuthState.UNKNOWN: ('download.cookie_unknown', '', 'neutral'),
-            AuthState.NOT_APPLICABLE: ('', '', ''),
-        }
-        auth_status_key, auth_warning_key, auth_severity = auth_messages[auth_state]
-        auth_status_params = {}
-        auth_warning_external = ''
         self._selected_entries.clear()
         is_playlist = video.is_collection
         self._entries.replace([dict(id=str(index), index=index, title=self._collection_entry_title(entry),
@@ -648,14 +668,7 @@ class DownloadPresenter(ViewState):
         else:
             compatibility_hint = ''
         multi_video_hint = ''
-        if (not is_bilibili and video.cookie_used and self._active_cookie_profile
-                and self._cookie_site_name() == 'YouTube'):
-            auth_status_key = 'download.cookie_used'
-            auth_warning_key = ''
-            auth_severity = 'success'
-        self._set_cookie_status(auth_status_key, auth_status_params, warning_key=auth_warning_key,
-                                warning_external=auth_warning_external,
-                                invalid=auth_state is AuthState.INVALID, severity=auth_severity)
+        self._show_auth_state(video.auth_state, cookie_used=video.cookie_used)
         self.update(technical='')
         self._set_text('compatibilityHint', 'download.compat_verified' if video.metadata_compatibility == 'VERIFIED' and video.download_compatibility == 'EXPERIMENTAL'
                        else 'download.compat_experimental' if video.download_compatibility == 'EXPERIMENTAL' else None)

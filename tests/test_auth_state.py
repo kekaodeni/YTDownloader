@@ -51,10 +51,10 @@ def test_auth_state_is_not_applicable_when_cookie_is_off_or_media_is_not_bilibil
                              cookie_enabled=True, cookie_profile=PROFILE) is AuthState.NOT_APPLICABLE
 
 
-def test_auth_state_is_unknown_when_cookie_is_enabled_without_a_routed_profile():
+def test_auth_state_is_not_applicable_without_a_routed_profile():
     ydl = FakeYDL({'code': 0, 'data': {'isLogin': False}})
 
-    assert detect_auth_state(ydl, URL, 'BiliBili', cookie_enabled=True, cookie_profile=None) is AuthState.UNKNOWN
+    assert detect_auth_state(ydl, URL, 'BiliBili', cookie_enabled=True, cookie_profile=None) is AuthState.NOT_APPLICABLE
 
 
 def test_media_resolver_attaches_cookie_auth_state_without_blocking_metadata():

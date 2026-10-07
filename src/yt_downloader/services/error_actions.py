@@ -4,6 +4,9 @@ from __future__ import annotations
 
 
 ERROR_PRESENTATION = {
+    'COOKIE_INVALID': ('error.cookie_invalid.title', 'error.cookie_invalid.body',
+                       ('OPEN_COOKIE_MANAGER', 'REPARSE')),
+    'NO_VIDEO': ('error.no_video.title', 'error.no_video.body', ()),
     'forbidden': ('error.forbidden.title', 'error.forbidden.body', ()),
     'COOKIE_REQUIRED': ('error.cookie_required.title', 'error.cookie_required.body',
                         ('OPEN_COOKIE_MANAGER', 'REPARSE')),

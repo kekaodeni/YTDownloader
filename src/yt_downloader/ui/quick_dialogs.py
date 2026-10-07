@@ -231,7 +231,10 @@ class ErrorSession(DialogSession):
             labels = {action: action for action in self._error_actions}
         else:
             title = self._translator.text(self.error.title_message_id) if self.error.title_message_id else self._translator.sourceText(self._title_source)
-            message = self._translator.text(self.error.body_message_id) if self.error.body_message_id else self._translator.sourceText(self._message_source)
+            site = self.error.context.cookie_site
+            if site in {'Bilibili', 'Douyin'}:
+                site = self._translator.text('cookie.site_bilibili' if site == 'Bilibili' else 'cookie.site_douyin')
+            message = self._translator.text(self.error.body_message_id, {'site': site}) if self.error.body_message_id else self._translator.sourceText(self._message_source)
             labels = {action: self._translator.text(self.ACTION_LABELS.get(action, 'common.close'))
                       for action in self._error_actions}
         super().update(title=title, message=message,

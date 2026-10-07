@@ -52,15 +52,18 @@ def metadata_process_self_test_entry(
 def _serialize_error(error: AppError) -> dict[str, Any]:
     return {
         "code": error.code,
-        "user_message": error.user_message,
+        "user_message": redact_sensitive(error.user_message),
         "technical_message": redact_sensitive(error.technical_message),
         "context": {
-            "url": error.context.url,
+            "url": redact_sensitive(error.context.url),
             "selected_format": error.context.selected_format,
             "output_directory": error.context.output_directory,
             "stage": error.context.stage,
             "traceback_text": redact_sensitive(error.context.traceback_text),
             "log_excerpt": redact_sensitive(error.context.log_excerpt),
+            "auth_state": error.context.auth_state,
+            "cookie_used": error.context.cookie_used,
+            "cookie_site": redact_sensitive(error.context.cookie_site),
         },
     }
 
@@ -69,15 +72,18 @@ def _deserialize_error(payload: dict[str, Any]) -> AppError:
     context = payload.get("context") or {}
     return AppError(
         str(payload.get("code") or "metadata_failed"),
-        str(payload.get("user_message") or "无法获取该视频的信息。"),
+        redact_sensitive(str(payload.get("user_message") or "无法获取该视频的信息。")),
         redact_sensitive(str(payload.get("technical_message") or "Unknown helper error")),
         ErrorContext(
-            url=str(context.get("url") or ""),
+            url=redact_sensitive(str(context.get("url") or "")),
             selected_format=str(context.get("selected_format") or ""),
             output_directory=str(context.get("output_directory") or ""),
             stage=str(context.get("stage") or "Fetching metadata"),
             traceback_text=redact_sensitive(str(context.get("traceback_text") or "")),
             log_excerpt=redact_sensitive(str(context.get("log_excerpt") or "")),
+            auth_state=str(context.get('auth_state') or 'NOT_APPLICABLE'),
+            cookie_used=bool(context.get('cookie_used')),
+            cookie_site=redact_sensitive(str(context.get('cookie_site') or '')),
         ),
     )
 

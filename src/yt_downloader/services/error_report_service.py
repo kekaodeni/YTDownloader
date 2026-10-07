@@ -11,7 +11,7 @@ from typing import Final
 from yt_downloader.core.errors import AppError
 
 
-_SECRET_NAMES: Final[str] = r"api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|token|password|passwd|secret|authorization|cookie|signature|sig|credential|SAPISID|APISID|HSID|SSID|SID|session(?:id)?"
+_SECRET_NAMES: Final[str] = r"api[_-]?key|auth[_-]?token|ct0|access[_-]?token|refresh[_-]?token|oauth[_-]?token|token|password|passwd|secret|authorization|cookie|signature|sig|credential|SAPISID|APISID|HSID|SSID|SID|session(?:id)?"
 _URL_AUTH_RE = re.compile(r'(?i)(https?://)[^/@\s]+@')
 _HEADER_RE = re.compile(r"(?im)(\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*:\s*).*$")
 _JSON_RE = re.compile(rf"(?i)([\"'](?:{_SECRET_NAMES})[\"']\s*:\s*)[\"'][^\"']*[\"']")

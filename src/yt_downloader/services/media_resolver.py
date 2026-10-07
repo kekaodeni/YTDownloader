@@ -17,14 +17,14 @@ from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.services.media_metadata import resolve_metadata
-from yt_downloader.services.media_errors import classify_metadata_error
-from yt_downloader.core.models import ResolvedMedia
+from yt_downloader.services.media_errors import classify_auth_metadata_error
+from yt_downloader.core.models import ResolvedMedia, AuthState
 from yt_downloader.services.auth_state import detect_auth_state
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
 from yt_downloader.infrastructure.runtime import find_tool
 from yt_downloader.services.error_report_service import redact_sensitive
 from yt_downloader.services.network_policy import NetworkPolicy
-from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options
+from yt_downloader.services.cookie_service import ReadOnlyCookieYoutubeDL, cookie_options, cookie_site_name, route_cookie_profile
 from yt_downloader.services.ffmpeg_service import FfmpegService
 from yt_downloader.services.media_probe import needs_media_probe, probe_cache_key
 from yt_downloader.services.metadata_language import youtube_metadata_options
@@ -136,30 +136,46 @@ class MediaResolver:
             options["extract_flat"] = False
         if self.network_policy:
             options.update(self.network_policy.ytdlp_options())
+        auth_state = AuthState.NOT_APPLICABLE
+        cookie_used = False
+        cookie_matched = bool(self.cookie_enabled and self.cookie_profile and
+                              route_cookie_profile((self.cookie_profile,), normalized).profile)
+        site = cookie_site_name(normalized, self.cookie_profile)
         try:
             try:
                 options.update(cookie_options(self.cookie_profile))
             except ValueError as error:
-                raise AppError('COOKIE_REQUIRED', str(error), 'Cookie profile validation failed') from None
-            cookie_used = False
+                raise AppError('BROWSER_COOKIE_READ_FAILED', str(error), 'Cookie profile validation failed') from None
             with self.ydl_factory(options) as ydl:
-                extracted = ydl.extract_info(normalized, download=False)
-                if self.cookie_enabled and self.cookie_profile is not None:
-                    cookiejar = getattr(ydl, 'cookiejar', None)
-                    get_cookies = getattr(cookiejar, 'get_cookies_for_url', None)
-                    if callable(get_cookies):
-                        cookie_used = bool(get_cookies(normalized))
-                # Bound the lazy enumeration; children are resolved only after selection.
-                if isinstance(extracted, Mapping) and extracted.get('_type') in {'playlist', 'multi_video'}:
-                    from itertools import islice
-                    extracted = dict(extracted)
-                    extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
-                from yt_downloader.services.bilibili_bangumi import enrich_season
-                extracted = enrich_season(ydl, extracted, normalized, cancel_event)
-                info = ydl.sanitize_info(extracted)
-                auth_state = detect_auth_state(
-                    ydl, normalized, str(info.get('extractor_key') or info.get('extractor') or ''),
-                    cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile)
+                info = None
+                # Snapshot source evidence before native extraction can add guest
+                # cookies. Only the AuthState and usage boolean cross the boundary.
+                source_auth_state = detect_auth_state(
+                    ydl, normalized, '', cookie_enabled=self.cookie_enabled,
+                    cookie_profile=self.cookie_profile, validate_session=False)
+                if cookie_matched:
+                    try:
+                        getter = getattr(getattr(ydl, 'cookiejar', None), 'get_cookies_for_url', None)
+                        cookie_used = bool(getter(normalized)) if callable(getter) else False
+                    except Exception:
+                        cookie_used = False
+                try:
+                    extracted = ydl.extract_info(normalized, download=False)
+                    # Bound lazy enumeration; children resolve only after selection.
+                    if isinstance(extracted, Mapping) and extracted.get('_type') in {'playlist', 'multi_video'}:
+                        from itertools import islice
+                        extracted = dict(extracted)
+                        extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
+                    from yt_downloader.services.bilibili_bangumi import enrich_season
+                    extracted = enrich_season(ydl, extracted, normalized, cancel_event)
+                    info = ydl.sanitize_info(extracted)
+                finally:
+                    if cookie_matched and site == 'X' and 'x.com' in getattr(ydl, 'cookie_used_sites', ()):
+                        cookie_used = True
+                    auth_state = detect_auth_state(
+                        ydl, normalized, str((info or {}).get('extractor_key') or ''),
+                        cookie_enabled=self.cookie_enabled, cookie_profile=self.cookie_profile,
+                        extraction_succeeded=info is not None, source_auth_state=source_auth_state)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
             detected_formats = self._probe_missing_media_metadata(info, cancel_event)
@@ -197,11 +213,14 @@ class MediaResolver:
             return replace(media, thumbnail_bytes=thumbnail_bytes, auth_state=auth_state)
         except OperationCancelled:
             raise
-        except AppError:
-            raise
+        except AppError as exc:
+            raise replace(exc, context=replace(exc.context, url=exc.context.url or normalized,
+                                               auth_state=auth_state, cookie_used=cookie_used,
+                                               cookie_site=site)) from None
         except (DownloadError, requests.RequestException, OSError, TypeError, ValueError) as exc:
             technical = redact_sensitive(str(exc))
-            code, user_message = classify_metadata_error(exc)
+            code, user_message, auth_state = classify_auth_metadata_error(
+                exc, auth_state=auth_state, cookie_matched=cookie_matched, site=site)
             raise AppError(
                 code,
                 user_message,
@@ -211,6 +230,7 @@ class MediaResolver:
                     stage="Fetching metadata",
                     traceback_text=redact_sensitive(traceback.format_exc()),
                     log_excerpt="\n".join(ydl_logger.lines),
+                    auth_state=auth_state, cookie_used=cookie_used, cookie_site=site,
                 ),
             ) from exc
 

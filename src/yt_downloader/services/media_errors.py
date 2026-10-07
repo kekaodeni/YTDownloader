@@ -2,9 +2,10 @@
 import re
 import requests
 from yt_dlp.utils import GeoRestrictedError, UnsupportedError
+from yt_downloader.core.models import AuthState
 
 
-def classify_metadata_error(error):
+def _exception_chain(error):
     pending, chain, seen = [error], [], set()
     while pending:
         item = pending.pop()
@@ -16,6 +17,27 @@ def classify_metadata_error(error):
         info = getattr(item, 'exc_info', None)
         if isinstance(info, tuple) and len(info) > 1:
             pending.append(info[1])
+    return chain
+
+
+def classify_auth_metadata_error(error, *, auth_state, cookie_matched=False, site=''):
+    """Refine an extraction failure using independently observed auth evidence."""
+    code, message = classify_metadata_error(error)
+    text = ' '.join(str(item) for item in _exception_chain(error)).lower()
+    stale = bool(re.search(r'fresh\s+cookies?[^.\n]{0,100}(?:needed|required)|'
+                          r'cookies? (?:have |has |are |is )?(?:expired|no longer valid)|'
+                          r'session (?:has |is )?(?:expired|invalid)', text))
+    no_video = 'no video could be found in this tweet' in text
+    if cookie_matched and (stale or auth_state is AuthState.INVALID and
+                           (code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED'} or site == 'X' and no_video)):
+        return 'COOKIE_INVALID', f'{site} 的 Cookie 已失效，请重新登录浏览器或更新 Cookie 配置后再试。', AuthState.INVALID
+    if site == 'X' and no_video and auth_state is AuthState.VALID:
+        return 'NO_VIDEO', '该帖子没有可下载的视频。', auth_state
+    return code, message, auth_state
+
+
+def classify_metadata_error(error):
+    chain = _exception_chain(error)
     message = ' '.join(str(item) for item in chain).lower()
     if 'could not copy chrome cookie database' in message or ('cookie' in message and 'database is locked' in message):
         return 'BROWSER_PROFILE_LOCKED', '浏览器 Cookie 数据库可能被占用或无权读取，请关闭浏览器后重试。'

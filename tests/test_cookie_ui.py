@@ -65,7 +65,7 @@ def test_valid_and_unknown_bilibili_auth_states_are_not_mislabeled_as_invalid(qu
     assert page.state['cookieAuthWarning'] == ''
     page.show_video(replace(source, extractor_key='BiliBili', auth_state=AuthState.UNKNOWN))
     run_frames(qapp)
-    assert '无法验证' in page.state['cookieAuthStatus']
+    assert '状态未知' in page.state['cookieAuthStatus']
     assert page.state['cookieAuthWarning'] == ''
 
 
@@ -84,15 +84,14 @@ def test_youtube_success_with_configured_cookie_reports_parse_evidence(qapp, tmp
     page.setCookieEnabled(True)
     page.set_url('https://www.youtube.com/watch?v=fixture')
     page.requestParse()
-    assert 'YouTube Cookie：已配置' in page.state['cookieAuthStatus']
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：正在验证…'
     page.show_video(replace(_request(tmp_path).video, cookie_used=True))
-    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：已使用 · 解析成功'
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：已使用 · 状态未知'
     page.set_cookie_parse_error('AUTH_REQUIRED', '此内容需要登录状态。')
-    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：登录失效或未登录'
-    assert page.state['cookieAuthInvalid']
-    assert page.state['cookieAuthWarning'] == '此内容需要登录状态。'
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：状态未知'
+    assert not page.state['cookieAuthInvalid']
     page.set_url('https://vimeo.com/123')
-    assert page.state['cookieAuthStatus'] == ''
+    assert page.state['cookieAuthStatus'] == 'vimeo.com Cookie：未配置'
     assert not page.state['cookieAuthInvalid']
 
 def test_cookie_modes_and_saved_profiles_are_explicit(qapp):

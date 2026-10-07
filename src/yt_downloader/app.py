@@ -593,8 +593,9 @@ class AppController:
     def _apply_metadata_error(self, error: AppError) -> None:
         self._pending_retry = None
         if hasattr(self.window, 'download_page'):
-            self.window.download_page.set_cookie_parse_error(error.code, error.user_message)
-        if error.code in {'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
+            self.window.download_page.set_cookie_parse_error(error.code, error.user_message,
+                auth_state=error.context.auth_state, cookie_used=error.context.cookie_used)
+        if error.code in {'COOKIE_INVALID', 'COOKIE_REQUIRED', 'AUTH_REQUIRED', 'BROWSER_PROFILE_LOCKED', 'COOKIE_DECRYPT_FAILED', 'BROWSER_COOKIE_READ_FAILED'}:
             self.window.cookies.update(authRequired=True, message=error.user_message)
         self.show_error(error)
 
