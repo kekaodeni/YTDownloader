@@ -32,11 +32,13 @@ def _has_semantic_quality(item: Mapping[str, Any]) -> bool:
                for key in ("format_note", "format", "resolution"))
 
 
-def needs_media_probe(media_format: Mapping[str, Any]) -> bool:
+def needs_media_probe(media_format: Mapping[str, Any], *, require_dimensions: bool = False) -> bool:
     """Whether an already-resolved yt-dlp video format needs display metadata.
 
     This deliberately rejects webpage URLs and deferred entries: ffprobe is only
     permitted to inspect the actual stream URL yt-dlp returned.
+    SOOP's single stream requires physical dimensions even when it has an SDR
+    flag; other extractors retain their existing semantic-metadata contract.
     """
     if not isinstance(media_format, Mapping):
         return False
@@ -44,7 +46,7 @@ def needs_media_probe(media_format: Mapping[str, Any]) -> bool:
         return False
     if media_format.get("width") and media_format.get("height"):
         return False
-    if _has_semantic_quality(media_format):
+    if not require_dimensions and _has_semantic_quality(media_format):
         return False
     url = media_format.get("url")
     if not isinstance(url, str) or not url:

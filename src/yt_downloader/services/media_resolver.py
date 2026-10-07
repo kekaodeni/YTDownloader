@@ -221,7 +221,17 @@ class MediaResolver:
         if (info.get("_type") in {"playlist", "multi_video"}
                 or not isinstance(formats, list) or not formats):
             return {}
-        unresolved = [item for item in formats if isinstance(item, Mapping) and needs_media_probe(item)]
+        is_soop = str(info.get("extractor_key") or info.get("extractor") or "").casefold() in {"afreecatv", "soop"}
+        if is_soop:
+            # SDR describes colour range, not physical dimensions. Probe only
+            # one usable native video stream, never expand to SOOP variants.
+            formats = [item for item in formats if isinstance(item, Mapping)
+                       and item.get("vcodec") != "none" and not item.get("has_drm")
+                       and item.get("format_id") and item.get("url")]
+            if len(formats) != 1:
+                return {}
+        unresolved = [item for item in formats if isinstance(item, Mapping)
+                      and needs_media_probe(item, require_dimensions=is_soop)]
         if not unresolved:
             return {}
 
