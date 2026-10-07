@@ -289,7 +289,8 @@ class DownloadPresenter(ViewState):
             name = 'Bilibili'
         return self._t('cookie.site_bilibili') if name == 'Bilibili' else self._t('cookie.site_douyin') if name == 'Douyin' else name
 
-    def _show_auth_state(self, state, *, cookie_used=False):
+    def _show_auth_state(self, state, *, cookie_used=False, parse_succeeded=False):
+        """Present parse evidence without promoting UNKNOWN to authenticated VALID."""
         if not self._state['cookieEnabled']:
             self._set_cookie_status()
             return
@@ -304,7 +305,10 @@ class DownloadPresenter(ViewState):
         key, warning, severity = {
             AuthState.VALID: ('download.cookie_valid', '', 'success'),
             AuthState.INVALID: ('download.cookie_invalid', 'download.cookie_expired_hint', 'error'),
-            AuthState.UNKNOWN: ('download.cookie_unknown' if cookie_used else 'download.cookie_unknown_unused', '', 'neutral'),
+            AuthState.UNKNOWN: ('download.cookie_used' if cookie_used and parse_succeeded
+                                else 'download.cookie_unknown' if cookie_used
+                                else 'download.cookie_unknown_unused', '',
+                                'success' if cookie_used and parse_succeeded else 'neutral'),
         }[state]
         self._set_cookie_status(key, {'site': self._cookie_site_name()}, warning_key=warning,
                                 invalid=state is AuthState.INVALID, severity=severity)
@@ -668,7 +672,7 @@ class DownloadPresenter(ViewState):
         else:
             compatibility_hint = ''
         multi_video_hint = ''
-        self._show_auth_state(video.auth_state, cookie_used=video.cookie_used)
+        self._show_auth_state(video.auth_state, cookie_used=video.cookie_used, parse_succeeded=True)
         self.update(technical='')
         self._set_text('compatibilityHint', 'download.compat_verified' if video.metadata_compatibility == 'VERIFIED' and video.download_compatibility == 'EXPERIMENTAL'
                        else 'download.compat_experimental' if video.download_compatibility == 'EXPERIMENTAL' else None)

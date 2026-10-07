@@ -86,7 +86,7 @@ def test_youtube_success_with_configured_cookie_reports_parse_evidence(qapp, tmp
     page.requestParse()
     assert page.state['cookieAuthStatus'] == 'YouTube Cookie：正在验证…'
     page.show_video(replace(_request(tmp_path).video, cookie_used=True))
-    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：已使用 · 状态未知'
+    assert page.state['cookieAuthStatus'] == 'YouTube Cookie：已使用 · 解析成功'
     page.set_cookie_parse_error('AUTH_REQUIRED', '此内容需要登录状态。')
     assert page.state['cookieAuthStatus'] == 'YouTube Cookie：状态未知'
     assert not page.state['cookieAuthInvalid']

@@ -42,7 +42,7 @@ ColumnLayout {
                 text: controller.state.cookieAuthStatus
                 role: "Caption"
                 Layout.fillWidth: true; wrapMode: Text.Wrap
-                color: controller.state.cookieAuthSeverity === "success" ? theme.state.success : controller.state.cookieAuthSeverity === "error" ? theme.state.accent : theme.state.secondary
+                color: controller.state.cookieAuthSeverity === "success" ? theme.state.success : controller.state.cookieAuthSeverity === "error" ? theme.state.danger : theme.state.secondary
             }
             Item { Layout.fillWidth: true; visible: root.width >= 760 }
             UiSwitch { objectName: root.itemPrefix + "useCookieSwitch"; text: i18n.messages["download.use_cookie"]; enabled: !controller.state.busy && !root.locked; checked: controller.state.cookieEnabled; onToggled: controller.setCookieEnabled(checked) }
@@ -55,7 +55,7 @@ ColumnLayout {
             visible: controller.state.cookieAuthWarning.length > 0 || controller.state.cookieHint.length > 0
             text: controller.state.cookieAuthWarning.length > 0 ? controller.state.cookieAuthWarning : controller.state.cookieHint
             role: "Caption"
-            color: controller.state.cookieAuthInvalid || controller.state.cookieAuthWarning.length > 0 ? theme.state.accent : theme.state.secondary
+            color: controller.state.cookieAuthInvalid ? theme.state.danger : controller.state.cookieAuthWarning.length > 0 ? theme.state.accent : theme.state.secondary
             wrapMode: Text.Wrap
         }
         ColumnLayout {

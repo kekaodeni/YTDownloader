@@ -5,6 +5,15 @@ from yt_dlp.utils import GeoRestrictedError, UnsupportedError
 from yt_downloader.core.models import AuthState
 
 
+# Exact native X API rejection messages, scoped to a matched X Cookie source.
+# A generic HTTP 401 or a request to log in does not prove session invalidity.
+X_AUTH_INVALID_PATTERNS = (
+    r'\bcould not authenticate you\b',
+    r'\bauthentication failed\b',
+    r'\binvalid or expired token\b',
+)
+
+
 def _exception_chain(error):
     pending, chain, seen = [error], [], set()
     while pending:
@@ -22,8 +31,10 @@ def _exception_chain(error):
 
 def classify_auth_metadata_error(error, *, auth_state, cookie_matched=False, site=''):
     """Refine an extraction failure using independently observed auth evidence."""
-    code, message = classify_metadata_error(error)
     text = ' '.join(str(item) for item in _exception_chain(error)).lower()
+    if cookie_matched and site == 'X' and any(re.search(pattern, text) for pattern in X_AUTH_INVALID_PATTERNS):
+        return 'COOKIE_INVALID', f'{site} 的 Cookie 已失效，请重新登录浏览器或更新 Cookie 配置后再试。', AuthState.INVALID
+    code, message = classify_metadata_error(error)
     stale = bool(re.search(r'fresh\s+cookies?[^.\n]{0,100}(?:needed|required)|'
                           r'cookies? (?:have |has |are |is )?(?:expired|no longer valid)|'
                           r'session (?:has |is )?(?:expired|invalid)', text))
