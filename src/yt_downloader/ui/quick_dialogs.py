@@ -211,15 +211,16 @@ class ErrorSession(DialogSession):
 
     def __init__(self, error, report, parent, *, title_text='下载失败', retry_callback=None,
                  actions=(), action_callbacks=None):
-        super().__init__(parent.dialogs, kind='error', title=title_text, modal=True,
-                         details=error.technical_message, hasRetry=retry_callback is not None)
+        no_media = error.code == 'NO_DOWNLOADABLE_MEDIA'
+        super().__init__(parent.dialogs, kind='empty_media' if no_media else 'error', title=title_text, modal=True,
+                         details=error.technical_message, hasRetry=retry_callback is not None and not no_media)
         self.error = error
         self._title_source = title_text
         self._message_source = error.user_message
         self.report = report
-        self.retry_callback = retry_callback
+        self.retry_callback = None if no_media else retry_callback
         self.action_callbacks = dict(action_callbacks or {})
-        self._error_actions = tuple(actions)
+        self._error_actions = () if no_media else tuple(actions)
         if self._translator is not None:
             self._translator.languageChanged.connect(self._refresh_error_localized)
         self._refresh_error_localized()
@@ -235,6 +236,12 @@ class ErrorSession(DialogSession):
             if site in {'Bilibili', 'Douyin'}:
                 site = self._translator.text('cookie.site_bilibili' if site == 'Bilibili' else 'cookie.site_douyin')
             message = self._translator.text(self.error.body_message_id, {'site': site}) if self.error.body_message_id else self._translator.sourceText(self._message_source)
+            if self.error.code == 'NO_DOWNLOADABLE_MEDIA':
+                from yt_downloader.services.cookie_service import cookie_site_domain
+                title = self._translator.text(self.error.title_message_id or 'media.no_downloadable.title')
+                body_key = ('media.no_downloadable.post_body' if site == 'X' or
+                            cookie_site_domain(self.error.context.url) == 'x.com' else 'media.no_downloadable.body')
+                message = self._translator.text(body_key)
             labels = {action: self._translator.text(self.ACTION_LABELS.get(action, 'common.close'))
                       for action in self._error_actions}
         super().update(title=title, message=message,

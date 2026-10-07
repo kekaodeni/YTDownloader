@@ -345,6 +345,7 @@ class PlaylistEntry:
     chapters: tuple[MediaChapter, ...] = ()
     availability: str = ''
     title_missing: bool = False
+    no_downloadable_media: bool = False
 
     @property
     def entry_kind(self) -> str:

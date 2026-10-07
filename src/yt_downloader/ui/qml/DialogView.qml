@@ -22,7 +22,7 @@ Dialog {
     background: Rectangle { radius: 16; color: theme.state.elevated; border.color: theme.state.stroke }
     header: Item {
         implicitHeight: 66
-        UiText { anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 24; anchors.verticalCenter: parent.verticalCenter; text: popup.s.title; role: "SectionTitle"; elide: Text.ElideRight }
+        UiText { objectName: "dialogTitle"; anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 24; anchors.verticalCenter: parent.verticalCenter; text: popup.s.title; role: "SectionTitle"; elide: Text.ElideRight }
     }
     Overlay.modal: UiDimmer { }
     onOpened: { cancelAction.forceActiveFocus() }
@@ -49,7 +49,7 @@ Dialog {
         ColumnLayout {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
-            UiText { Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
+            UiText { objectName: "dialogMessage"; Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
             UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: i18n.messages["cookie.privacy_short"]; wrapMode: Text.Wrap; color: theme.state.secondary }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12
@@ -141,7 +141,7 @@ Dialog {
             UiButton { objectName: "updateInstall"; text: i18n.messages["update.install_restart"]; appearance: "primary"; visible: popup.s.kind === "update" && (popup.s.canInstall || false); onClicked: popup.session.action("install") }
             UiButton { objectName: "cookieTest"; text: i18n.messages["cookie.test"]; visible: popup.s.kind === "cookie"; onClicked: popup.session.test() }
             UiButton { objectName: "cookieSave"; text: i18n.messages["common.save"]; appearance: "primary"; visible: popup.s.kind === "cookie"; onClicked: popup.session.save() }
-            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : i18n.messages["common.close"]; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
+            UiButton { id: cancelAction; objectName: "dialogCancel"; text: popup.s.kind === "confirm" ? popup.s.cancelText : popup.s.kind === "update" ? popup.s.dismissText : i18n.messages["common.close"]; appearance: popup.s.kind === "empty_media" ? "primary" : "normal"; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
         }
     }
 }

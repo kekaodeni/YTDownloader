@@ -1059,7 +1059,8 @@ class AppController:
                         title_message_id=error.title_message_id or title_id,
                         body_message_id=error.body_message_id or body_id,
                         recommended_actions=error.recommended_actions or actions)
-        logger.error("%s: %s", error.code, error.technical_message)
+        log_result = logger.info if error.code == 'NO_DOWNLOADABLE_MEDIA' else logger.error
+        log_result("%s: %s", error.code, error.technical_message)
         report = build_error_report(
             error,
             app_version=__version__,

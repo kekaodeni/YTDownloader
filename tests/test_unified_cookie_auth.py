@@ -106,8 +106,8 @@ def test_x_valid_requires_authenticated_native_extraction(success, evidence, exp
 @pytest.mark.parametrize('matched', [True, False])
 @pytest.mark.parametrize(('state', 'expected'), [
     (AuthState.INVALID, 'COOKIE_INVALID'),
-    (AuthState.UNKNOWN, 'TEMPORARY_EXTRACTOR_ERROR'),
-    (AuthState.VALID, 'NO_VIDEO'),
+    (AuthState.UNKNOWN, 'NO_DOWNLOADABLE_MEDIA'),
+    (AuthState.VALID, 'NO_DOWNLOADABLE_MEDIA'),
 ])
 def test_x_no_video_error_needs_independent_auth_evidence(state, expected, matched):
     from yt_downloader.services.media_errors import classify_auth_metadata_error

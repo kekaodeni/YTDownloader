@@ -115,6 +115,7 @@ class DownloadPresenter(ViewState):
                          cookieAuthWarning='', cookieAuthInvalid=False, cookieAuthSeverity='')
         self._translator = translator
         self._cookie_status_key = ''
+        self._cookie_status_before_parse = None
         self._cookie_status_params = {}
         self._cookie_warning_key = ''
         self._cookie_warning_params = {}
@@ -194,7 +195,8 @@ class DownloadPresenter(ViewState):
         for index, (entry, identity) in enumerate(zip(self.video.entries, identities)):
             row = self._entries.get(index)
             record = records.get(identity)
-            status = ('playlist.login_required' if entry.availability in {'premium_only', 'subscriber_only', 'needs_auth'}
+            status = ('playlist.no_downloadable_media' if entry.no_downloadable_media else
+                      'playlist.login_required' if entry.availability in {'premium_only', 'subscriber_only', 'needs_auth'}
                       else 'playlist.unavailable' if row['unavailable'] else
                       'playlist.downloaded' if record else 'playlist.available')
             if initialize_selection and self._archive:
@@ -318,6 +320,16 @@ class DownloadPresenter(ViewState):
         site = self._cookie_site_name()
         if not site or not self._state['cookieEnabled']:
             return
+        if code == 'NO_DOWNLOADABLE_MEDIA':
+            previous = getattr(self, '_cookie_status_before_parse', None)
+            if previous and previous['key'] not in {'', 'download.cookie_pending', 'download.cookie_verifying'}:
+                previous = dict(previous, params=dict(previous['params']))
+                if 'site' in previous['params']:
+                    previous['params']['site'] = site
+                self._set_cookie_status(**previous)
+            else:
+                self._show_auth_state(auth_state, cookie_used=cookie_used)
+            return
         self._show_auth_state(AuthState.INVALID if code == 'COOKIE_INVALID' else auth_state,
                               cookie_used=cookie_used)
         if self._state['cookieAuthInvalid']:
@@ -329,6 +341,7 @@ class DownloadPresenter(ViewState):
                                     severity='error')
 
     def _invalidate_media(self):
+        self._cookie_status_before_parse = None
         if self.parse_state in {ParseState.RUNNING, ParseState.SLOW}:
             self.set_parse_state(ParseState.CANCELLING)
             self.parse_cancel_requested.emit()
@@ -569,6 +582,10 @@ class DownloadPresenter(ViewState):
                 self._refresh_cookie_hint()
                 return
             self._active_cookie_profile = self._cookie_route().profile if self._state['cookieEnabled'] else None
+            self._cookie_status_before_parse = dict(key=self._cookie_status_key,
+                params=dict(self._cookie_status_params), warning_key=self._cookie_warning_key,
+                warning_params=dict(self._cookie_warning_params), warning_external=self._cookie_warning_external,
+                invalid=self._state['cookieAuthInvalid'], severity=self._state['cookieAuthSeverity'])
             site = self._cookie_site_name()
             if site and self._active_cookie_profile:
                 self._set_cookie_status('download.cookie_verifying', {'site': site}, severity='neutral')
@@ -635,6 +652,7 @@ class DownloadPresenter(ViewState):
         self.update(clipLongFormat=long_format, clipStart=start, clipEnd=end)
 
     def show_video(self, video, *, preferred_quality='recommended', profile=None):
+        self._cookie_status_before_parse = None
         self._initializing_media = True
         self.selectCollectionFilter('all')
         self._sync_clip_time_format(video)
@@ -644,6 +662,7 @@ class DownloadPresenter(ViewState):
         is_playlist = video.is_collection
         self._entries.replace([dict(id=str(index), index=index, title=self._collection_entry_title(entry),
                                    url=entry.url, thumbnail=entry.thumbnail, unavailable=entry.unavailable,
+                                   noMedia=entry.no_downloadable_media,
                                    selected=False, embedded=entry.embedded,
                                    downloaded=False, statusKey='playlist.available', archiveDetail='', archiveTooltip='',
                                    detail=self._collection_entry_detail(entry))
@@ -734,6 +753,8 @@ class DownloadPresenter(ViewState):
             self.refresh_archive()
 
     def _collection_entry_detail(self, entry):
+        if entry.no_downloadable_media:
+            return ''
         details = []
         if entry.duration is not None:
             details.append(format_duration(entry.duration))

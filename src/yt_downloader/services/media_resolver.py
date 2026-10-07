@@ -17,7 +17,7 @@ from yt_dlp.utils import DownloadError
 
 from yt_downloader.core.errors import AppError, ErrorContext, OperationCancelled
 from yt_downloader.services.media_metadata import resolve_metadata
-from yt_downloader.services.media_errors import classify_auth_metadata_error
+from yt_downloader.services.media_errors import classify_auth_metadata_error, classify_no_media_evidence
 from yt_downloader.core.models import ResolvedMedia, AuthState
 from yt_downloader.services.auth_state import detect_auth_state
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
@@ -61,11 +61,34 @@ class _YdlLogger:
         self._record(logging.ERROR, message)
 
 
+class _MetadataYoutubeDL(ReadOnlyCookieYoutubeDL):
+    """Keep confirmed no-media children without suppressing other native errors."""
+
+    def process_ie_result(self, ie_result, download=True, extra_info=None):
+        try:
+            return super().process_ie_result(ie_result, download=download, extra_info=extra_info)
+        except DownloadError as error:
+            if (download or not self._playlist_level or not isinstance(ie_result, Mapping)
+                    or ie_result.get('_type') in {'playlist', 'multi_video'}):
+                raise
+            url = str(ie_result.get('webpage_url') or ie_result.get('url') or '')
+            profile = getattr(self, '_metadata_cookie_profile', None)
+            matched = bool(getattr(self, '_metadata_cookie_enabled', False) and profile and
+                           route_cookie_profile((profile,), url).profile)
+            auth = getattr(self, '_metadata_source_auth', AuthState.NOT_APPLICABLE) if matched else AuthState.NOT_APPLICABLE
+            code, _, auth = classify_auth_metadata_error(error, auth_state=auth,
+                        cookie_matched=matched, site=cookie_site_name(url, profile))
+            if code != 'NO_DOWNLOADABLE_MEDIA' or not classify_no_media_evidence(
+                    exception=error, metadata=ie_result, auth_state=auth):
+                raise
+            return dict(ie_result, _app_no_downloadable_media=True)
+
+
 class MediaResolver:
     def __init__(
         self,
         *,
-        ydl_factory: Callable[[dict[str, Any]], Any] = ReadOnlyCookieYoutubeDL,
+        ydl_factory: Callable[[dict[str, Any]], Any] = _MetadataYoutubeDL,
         http_get: Callable[..., _Response] = requests.get,
         deno_path: str | Path | None = None,
         require_deno: bool = True,
@@ -153,6 +176,10 @@ class MediaResolver:
                 source_auth_state = detect_auth_state(
                     ydl, normalized, '', cookie_enabled=self.cookie_enabled,
                     cookie_profile=self.cookie_profile, validate_session=False)
+                if isinstance(ydl, _MetadataYoutubeDL):
+                    ydl._metadata_source_auth = source_auth_state
+                    ydl._metadata_cookie_profile = self.cookie_profile
+                    ydl._metadata_cookie_enabled = self.cookie_enabled
                 if cookie_matched:
                     try:
                         getter = getattr(getattr(ydl, 'cookiejar', None), 'get_cookies_for_url', None)
@@ -165,7 +192,8 @@ class MediaResolver:
                     if isinstance(extracted, Mapping) and extracted.get('_type') in {'playlist', 'multi_video'}:
                         from itertools import islice
                         extracted = dict(extracted)
-                        extracted['entries'] = list(islice(extracted.get('entries') or (), 1001))
+                        if extracted.get('entries') is not None:
+                            extracted['entries'] = list(islice(extracted['entries'], 1001))
                     from yt_downloader.services.bilibili_bangumi import enrich_season
                     extracted = enrich_season(ydl, extracted, normalized, cancel_event)
                     info = ydl.sanitize_info(extracted)
@@ -178,6 +206,10 @@ class MediaResolver:
                         extraction_succeeded=info is not None, source_auth_state=source_auth_state)
             if cancel_event and cancel_event.is_set():
                 raise OperationCancelled(ErrorContext(url=normalized, stage="Fetching metadata"))
+            if classify_no_media_evidence(metadata=info, auth_state=auth_state):
+                raise AppError('NO_DOWNLOADABLE_MEDIA', '这个链接中没有检测到可下载的视频或音频。',
+                               'Native metadata contains no downloadable media',
+                               ErrorContext(url=normalized, stage='Fetching metadata', log_excerpt='\n'.join(ydl_logger.lines)))
             detected_formats = self._probe_missing_media_metadata(info, cancel_event)
             media = resolve_metadata(info, normalized, requested_url=url.strip(),
                                      detected_formats=detected_formats,

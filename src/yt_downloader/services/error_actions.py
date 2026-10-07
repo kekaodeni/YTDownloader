@@ -4,6 +4,8 @@ from __future__ import annotations
 
 
 ERROR_PRESENTATION = {
+    'NO_DOWNLOADABLE_MEDIA': ('media.no_downloadable.title', 'media.no_downloadable.body', ()),
+    'CONTENT_UNAVAILABLE': ('media.unavailable.title', 'media.unavailable.body', ()),
     'COOKIE_INVALID': ('error.cookie_invalid.title', 'error.cookie_invalid.body',
                        ('OPEN_COOKIE_MANAGER', 'REPARSE')),
     'NO_VIDEO': ('error.no_video.title', 'error.no_video.body', ()),
@@ -31,6 +33,6 @@ ERROR_PRESENTATION = {
 def error_presentation(code: str, *, retry_available: bool = False):
     """Return message IDs and a bounded action set without inspecting raw stderr."""
     title, body, actions = ERROR_PRESENTATION.get(str(code), ('', '', ()))
-    if retry_available and not actions:
+    if retry_available and not actions and str(code) not in {'NO_DOWNLOADABLE_MEDIA', 'CONTENT_UNAVAILABLE'}:
         return '', '', ('RETRY',)
     return title, body, actions

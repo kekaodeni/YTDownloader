@@ -6,6 +6,7 @@ from yt_downloader.core.formats import normalize_formats, normalize_audio_format
 from yt_downloader.core.models import (Collection, CollectionQualityMode, MediaChapter, PlaylistEntry,
                                        PlaylistMetadata, ResolvedMedia, SubtitleTrack, ThumbnailOption)
 from yt_downloader.core.url import InvalidMediaUrl, normalize_media_url
+from yt_downloader.services.media_errors import classify_no_media_evidence
 
 
 # Reference integrations, not an input allowlist. Network smoke is reported separately.
@@ -149,14 +150,15 @@ def resolve_metadata(info, original_url, *, requested_url=None, detected_formats
             item_thumbnail = thumbnail_url(item)
             entry_index = _number(item.get('playlist_index')) or index
             has_usable_embedded = bool(entry_formats or entry_audio or entry_video_only)
+            no_media = bool(classify_no_media_evidence(metadata=item))
             entries.append(PlaylistEntry(str(item.get('id') or index), int(entry_index),
                           str(item.get('title') or '未命名媒体'), url,
                           str(item.get('ie_key') or item.get('extractor_key') or extractor_key),
                           entry_duration, item_thumbnail or '',
-                          not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only', 'needs_auth'},
+                          no_media or not bool(url or has_usable_embedded) or item.get('availability') in {'private', 'premium_only', 'subscriber_only', 'needs_auth'},
                           entry_formats, entry_audio, entry_video_only, has_usable_embedded,
                           chapters=_chapters(item.get('chapters')), availability=str(item.get('availability') or ''),
-                          title_missing=not bool(item.get('title'))))
+                          title_missing=not bool(item.get('title')), no_downloadable_media=no_media))
     selectable_entries = [entry for entry in entries if not entry.unavailable]
     resolved_collection = bool(selectable_entries) and all(entry.formats for entry in selectable_entries)
     collection_quality_mode = (CollectionQualityMode.RESOLVED_COMMON_FORMATS if resolved_collection
