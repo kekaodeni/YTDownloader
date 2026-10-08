@@ -16,7 +16,11 @@ UiCategoryHost {
             id: body
             width: Math.min(980, scroll.width - scroll.contentInsetRight)
             spacing: 16
-            UiText { Layout.fillWidth: true; text: i18n.messages["browser.title"]; role: "SectionTitle"; wrapMode: Text.Wrap }
+            RowLayout {
+                Layout.fillWidth: true
+                UiText { Layout.fillWidth: true; text: i18n.messages["browser.title"]; role: "SectionTitle"; wrapMode: Text.Wrap }
+                UiButton { objectName: "browser-install-guide"; text: i18n.messages["browser.guide_entry"]; appearance: "quiet"; onClicked: browserCompanion.showInstallGuide() }
+            }
             UiText { Layout.fillWidth: true; text: i18n.messages["browser.description"]; color: theme.state.secondary; wrapMode: Text.Wrap }
             UiText { text: i18n.messages["browser.choose_browser"]; role: "Caption" }
             Flow {
@@ -74,6 +78,9 @@ UiCategoryHost {
                         title: i18n.messages["browser.step_install"]
                         UiText { Layout.fillWidth: true; text: i18n.messages[card.info.connected ? "browser.step_done" : "browser.step_pending"]; role: "Caption" }
                         UiText { Layout.fillWidth: true; text: i18n.messages["browser.install_" + card.info.browser]; wrapMode: Text.Wrap }
+                        UiText { Layout.fillWidth: true; text: i18n.messages["browser.portable_path"] + "\n" + card.info.folderPath; role: "Caption"; wrapMode: Text.WrapAnywhere; color: theme.state.secondary }
+                        UiText { Layout.fillWidth: true; visible: card.info.extensionReload; text: i18n.messages["browser.reload_required"]; wrapMode: Text.Wrap; color: theme.state.danger }
+                        UiText { Layout.fillWidth: true; visible: card.info.extensionReload && card.info.previousFolderPath.length > 0; text: i18n.messages["browser.legacy_path"] + "\n" + card.info.previousFolderPath; role: "Caption"; wrapMode: Text.WrapAnywhere; color: theme.state.secondary }
                         UiText { Layout.fillWidth: true; text: card.info.installAddress; role: "Caption"; wrapMode: Text.Wrap; color: theme.state.accent }
                         Flow {
                             Layout.fillWidth: true; spacing: 10
@@ -91,7 +98,8 @@ UiCategoryHost {
                                 onClicked: browserCompanion.perform(card.info.browser, "copy_address")
                             }
                         }
-                        BrowserOperationNotice { Layout.fillWidth: true; info: card.info; areas: ["folder", "copy_address"] }
+                        UiButton { objectName: "browser-confirm-reload-" + card.info.browser; visible: card.info.extensionReload && card.info.configured; text: i18n.messages["browser.reload_confirm"]; enabled: !card.info.busy; onClicked: browserCompanion.perform(card.info.browser, "confirm_reload") }
+                        BrowserOperationNotice { Layout.fillWidth: true; info: card.info; areas: ["folder", "copy_address", "confirm_reload"] }
                     }
                     SettingCard {
                         Layout.fillWidth: true
@@ -129,13 +137,6 @@ UiCategoryHost {
                         UiText { Layout.fillWidth: true; text: i18n.messages["browser.folder_path"] + "\n" + card.info.folderPath; role: "Caption"; wrapMode: Text.WrapAnywhere; color: theme.state.secondary }
                     }
                 }
-            }
-            UiButton { objectName: "browser-help"; text: i18n.messages["browser.help"]; onClicked: browserCompanion.toggleHelp() }
-            SettingCard {
-                Layout.fillWidth: true; visible: browserCompanion.state.helpVisible
-                UiText { Layout.fillWidth: true; text: i18n.messages["browser.install_help"]; wrapMode: Text.Wrap }
-                UiText { Layout.fillWidth: true; text: i18n.messages["browser.firefox_help"]; wrapMode: Text.Wrap }
-                UiText { Layout.fillWidth: true; text: i18n.messages["browser.privacy"]; role: "Caption"; wrapMode: Text.Wrap; color: theme.state.secondary }
             }
         }
     }

@@ -11,7 +11,9 @@ Cookie source, quality selector, Profiles and yt-dlp pipeline.
 2. Open **Toolbox → Browser extension**, choose your browser, and use
    **Start setup** in step 1. Registration and the frozen Bridge/IPC are checked;
    success means the local connection is ready, not that a browser is connected.
-3. Follow step 2 and open that browser's exported extension folder. Copy the
+3. Follow step 2 and open that browser's folder shipped in the extracted ZIP:
+   `BrowserExtensions/Chrome`, `BrowserExtensions/Edge`, or `BrowserExtensions/Firefox`.
+   No Python, Node.js or extension build step is needed for a portable package. Copy the
    browser installation page address if needed; paste it into its address bar.
 4. Chrome / Edge: enable Developer mode at `chrome://extensions` /
    `edge://extensions`, select **Load unpacked**, and select that browser's folder.
@@ -26,8 +28,14 @@ The desktop **Test connection** runs the frozen host's protocol and IPC test.
 It does not prove that an extension is installed. A configured registration is
 displayed as **waiting for browser connection**, never as connected by itself.
 Browser activity expires after five minutes. Move the portable application?
-Use **Repair connection** from its new location. Remove connection unregisters
-only this application's association; exported extension folders are preserved.
+Use **Repair connection** from its new location, then reload the unpacked extension
+from its new folder in the browser. Repairing Native Messaging cannot change a
+browser's saved extension load path. Confirm reloading in step 2, then send a
+new link to verify. Previous AppData extension folders and user files are kept;
+they are never deleted or overwritten during migration. Remove connection unregisters
+only this application's association; extension folders are preserved.
+Native Host manifests/configuration stay in AppData and HKCU. The extension body
+is loaded from the portable directory, including when that directory is read-only.
 
 ## Identity and layout
 
@@ -77,7 +85,11 @@ An explicit `YT_DOWNLOADER_BRIDGE_EXE` override remains available for developer
 verification. A frozen app always uses the Bridge beside its own executable;
 it never searches PATH or silently borrows another installation's host.
 Portable builds need no Python installed. Advanced management is collapsed by
-default; it contains IDs, repair, confirmed removal and diagnostic paths.
+default; it contains IDs, repair, confirmed removal and diagnostic paths. The
+title's **View installation guide** opens an independent local dialog; it keeps
+the background browser selection and scroll position. Basic steps remain on
+the main page. Source mode composes extensions beside the project's Bridge;
+frozen installations never copy the full extension into AppData.
 
 ## Reference review
 

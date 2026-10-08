@@ -13,7 +13,7 @@ Dialog {
     focus: true
     closePolicy: Popup.NoAutoClose
     Shortcut { sequence: "Escape"; enabled: popup.opened && popup.s.closeEnabled; onActivated: popup.session.reject() }
-    width: Math.min(620, parent ? parent.width - 32 : 620)
+    width: Math.min(s.kind === "browser_guide" ? 780 : 620, parent ? parent.width - 32 : 620)
     height: Math.min(implicitHeight, parent ? parent.height - 40 : 700)
     x: parent ? (parent.width - width) / 2 : 0
     y: parent ? (parent.height - height) / 2 : 0
@@ -50,6 +50,7 @@ Dialog {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
             UiText { objectName: "dialogMessage"; Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
+            Loader { objectName: "browserGuideLoader"; Layout.fillWidth: true; visible: active; active: popup.s.kind === "browser_guide"; sourceComponent: Component { BrowserInstallGuide { session: popup.session } } }
             UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: i18n.messages["cookie.privacy_short"]; wrapMode: Text.Wrap; color: theme.state.secondary }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12

@@ -3,9 +3,9 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import sys
 from .protocol import HOST_NAME, PROTOCOL, ProtocolError
+from .distribution import BROWSER_FOLDERS
 
 REGISTRY_ROOTS = {'chrome': r'Software\Google\Chrome\NativeMessagingHosts',
                   'edge': r'Software\Microsoft\Edge\NativeMessagingHosts',
@@ -76,6 +76,41 @@ class ConnectionManager:
 
     def manifest_path(self, browser): return self.root / (browser + '.json')
 
+    def extension_folder(self, browser):
+        return self.bridge_path.parent / 'BrowserExtensions' / BROWSER_FOLDERS[browser]
+
+    def extension_location(self, browser):
+        item = self.load().get('browsers', {}).get(browser, {})
+        legacy = self.root / 'extensions' / browser
+        previous = item.get('extension_path') or (str(legacy.resolve()) if item and legacy.is_dir() else '')
+        current = str(self.extension_folder(browser).resolve())
+        moved = bool(previous and previous != current)
+        return dict(path=current, reload_required=moved or bool(item.get('extension_reload_required')),
+                    previous_path=previous if moved else item.get('previous_extension_path', ''))
+
+    def confirm_extension_reload(self, browser):
+        config = self.load()
+        if browser not in config.get('browsers', {}):
+            raise ProtocolError('not_configured')
+        item = config['browsers'][browser]
+        if item.get('extension_path') != str(self.extension_folder(browser).resolve()):
+            raise ProtocolError('repair_needed')
+        item['extension_reload_required'] = False
+        self._write(self.config_path, config)
+
+    def _prepare_extension_folder(self, browser):
+        folder = self.extension_folder(browser)
+        required = ('manifest.json', 'core.js', 'background.js', 'popup.html', 'popup.js')
+        if not all((folder / name).is_file() for name in required):
+            if getattr(sys, 'frozen', False):
+                raise ProtocolError('extension_missing')
+            from .distribution import bundle_extensions
+            try:
+                bundle_extensions(self.resources, folder.parent)
+            except (OSError, ValueError):
+                raise ProtocolError('extension_missing') from None
+        return folder
+
     def status(self, browser):
         try:
             config = self.load()
@@ -103,28 +138,28 @@ class ConnectionManager:
 
     def install(self, browser, extension_id=None):
         if browser not in REGISTRY_ROOTS: raise ProtocolError()
-        extension_id = extension_id or self.identity(browser)
+        old_config = self.load()
+        old_item = old_config.get('browsers', {}).get(browser, {})
+        extension_id = extension_id or old_item.get('extension_id') or self.identity(browser)
         if not valid_extension_id(browser, extension_id): raise ProtocolError('unauthorized_extension')
         if not self.bridge_path.is_file() or self.bridge_path.name != 'YTDownloaderBridge.exe': raise ProtocolError('bridge_missing')
         existing = self.registry.read(browser)
         manifest_path = self.manifest_path(browser)
         if existing and existing != str(manifest_path): raise ProtocolError('registration_conflict')
+        location = self.extension_location(browser)
+        folder = self._prepare_extension_folder(browser)
         self.root.mkdir(parents=True, exist_ok=True)
-        old_config = self.load()
         config = json.loads(json.dumps(old_config)) if old_config else dict(owner=HOST_NAME, protocol=PROTOCOL, browsers={})
         config['bridge_path'] = str(self.bridge_path.resolve())
         config['launch'] = (dict(mode='frozen', path=str(Path(sys.executable).resolve())) if getattr(sys, 'frozen', False)
                             else dict(mode='source', path=str(Path(sys.executable).resolve()),
                                       root=str(Path(__file__).resolve().parents[3])))
-        config['browsers'][browser] = dict(extension_id=extension_id)
+        config['browsers'][browser] = dict(extension_id=extension_id,
+            extension_path=str(folder.resolve()), extension_reload_required=location['reload_required'],
+            previous_extension_path=location['previous_path'])
         manifest = dict(name=HOST_NAME, description='YTDownloader URL bridge', type='stdio', path=config['bridge_path'])
         manifest['allowed_extensions' if browser == 'firefox' else 'allowed_origins'] = (
             [extension_id] if browser == 'firefox' else ['chrome-extension://' + extension_id + '/'])
-        folder = self.root / 'extensions' / browser
-        folder.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(self.resources / 'shared', folder, dirs_exist_ok=True)
-        extension_manifest = json.loads((self.resources / 'manifests' / (browser + '.json')).read_text('utf-8'))
-        self._write(folder / 'manifest.json', extension_manifest)
         old_manifest = manifest_path.read_bytes() if manifest_path.is_file() else None
         self._write(manifest_path, manifest)
         self._write(self.config_path, config)

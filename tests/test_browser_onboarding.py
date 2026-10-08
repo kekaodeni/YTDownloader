@@ -156,9 +156,9 @@ def test_fifteen_real_button_clicks_execute_and_show_local_result(quick_window, 
         assert ('probe', browser) in calls and not row['connected']
     elif action == 'remove':
         assert ('remove', browser) in calls and manager.status(browser) == 'not_configured'
-        assert (manager.root / 'extensions' / browser).is_dir()
+        assert manager.extension_folder(browser).is_dir()
     else:
-        assert [Path(path) for path in opened] == [manager.root / 'extensions' / browser]
+        assert [Path(path) for path in opened] == [manager.extension_folder(browser)]
 
 
 @pytest.mark.parametrize('failure', ['folder_missing', 'registration_conflict', 'repair_needed', 'open_failed', 'timeout', 'ipc_unavailable'])

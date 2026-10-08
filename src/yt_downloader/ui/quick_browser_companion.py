@@ -11,16 +11,27 @@ from yt_downloader.browser_companion.registration import ConnectionManager
 from yt_downloader.infrastructure.paths import AppPaths
 from yt_downloader.infrastructure.runtime import resource_path
 from yt_downloader.ui.quick_state import ViewState
+from yt_downloader.ui.quick_dialogs import DialogSession
 
 BROWSERS = ('chrome', 'edge', 'firefox')
 ADDRESSES = dict(chrome='chrome://extensions', edge='edge://extensions', firefox='about:debugging')
+
+class BrowserGuideSession(DialogSession):
+    def __init__(self, dialogs, browser):
+        super().__init__(dialogs, kind='browser_guide', modal=True,
+                         title=dialogs._translator.text('browser.guide_title'), browser=browser)
+
+    @Slot(str)
+    def selectBrowser(self, browser):
+        if browser in BROWSERS:
+            self.update(browser=browser)
 
 class BrowserCompanionPresenter(ViewState):
     operationStarted = Signal(str, str)
     operationFinished = Signal(str, str)
 
     def __init__(self, translator, parent=None, manager=None, *, dialogs=None, probe_timeout_ms=8000):
-        super().__init__(parent, rows=[], noticeKey='', helpVisible=False, activeBrowser='chrome',
+        super().__init__(parent, rows=[], noticeKey='', activeBrowser='chrome',
                          sourceEnvironment=not getattr(sys, 'frozen', False))
         self.manager = manager or ConnectionManager(AppPaths.discover().data)
         self.translator, self.dialogs = translator, dialogs
@@ -28,6 +39,7 @@ class BrowserCompanionPresenter(ViewState):
         self.advanced, self.probes = set(), set()
         self.probe_timeout_ms = probe_timeout_ms
         self._closed = False
+        self._guide = None
         translator.languageChanged.connect(self.refresh)
         self.timer = QTimer(self)
         self.timer.setInterval(15000)
@@ -41,19 +53,26 @@ class BrowserCompanionPresenter(ViewState):
         rows = []
         for browser in BROWSERS:
             status = self.manager.status(browser)
+            root = getattr(self.manager, 'root', Path())
+            folder = (self.manager.extension_folder(browser) if hasattr(self.manager, 'extension_folder')
+                      else root / 'extensions' / browser)
+            location = dict(reload_required=False, previous_path='')
             try:
                 saved = self.manager.load().get('browsers', {}).get(browser, {})
                 identity = saved.get('extension_id') or self.manager.identity(browser)
-            except (OSError, ValueError, KeyError):
+                if hasattr(self.manager, 'extension_location'):
+                    location = self.manager.extension_location(browser)
+            except (OSError, ValueError, KeyError, ProtocolError):
                 identity = ''
             configured = status == 'configured'
             if not configured:
                 self.tested.pop(browser, None)
-            connected = configured and time.monotonic() - self.seen.get(browser, -1000) < 300
+            connected = configured and not location['reload_required'] and time.monotonic() - self.seen.get(browser, -1000) < 300
             host_ready = configured and (browser in self.tested or connected)
             status_key = 'connected' if connected else 'host_ready' if host_ready else status
+            if configured and location['reload_required']:
+                status_key = 'reload_required'
             result = self.results.get(browser, {})
-            root = getattr(self.manager, 'root', Path())
             bridge = getattr(self.manager, 'bridge_path', None)
             rows.append(dict(browser=browser,
                 name=dict(chrome='Chrome', edge='Microsoft Edge', firefox='Firefox')[browser],
@@ -64,7 +83,8 @@ class BrowserCompanionPresenter(ViewState):
                 advanced=browser in self.advanced, noticeKey=result.get('key', ''),
                 noticeArea=result.get('area', ''), noticeError=result.get('error', False),
                 bridgeExists=bool(bridge and bridge.is_file()), bridgePath=str(bridge or ''),
-                manifestPath=str(root / (browser + '.json')), folderPath=str(root / 'extensions' / browser),
+                manifestPath=str(root / (browser + '.json')), folderPath=str(folder),
+                extensionReload=location['reload_required'], previousFolderPath=location['previous_path'],
                 installAddress=ADDRESSES[browser]))
         self.update(rows=rows)
 
@@ -92,8 +112,15 @@ class BrowserCompanionPresenter(ViewState):
             self.ids[browser] = value.strip()
 
     @Slot()
-    def toggleHelp(self):
-        self.update(helpVisible=not self._state['helpVisible'])
+    def showInstallGuide(self):
+        if self.dialogs is None:
+            return
+        if self._guide is not None:
+            self._guide.raise_()
+            return
+        self._guide = BrowserGuideSession(self.dialogs, self._state['activeBrowser'])
+        self._guide.closed.connect(lambda: setattr(self, '_guide', None))
+        self._guide.show()
 
     def _notice(self, browser, key, area, *, error=False):
         self.results[browser] = dict(key='browser.' + key, area=area, error=error)
@@ -108,7 +135,7 @@ class BrowserCompanionPresenter(ViewState):
     @Slot(str, str)
     def perform(self, browser, action):
         if (self._closed or browser not in BROWSERS or browser in self.operations or
-                action not in {'install', 'repair', 'remove', 'folder', 'test', 'copy_address', 'copy_build'}):
+                action not in {'install', 'repair', 'remove', 'folder', 'test', 'copy_address', 'copy_build', 'confirm_reload'}):
             return
         self.operations[browser] = action
         self._notice(browser, 'working', action)
@@ -143,7 +170,7 @@ class BrowserCompanionPresenter(ViewState):
                 self.tested.pop(browser, None)
                 key = 'removed' if removed else 'not_configured'
             elif action == 'folder':
-                folder = self.manager.root / 'extensions' / browser
+                folder = self.manager.extension_folder(browser)
                 if not folder.is_dir():
                     raise ProtocolError('folder_missing')
                 if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))):
@@ -161,6 +188,10 @@ class BrowserCompanionPresenter(ViewState):
             elif action == 'copy_address':
                 QGuiApplication.clipboard().setText(ADDRESSES[browser])
                 key = 'address_copied'
+            elif action == 'confirm_reload':
+                self.manager.confirm_extension_reload(browser)
+                self.seen.pop(browser, None)
+                key = 'reload_confirmed'
             else:
                 command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + str(resource_path('scripts/build_browser_bridge.ps1')) + '"'
                 QGuiApplication.clipboard().setText(command)
@@ -168,7 +199,7 @@ class BrowserCompanionPresenter(ViewState):
             self._complete(browser, action, key)
         except ProtocolError as error:
             allowed = {'bridge_missing', 'registration_conflict', 'unauthorized_extension', 'not_configured',
-                       'repair_needed', 'folder_missing', 'open_failed'}
+                       'repair_needed', 'folder_missing', 'open_failed', 'extension_missing'}
             self._complete(browser, action, error.status if error.status in allowed else 'operation_failed', error=True)
         except (OSError, ValueError, KeyError):
             self._complete(browser, action, 'operation_failed', error=True)

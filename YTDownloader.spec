@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import re
+import sys
 from pathlib import Path
 from PySide6.QtCore import QLibraryInfo
 from PyInstaller.utils.hooks import collect_all
@@ -92,3 +93,9 @@ coll = COLLECT(
     upx_exclude=[],
     name="YTDownloader",
 )
+
+# Unpacked extensions belong beside the portable executable, not in AppData.
+# Both the spec and the build script use the same manifest/resource composer.
+sys.path.insert(0, str(root / 'src'))
+from yt_downloader.browser_companion.distribution import bundle_portable_extensions
+bundle_portable_extensions(root / 'browser-extension', Path(DISTPATH) / 'YTDownloader')

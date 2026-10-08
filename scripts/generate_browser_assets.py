@@ -44,6 +44,12 @@ def main():
         assert len(values) == len(desktop_keys), (locale, len(values))
         for key, value in zip(desktop_keys, values):
             catalog['messages'].setdefault('browser.' + key, {})[locale] = value
+    from browser_portable_translations import KEYS as portable_keys, ROWS as portable_rows
+    for locale, row in portable_rows.items():
+        values = row.split('|')
+        assert len(values) == len(portable_keys), (locale, len(values))
+        for key, value in zip(portable_keys, values):
+            catalog['messages'].setdefault('browser.' + key, {})[locale] = value
     # Preserve the established compact catalog and every unrelated translation.
     browser_lines = [f'    {json.dumps(key)}: ' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))
                      for key, value in catalog['messages'].items() if key.startswith('browser.')]

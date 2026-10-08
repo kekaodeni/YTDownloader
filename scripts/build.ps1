@@ -87,6 +87,8 @@ finally {
 }
 
 $Dist = Join-Path $DistRoot "YTDownloader"
+& $Python (Join-Path $RepoRoot 'scripts\bundle_browser_extensions.py') --resources (Join-Path $RepoRoot 'browser-extension') --package $Dist
+if ($LASTEXITCODE -ne 0) { throw 'Portable browser extension bundling failed.' }
 $Exe = Join-Path $Dist "YTDownloader.exe"
 if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "Packaged executable was not created." }
 $UpdaterSource = Join-Path $UpdaterDistRoot "YTDownloaderUpdater.exe"
