@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "Extensão do navegador"
+  },
+  "description": {
+    "message": "Envie um link e escolha a qualidade no aplicativo de desktop."
+  },
+  "install": {
+    "message": "Configurar conexão"
+  },
+  "test": {
+    "message": "Testar conexão"
+  },
+  "repair": {
+    "message": "Reparar conexão"
+  },
+  "remove": {
+    "message": "Remover conexão"
+  },
+  "folder": {
+    "message": "Abrir pasta da extensão"
+  },
+  "help": {
+    "message": "Ajuda de instalação"
+  },
+  "identity": {
+    "message": "ID da extensão (reassociar versão da loja)"
+  },
+  "not_configured": {
+    "message": "Não configurado"
+  },
+  "configured": {
+    "message": "Ponte local configurada; aguardando o navegador"
+  },
+  "connected": {
+    "message": "Conectado nos últimos cinco minutos"
+  },
+  "repair_needed": {
+    "message": "A conexão precisa de reparo"
+  },
+  "bridge_missing": {
+    "message": "YTDownloaderBridge.exe ausente. Use o pacote portátil completo."
+  },
+  "registration_conflict": {
+    "message": "O registro de outra instalação foi preservado."
+  },
+  "unauthorized_extension": {
+    "message": "ID de extensão inválido. Confira a página de extensões."
+  },
+  "operation_failed": {
+    "message": "Falha na operação. Confira o local e as permissões."
+  },
+  "folder_opened": {
+    "message": "Pasta da extensão aberta"
+  },
+  "test_in_browser": {
+    "message": "A conexão local é válida. Abra a extensão e envie um link para verificar."
+  },
+  "install_help": {
+    "message": "Configure o navegador e abra a pasta. Ative o modo de desenvolvedor em chrome://extensions ou edge://extensions e carregue a pasta descompactada. Repare após mover o aplicativo."
+  },
+  "firefox_help": {
+    "message": "Firefox: carregue temporariamente manifest.json em about:debugging → Este Firefox. A instalação desaparece ao reiniciar. A instalação permanente exige assinatura Mozilla; esta versão não está assinada."
+  },
+  "privacy": {
+    "message": "Somente links enviados explicitamente são transferidos. Sem acesso a Cookie ou downloads automáticos. Usa as fontes de login do desktop."
+  },
+  "current_page": {
+    "message": "Página atual"
+  },
+  "send": {
+    "message": "Enviar para YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "Escolha a qualidade e baixe no aplicativo"
+  },
+  "checking": {
+    "message": "Verificando conexão…"
+  },
+  "ready": {
+    "message": "Ponte pronta; o envio iniciará o aplicativo"
+  },
+  "sent": {
+    "message": "Enviado para YTDownloader. Confira o resultado no aplicativo."
+  },
+  "invalid_url": {
+    "message": "Não é possível enviar o link desta página."
+  },
+  "app_launch_failed": {
+    "message": "Não foi possível iniciar o aplicativo. Confira o local."
+  },
+  "protocol_mismatch": {
+    "message": "Protocolo incompatível. Atualize a extensão e o aplicativo."
+  },
+  "busy": {
+    "message": "A fila de análise está cheia. Tente novamente em breve."
+  },
+  "host_unavailable": {
+    "message": "Conexão local indisponível. Configure a extensão nas Ferramentas."
+  },
+  "send_page": {
+    "message": "Enviar página atual para YTDownloader"
+  },
+  "send_link": {
+    "message": "Enviar este link para YTDownloader"
+  },
+  "sending": {
+    "message": "Enviando…"
+  },
+  "name": {
+    "message": "Enviar para o aplicativo"
+  }
+}

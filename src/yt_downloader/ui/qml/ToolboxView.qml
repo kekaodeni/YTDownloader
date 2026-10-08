@@ -7,7 +7,8 @@ Item {
     objectName: "toolboxPage"
     readonly property var categories: [
         {key: "toolbox.thumbnail", icon: "image"},
-        {key: "toolbox.subtitles", icon: "info", filled: true}
+        {key: "toolbox.subtitles", icon: "info", filled: true},
+        {key: "browser.title", icon: "link"}
     ]
     ColumnLayout {
         anchors.fill: parent; anchors.margins: root.width < 620 ? 20 : 32; spacing: 24
@@ -21,10 +22,23 @@ Item {
                 model: root.categories; currentIndex: toolbox.state.category
                 onActivated: function(index) { toolbox.selectCategory(index) }
             }
+            Item {
+                Layout.fillWidth: true; Layout.fillHeight: true
+                Loader {
+                    objectName: "browserCompanionLoader"
+                    anchors.fill: parent
+                    property bool warmed: false
+                    active: warmed || toolbox.state.category === 2
+                    onLoaded: Qt.callLater(function() { warmed = true })
+                    sourceComponent: BrowserCompanionView { current: toolbox.state.category === 2 }
+                }
+                UiCategoryHost {
+                    anchors.fill: parent; index: 0; selectedIndex: toolbox.state.category === 2 ? 2 : 0
+                    current: toolbox.state.category !== 2
             UiScroll {
                 id: scroll
                 objectName: "toolboxScroll"
-                Layout.fillWidth: true; Layout.fillHeight: true
+                anchors.fill: parent
                 contentHeight: body.implicitHeight + 20
                 ColumnLayout {
                     id: body
@@ -123,6 +137,8 @@ Item {
                         UiButton { text: i18n.messages["action.open_folder"]; onClicked: toolbox.openResultFolder() }
                     }
                 }
+            }
+            }
             }
         }
     }

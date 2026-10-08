@@ -1,0 +1,7 @@
+{
+  "name": "io.github.kekaodeni.ytdownloader",
+  "description": "YTDownloader URL bridge",
+  "path": "<absolute portable path>/YTDownloaderBridge.exe",
+  "type": "stdio",
+  "allowed_extensions": ["send-to-ytdownloader@kekaodeni.github.io"]
+}

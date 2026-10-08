@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "Extensión del navegador"
+  },
+  "description": {
+    "message": "Envía un enlace y elige la calidad en la aplicación de escritorio."
+  },
+  "install": {
+    "message": "Configurar conexión"
+  },
+  "test": {
+    "message": "Probar conexión"
+  },
+  "repair": {
+    "message": "Reparar conexión"
+  },
+  "remove": {
+    "message": "Eliminar conexión"
+  },
+  "folder": {
+    "message": "Abrir carpeta de extensión"
+  },
+  "help": {
+    "message": "Ayuda de instalación"
+  },
+  "identity": {
+    "message": "ID de extensión (reasociar versión de tienda)"
+  },
+  "not_configured": {
+    "message": "Sin configurar"
+  },
+  "configured": {
+    "message": "Puente local configurado; esperando al navegador"
+  },
+  "connected": {
+    "message": "Conectado en los últimos cinco minutos"
+  },
+  "repair_needed": {
+    "message": "La conexión necesita reparación"
+  },
+  "bridge_missing": {
+    "message": "Falta YTDownloaderBridge.exe. Usa el paquete portátil completo."
+  },
+  "registration_conflict": {
+    "message": "Se conservó el registro de otra instalación."
+  },
+  "unauthorized_extension": {
+    "message": "ID de extensión no válido. Revisa la página de extensiones."
+  },
+  "operation_failed": {
+    "message": "Error de operación. Revisa la ubicación y los permisos."
+  },
+  "folder_opened": {
+    "message": "Carpeta de extensión abierta"
+  },
+  "test_in_browser": {
+    "message": "La conexión local es válida. Abre la extensión y envía un enlace para verificarla."
+  },
+  "install_help": {
+    "message": "Configura el navegador y abre la carpeta. Activa el modo de desarrollador en chrome://extensions o edge://extensions y carga la carpeta descomprimida. Repara tras mover la aplicación."
+  },
+  "firefox_help": {
+    "message": "Firefox: carga temporalmente manifest.json en about:debugging → Este Firefox. Se elimina al reiniciar. La instalación permanente requiere firma de Mozilla; esta versión no está firmada."
+  },
+  "privacy": {
+    "message": "Solo se transfieren enlaces enviados explícitamente. Sin acceso a Cookie ni descargas automáticas. Se usa la configuración de acceso del escritorio."
+  },
+  "current_page": {
+    "message": "Página actual"
+  },
+  "send": {
+    "message": "Enviar a YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "Elige la calidad y descarga en la aplicación"
+  },
+  "checking": {
+    "message": "Comprobando conexión…"
+  },
+  "ready": {
+    "message": "Puente listo; el envío iniciará la aplicación"
+  },
+  "sent": {
+    "message": "Enviado a YTDownloader. Consulta el resultado en la aplicación."
+  },
+  "invalid_url": {
+    "message": "No se puede enviar el enlace de esta página."
+  },
+  "app_launch_failed": {
+    "message": "No se puede iniciar la aplicación. Revisa su ubicación."
+  },
+  "protocol_mismatch": {
+    "message": "Protocolo incompatible. Actualiza la extensión y la aplicación."
+  },
+  "busy": {
+    "message": "La cola de análisis está llena. Inténtalo más tarde."
+  },
+  "host_unavailable": {
+    "message": "Conexión local no disponible. Configura la extensión en Herramientas."
+  },
+  "send_page": {
+    "message": "Enviar página actual a YTDownloader"
+  },
+  "send_link": {
+    "message": "Enviar este enlace a YTDownloader"
+  },
+  "sending": {
+    "message": "Enviando…"
+  },
+  "name": {
+    "message": "Enviar a la aplicación"
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "Tiện ích trình duyệt"
+  },
+  "description": {
+    "message": "Gửi liên kết rồi chọn chất lượng trong ứng dụng máy tính."
+  },
+  "install": {
+    "message": "Thiết lập kết nối"
+  },
+  "test": {
+    "message": "Kiểm tra kết nối"
+  },
+  "repair": {
+    "message": "Sửa kết nối"
+  },
+  "remove": {
+    "message": "Gỡ kết nối"
+  },
+  "folder": {
+    "message": "Mở thư mục tiện ích"
+  },
+  "help": {
+    "message": "Hướng dẫn cài đặt"
+  },
+  "identity": {
+    "message": "ID tiện ích (liên kết lại bản cửa hàng)"
+  },
+  "not_configured": {
+    "message": "Chưa thiết lập"
+  },
+  "configured": {
+    "message": "Cầu nối đã thiết lập; đang chờ trình duyệt"
+  },
+  "connected": {
+    "message": "Đã kết nối trong năm phút qua"
+  },
+  "repair_needed": {
+    "message": "Cần sửa kết nối"
+  },
+  "bridge_missing": {
+    "message": "Thiếu YTDownloaderBridge.exe. Dùng gói di động đầy đủ."
+  },
+  "registration_conflict": {
+    "message": "Đã giữ nguyên đăng ký của bản cài khác."
+  },
+  "unauthorized_extension": {
+    "message": "ID tiện ích không hợp lệ. Kiểm tra trang tiện ích."
+  },
+  "operation_failed": {
+    "message": "Thao tác thất bại. Kiểm tra vị trí và quyền truy cập."
+  },
+  "folder_opened": {
+    "message": "Đã mở thư mục tiện ích"
+  },
+  "test_in_browser": {
+    "message": "Kết nối cục bộ hợp lệ. Mở tiện ích và gửi liên kết để kiểm tra."
+  },
+  "install_help": {
+    "message": "Thiết lập trình duyệt và mở thư mục. Bật chế độ nhà phát triển tại chrome://extensions hoặc edge://extensions rồi tải thư mục đã giải nén. Sửa kết nối sau khi di chuyển ứng dụng."
+  },
+  "firefox_help": {
+    "message": "Firefox: tải tạm manifest.json tại about:debugging → Firefox này. Tiện ích bị gỡ khi khởi động lại. Cài lâu dài cần chữ ký Mozilla; bản này chưa được ký."
+  },
+  "privacy": {
+    "message": "Chỉ truyền liên kết bạn chủ động gửi. Không đọc Cookie hay tự tải xuống. Dùng nguồn đăng nhập đã chọn trong ứng dụng."
+  },
+  "current_page": {
+    "message": "Trang hiện tại"
+  },
+  "send": {
+    "message": "Gửi tới YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "Chọn chất lượng và tải trong ứng dụng"
+  },
+  "checking": {
+    "message": "Đang kiểm tra kết nối…"
+  },
+  "ready": {
+    "message": "Cầu nối sẵn sàng; gửi sẽ mở ứng dụng"
+  },
+  "sent": {
+    "message": "Đã gửi tới YTDownloader. Xem kết quả phân tích trong ứng dụng."
+  },
+  "invalid_url": {
+    "message": "Không thể gửi liên kết trang này."
+  },
+  "app_launch_failed": {
+    "message": "Không thể mở ứng dụng. Kiểm tra vị trí."
+  },
+  "protocol_mismatch": {
+    "message": "Giao thức không tương thích. Cập nhật tiện ích và ứng dụng."
+  },
+  "busy": {
+    "message": "Hàng đợi phân tích đầy. Thử lại sau."
+  },
+  "host_unavailable": {
+    "message": "Không có kết nối cục bộ. Thiết lập tiện ích trong Hộp công cụ."
+  },
+  "send_page": {
+    "message": "Gửi trang hiện tại tới YTDownloader"
+  },
+  "send_link": {
+    "message": "Gửi liên kết này tới YTDownloader"
+  },
+  "sending": {
+    "message": "Đang gửi…"
+  },
+  "name": {
+    "message": "Gửi tới ứng dụng máy tính"
+  }
+}

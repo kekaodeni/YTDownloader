@@ -1101,7 +1101,7 @@ class AppController:
         return callbacks
 
 
-def create_application(argv: list[str] | None = None) -> tuple[QApplication, AppController]:
+def create_application(argv: list[str] | None = None, *, single_instance=False) -> tuple[QApplication, AppController | None]:
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(argv or sys.argv)
     app.setApplicationName("YT Downloader")
@@ -1117,8 +1117,29 @@ def create_application(argv: list[str] | None = None) -> tuple[QApplication, App
     install_typography_manager(app, font_families)
     paths = AppPaths.discover()
     paths.ensure()
+    desktop_ipc = None
+    if single_instance:
+        from yt_downloader.browser_companion.ipc_server import DesktopIPC
+        from yt_downloader.browser_companion.ipc_client import send_local
+        desktop_ipc = DesktopIPC(app)
+        if not desktop_ipc.listen():
+            import uuid
+            try:
+                send_local(dict(protocol=1, action='activate', request_id=uuid.uuid4().hex), timeout=2)
+            except OSError:
+                # A primary instance may still be constructing its window.
+                # Keep it primary; do not create a duplicate controller.
+                pass
+            return app, None
+        app.aboutToQuit.connect(desktop_ipc.close)
     configure_logging(paths.logs)
     controller = AppController(app, paths)
+    if desktop_ipc is not None:
+        from yt_downloader.browser_companion.incoming import IncomingBrowserRequests
+        incoming = IncomingBrowserRequests(controller.window, browser_seen=controller.window.browser_companion.mark_seen)
+        desktop_ipc.set_receiver(incoming.receive)
+        controller.browser_ipc = desktop_ipc
+        controller.browser_requests = incoming
     install_exception_hook(lambda exc, trace: QTimer.singleShot(0, lambda: controller.show_error(AppError(
         "unhandled_exception", "程序遇到了未处理的错误。", repr(exc), ErrorContext(traceback_text=trace, stage="GUI"),
     ))))
@@ -1167,7 +1188,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_recovery_startup(paths, None, error=error)
         if request is not None:
             return run_recovery_startup(paths, request)
-    app, controller = create_application([sys.argv[0], *qt_args])
+    app, controller = create_application([sys.argv[0], *qt_args], single_instance=not (
+        known.smoke_test or known.render_preview or known.metadata_process_self_test or known.update_health_check))
+    if controller is None:
+        return 0
     try:
         if recovery_succeeded:
             controller.window.update(updateVisible=True, updateText='更新恢复完成，已保留用户数据。')

@@ -1,0 +1,13 @@
+{
+  "chrome": {
+    "id": "odclglfhhfmbnhmbeanpnpipabmiamac",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtWaMU7U4kP8H+N3kbdnyaKT9/v7zwRhUpD28ykYBeN5cWyKzvFJ5M9nOA5aX95uDeO5IF8TwqYXGAFxIpYyHCKJX3o660XOBpZwxTNuZBi/SyfTQUVM2reoSu8d9zOYpRDeGIgCg0YdSxLyNHWbYzBGM2CttMT5uk3ioeXqghVhokZwxbOlu9YZGZXWPzMrsxwkdAAclN3gQvpE/17MLr99R3BvZlZG8MY2Nbp+cH7htjrylqCbK1oVi7nDF676KT4QEHqByY7wckbzy+24Ybhgh23uIr91+pUcpRJ/7E0DgkS8BT0VPzBHMkzh+9wHPRAwCBIgpUeD5mQ9c0zOxBwIDAQAB"
+  },
+  "edge": {
+    "id": "iaolndodjncjhhdbnfhmnpofmghanmfc",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiIgecBAxDWnRwWv8kwaI6WDi6TpVb3KcoJLNv6zt51k0M3sylJCSfXRcY2r7EGawX8uKPXrqvc+6FPVoG5i9VDxF7kEO2/syhT0NEmFQy78YGJfQaDhSJACCTpXy5+1rq5gTo2DEMTFrzGTR8l0MNZeTmHZWQiaui4sA7/9KDXKpxMTc2A+6DFS9VzgbL2JHzTGJacnGTKCbHiUoMjP1X6CSGG8DNqoJS5INn0eAJdOyj4REVSFmLTXywHVDT4qq6sb4D0mYMC424EYMz6ZRigJCOud7x21UvLzeI5S9jfK4nvYhHn6n82Ey7yhitVPl4LR//AvrVoyKPmZhqrL1iQIDAQAB"
+  },
+  "firefox": {
+    "id": "send-to-ytdownloader@kekaodeni.github.io"
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "브라우저 확장"
+  },
+  "description": {
+    "message": "브라우저에서 링크를 보내고 앱에서 분석하여 화질을 선택하세요."
+  },
+  "install": {
+    "message": "연결 설정"
+  },
+  "test": {
+    "message": "연결 테스트"
+  },
+  "repair": {
+    "message": "연결 복구"
+  },
+  "remove": {
+    "message": "연결 제거"
+  },
+  "folder": {
+    "message": "확장 폴더 열기"
+  },
+  "help": {
+    "message": "설치 도움말"
+  },
+  "identity": {
+    "message": "확장 ID (스토어 버전 재연결)"
+  },
+  "not_configured": {
+    "message": "설정되지 않음"
+  },
+  "configured": {
+    "message": "로컬 연결 설정됨; 브라우저 연결 대기 중"
+  },
+  "connected": {
+    "message": "연결됨 (최근 5분 이내)"
+  },
+  "repair_needed": {
+    "message": "연결 복구 필요"
+  },
+  "bridge_missing": {
+    "message": "YTDownloaderBridge.exe가 없습니다. 전체 휴대용 패키지를 사용하세요."
+  },
+  "registration_conflict": {
+    "message": "다른 설치의 등록을 유지했습니다."
+  },
+  "unauthorized_extension": {
+    "message": "확장 ID가 잘못되었습니다. 브라우저 관리 페이지를 확인하세요."
+  },
+  "operation_failed": {
+    "message": "작업 실패. 앱 위치와 사용자 권한을 확인하세요."
+  },
+  "folder_opened": {
+    "message": "확장 폴더를 열었습니다"
+  },
+  "test_in_browser": {
+    "message": "로컬 연결이 유효합니다. 확장을 열고 링크를 보내 확인하세요."
+  },
+  "install_help": {
+    "message": "설정 후 확장 폴더를 여세요. chrome://extensions 또는 edge://extensions에서 개발자 모드를 켜고 압축 해제된 폴더를 로드하세요. 앱 이동 후 연결을 복구하세요."
+  },
+  "firefox_help": {
+    "message": "Firefox: about:debugging의 이 Firefox에서 manifest.json을 임시 로드하세요. 재시작하면 제거됩니다. 영구 설치에는 Mozilla 서명이 필요하며 이 개발 버전은 서명되지 않았습니다."
+  },
+  "privacy": {
+    "message": "직접 보낸 링크만 전송합니다. Cookie를 읽거나 자동 다운로드하지 않습니다. 앱의 로그인 설정을 사용합니다."
+  },
+  "current_page": {
+    "message": "현재 페이지"
+  },
+  "send": {
+    "message": "YTDownloader로 보내기"
+  },
+  "choose_desktop": {
+    "message": "앱에서 화질을 선택하고 다운로드하세요"
+  },
+  "checking": {
+    "message": "연결 확인 중…"
+  },
+  "ready": {
+    "message": "연결 준비 완료; 전송 시 앱 시작"
+  },
+  "sent": {
+    "message": "YTDownloader로 전송했습니다. 앱에서 분석 결과를 확인하세요."
+  },
+  "invalid_url": {
+    "message": "이 페이지 링크를 보낼 수 없습니다."
+  },
+  "app_launch_failed": {
+    "message": "앱을 시작할 수 없습니다. 위치를 확인하세요."
+  },
+  "protocol_mismatch": {
+    "message": "호환되지 않는 프로토콜입니다. 확장과 앱을 업데이트하세요."
+  },
+  "busy": {
+    "message": "분석 대기열이 가득 찼습니다. 잠시 후 다시 시도하세요."
+  },
+  "host_unavailable": {
+    "message": "로컬 연결이 없습니다. 도구 상자에서 먼저 설정하세요."
+  },
+  "send_page": {
+    "message": "현재 페이지를 YTDownloader로 보내기"
+  },
+  "send_link": {
+    "message": "이 링크를 YTDownloader로 보내기"
+  },
+  "sending": {
+    "message": "전송 중…"
+  },
+  "name": {
+    "message": "데스크톱 앱으로 보내기"
+  }
+}

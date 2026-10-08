@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "Browser extension"
+  },
+  "description": {
+    "message": "Send a link from your browser, then choose quality in the desktop app."
+  },
+  "install": {
+    "message": "Configure connection"
+  },
+  "test": {
+    "message": "Test connection"
+  },
+  "repair": {
+    "message": "Repair connection"
+  },
+  "remove": {
+    "message": "Remove connection"
+  },
+  "folder": {
+    "message": "Open extension folder"
+  },
+  "help": {
+    "message": "Installation help"
+  },
+  "identity": {
+    "message": "Extension ID (reassociate store builds here)"
+  },
+  "not_configured": {
+    "message": "Not configured"
+  },
+  "configured": {
+    "message": "Local bridge configured; waiting for browser connection"
+  },
+  "connected": {
+    "message": "Connected within the last five minutes"
+  },
+  "repair_needed": {
+    "message": "Connection needs repair"
+  },
+  "bridge_missing": {
+    "message": "YTDownloaderBridge.exe is missing. Use the complete portable package."
+  },
+  "registration_conflict": {
+    "message": "An existing registration belongs to another installation; it was preserved."
+  },
+  "unauthorized_extension": {
+    "message": "Invalid extension ID. Check the browser extension page."
+  },
+  "operation_failed": {
+    "message": "Operation failed. Check the application location and user permissions."
+  },
+  "folder_opened": {
+    "message": "Extension folder opened"
+  },
+  "test_in_browser": {
+    "message": "Local connection is valid. Open the browser extension and send a link to verify it."
+  },
+  "install_help": {
+    "message": "Configure the browser and open its extension folder. Enable developer mode at chrome://extensions or edge://extensions, then load the unpacked folder. Repair the connection after moving the portable app."
+  },
+  "firefox_help": {
+    "message": "Firefox: temporarily load manifest.json at about:debugging → This Firefox. Temporary installs disappear after restart. Persistent installs require Mozilla signing; this development build is unsigned."
+  },
+  "privacy": {
+    "message": "Only links you explicitly send are transferred. No Cookie access or automatic downloads. Desktop login sources remain unchanged."
+  },
+  "current_page": {
+    "message": "Current page"
+  },
+  "send": {
+    "message": "Send to YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "Choose quality and download in the desktop app"
+  },
+  "checking": {
+    "message": "Checking connection…"
+  },
+  "ready": {
+    "message": "Bridge ready; sending will launch the app"
+  },
+  "sent": {
+    "message": "Sent to YTDownloader. Check the desktop app for parsing results."
+  },
+  "invalid_url": {
+    "message": "This page link cannot be sent."
+  },
+  "app_launch_failed": {
+    "message": "Cannot start YTDownloader. Check its location."
+  },
+  "protocol_mismatch": {
+    "message": "Incompatible protocol. Update the extension and app."
+  },
+  "busy": {
+    "message": "Parse queue is full. Try again shortly."
+  },
+  "host_unavailable": {
+    "message": "Local connection unavailable. Configure the extension in Toolbox first."
+  },
+  "send_page": {
+    "message": "Send current page to YTDownloader"
+  },
+  "send_link": {
+    "message": "Send this link to YTDownloader"
+  },
+  "sending": {
+    "message": "Sending…"
+  },
+  "name": {
+    "message": "Send to the desktop app"
+  }
+}

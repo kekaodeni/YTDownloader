@@ -74,6 +74,9 @@ try {
     $env:PATH = (($env:PATH -split ";") | Where-Object { $_ -and $_ -notmatch $HostRuntimeMarker }) -join ";"
     & $Python -m PyInstaller --clean --noconfirm --workpath (Join-Path $BuildRoot "app") --distpath $DistRoot "YTDownloader.spec"
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+    & $Python -m PyInstaller --clean --noconfirm --workpath (Join-Path $BuildRoot "browser-bridge") --distpath $DistRoot "YTDownloaderBridge.spec"
+    if ($LASTEXITCODE -ne 0) { throw "Browser Bridge PyInstaller build failed" }
+    Copy-Item -LiteralPath (Join-Path $DistRoot "YTDownloaderBridge.exe") -Destination (Join-Path $DistRoot "YTDownloader\YTDownloaderBridge.exe")
     $UpdaterDistRoot = Join-Path $BuildRoot "updater-dist"
     & $Python -m PyInstaller --clean --noconfirm --workpath (Join-Path $BuildRoot "updater") --distpath $UpdaterDistRoot "YTDownloaderUpdater.spec"
     if ($LASTEXITCODE -ne 0) { throw "Updater PyInstaller build failed" }

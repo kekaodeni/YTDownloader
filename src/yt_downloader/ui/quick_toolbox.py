@@ -29,7 +29,7 @@ class ToolboxPresenter(DownloadPresenter):
 
     @Slot(int)
     def selectCategory(self, index):
-        if index in {0, 1}:
+        if index in {0, 1, 2}:
             self.update(category=index)
 
     def show_video(self, video, **_kwargs):
@@ -120,6 +120,8 @@ class ToolboxPresenter(DownloadPresenter):
 
     @Slot()
     def requestTool(self):
+        if self._state['category'] == 2:
+            return
         if self._state['toolBusy']:
             self.tool_cancel_requested.emit()
             return

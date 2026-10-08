@@ -22,6 +22,7 @@ if missing:
 
 datas = yt_datas + ejs_datas + curl_datas + [
     (str(root / "assets"), "assets"),
+    (str(root / "browser-extension"), "browser-extension"),
     (str(root / "src" / "yt_downloader" / "ui" / "qml"), "yt_downloader/ui/qml"),
     (str(root / "src" / "yt_downloader" / "ui" / "translations.json"), "yt_downloader/ui"),
     (str(root / "licenses"), "third_party_licenses"),
@@ -37,6 +38,7 @@ binaries = yt_bins + ejs_bins + curl_bins + [
 hiddenimports = yt_hidden + ejs_hidden + curl_hidden + [
     "socks",
     "PySide6.QtQml",
+    "PySide6.QtNetwork",
     "PySide6.QtQuick",
     "PySide6.QtQuickControls2",
     "yt_downloader.workers.metadata_process",

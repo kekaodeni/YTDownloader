@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_name__",
+  "description": "__MSG_description__",
+  "version": "1.0.0",
+  "default_locale": "en",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "nativeMessaging"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "__MSG_send__",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiIgecBAxDWnRwWv8kwaI6WDi6TpVb3KcoJLNv6zt51k0M3sylJCSfXRcY2r7EGawX8uKPXrqvc+6FPVoG5i9VDxF7kEO2/syhT0NEmFQy78YGJfQaDhSJACCTpXy5+1rq5gTo2DEMTFrzGTR8l0MNZeTmHZWQiaui4sA7/9KDXKpxMTc2A+6DFS9VzgbL2JHzTGJacnGTKCbHiUoMjP1X6CSGG8DNqoJS5INn0eAJdOyj4REVSFmLTXywHVDT4qq6sb4D0mYMC424EYMz6ZRigJCOud7x21UvLzeI5S9jfK4nvYhHn6n82Ey7yhitVPl4LR//AvrVoyKPmZhqrL1iQIDAQAB"
+}

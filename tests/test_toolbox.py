@@ -67,7 +67,7 @@ def test_toolbox_has_shared_parser_and_secondary_navigation(quick_window, qapp):
     quick_window._select_page(2)
     run_frames(qapp)
     assert find_item(quick_window, 'toolboxPage').isVisible()
-    assert find_item(quick_window, 'toolboxNavigation').property('count') == 2
+    assert find_item(quick_window, 'toolboxNavigation').property('count') == 3
     assert find_item(quick_window, 'toolbox-urlInput').isVisible()
     quick_window.toolbox_page.show_video(resolve_metadata(dict(id='one', title='One'), 'https://example.org/video'))
     run_frames(qapp)

@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "瀏覽器擴充功能"
+  },
+  "description": {
+    "message": "從瀏覽器傳送連結，在桌面應用程式中解析並選擇畫質。"
+  },
+  "install": {
+    "message": "設定連線"
+  },
+  "test": {
+    "message": "測試連線"
+  },
+  "repair": {
+    "message": "修復連線"
+  },
+  "remove": {
+    "message": "移除連線"
+  },
+  "folder": {
+    "message": "開啟擴充功能資料夾"
+  },
+  "help": {
+    "message": "安裝說明"
+  },
+  "identity": {
+    "message": "擴充功能 ID（商店版本可重新關聯）"
+  },
+  "not_configured": {
+    "message": "尚未設定"
+  },
+  "configured": {
+    "message": "本機橋接已設定，等待瀏覽器連線"
+  },
+  "connected": {
+    "message": "已連線（最近五分鐘）"
+  },
+  "repair_needed": {
+    "message": "需要修復連線"
+  },
+  "bridge_missing": {
+    "message": "找不到 YTDownloaderBridge.exe，請使用完整可攜套件。"
+  },
+  "registration_conflict": {
+    "message": "現有登錄項目不屬於此應用程式，未覆寫。"
+  },
+  "unauthorized_extension": {
+    "message": "擴充功能 ID 無效，請檢查安裝頁面。"
+  },
+  "operation_failed": {
+    "message": "操作失敗，請檢查應用程式路徑與使用者權限。"
+  },
+  "folder_opened": {
+    "message": "已開啟擴充功能資料夾"
+  },
+  "test_in_browser": {
+    "message": "本機連線有效；請在瀏覽器開啟擴充功能並傳送連結以驗證。"
+  },
+  "install_help": {
+    "message": "先設定瀏覽器並開啟擴充功能資料夾。在 chrome://extensions 或 edge://extensions 開啟開發人員模式，載入解壓縮的擴充功能資料夾。移動可攜套件後請修復連線。"
+  },
+  "firefox_help": {
+    "message": "Firefox：在 about:debugging 的「此 Firefox」暫時載入 manifest.json。重啟後會移除；永久安裝需要 Mozilla 簽章，此開發版尚未簽章。"
+  },
+  "privacy": {
+    "message": "僅傳送主動選擇的網頁連結。不讀取 Cookie，也不自動下載；沿用桌面登入設定。"
+  },
+  "current_page": {
+    "message": "目前網頁"
+  },
+  "send": {
+    "message": "傳送至 YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "在桌面應用程式中選擇畫質並下載"
+  },
+  "checking": {
+    "message": "正在檢查連線…"
+  },
+  "ready": {
+    "message": "橋接已就緒，傳送時將啟動應用程式"
+  },
+  "sent": {
+    "message": "已傳送至 YTDownloader，請在桌面查看解析結果。"
+  },
+  "invalid_url": {
+    "message": "無法傳送此網頁連結。"
+  },
+  "app_launch_failed": {
+    "message": "無法啟動 YTDownloader，請檢查位置。"
+  },
+  "protocol_mismatch": {
+    "message": "連線協定不相容，請更新擴充功能與應用程式。"
+  },
+  "busy": {
+    "message": "解析佇列已滿，請稍後再試。"
+  },
+  "host_unavailable": {
+    "message": "找不到本機連線，請先在工具箱設定擴充功能。"
+  },
+  "send_page": {
+    "message": "傳送目前網頁至 YTDownloader"
+  },
+  "send_link": {
+    "message": "傳送此連結至 YTDownloader"
+  },
+  "sending": {
+    "message": "正在傳送…"
+  },
+  "name": {
+    "message": "傳送至桌面應用程式"
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "ส่วนขยายเบราว์เซอร์"
+  },
+  "description": {
+    "message": "ส่งลิงก์แล้วเลือกคุณภาพในแอปเดสก์ท็อป"
+  },
+  "install": {
+    "message": "ตั้งค่าการเชื่อมต่อ"
+  },
+  "test": {
+    "message": "ทดสอบการเชื่อมต่อ"
+  },
+  "repair": {
+    "message": "ซ่อมการเชื่อมต่อ"
+  },
+  "remove": {
+    "message": "ลบการเชื่อมต่อ"
+  },
+  "folder": {
+    "message": "เปิดโฟลเดอร์ส่วนขยาย"
+  },
+  "help": {
+    "message": "วิธีติดตั้ง"
+  },
+  "identity": {
+    "message": "ID ส่วนขยาย (เชื่อมรุ่นจากร้านค้าใหม่)"
+  },
+  "not_configured": {
+    "message": "ยังไม่ได้ตั้งค่า"
+  },
+  "configured": {
+    "message": "ตั้งค่าบริดจ์แล้ว รอเบราว์เซอร์เชื่อมต่อ"
+  },
+  "connected": {
+    "message": "เชื่อมต่อในห้านาทีที่ผ่านมา"
+  },
+  "repair_needed": {
+    "message": "ต้องซ่อมการเชื่อมต่อ"
+  },
+  "bridge_missing": {
+    "message": "ไม่พบ YTDownloaderBridge.exe โปรดใช้แพ็กเกจแบบพกพาครบชุด"
+  },
+  "registration_conflict": {
+    "message": "เก็บการลงทะเบียนของการติดตั้งอื่นไว้แล้ว"
+  },
+  "unauthorized_extension": {
+    "message": "ID ส่วนขยายไม่ถูกต้อง ตรวจสอบหน้าส่วนขยาย"
+  },
+  "operation_failed": {
+    "message": "ดำเนินการไม่สำเร็จ ตรวจสอบตำแหน่งและสิทธิ์"
+  },
+  "folder_opened": {
+    "message": "เปิดโฟลเดอร์ส่วนขยายแล้ว"
+  },
+  "test_in_browser": {
+    "message": "การเชื่อมต่อภายในใช้งานได้ เปิดส่วนขยายและส่งลิงก์เพื่อยืนยัน"
+  },
+  "install_help": {
+    "message": "ตั้งค่าเบราว์เซอร์และเปิดโฟลเดอร์ เปิดโหมดนักพัฒนาที่ chrome://extensions หรือ edge://extensions แล้วโหลดโฟลเดอร์ที่แตกไฟล์ ซ่อมการเชื่อมต่อหลังย้ายแอป"
+  },
+  "firefox_help": {
+    "message": "Firefox: โหลด manifest.json ชั่วคราวที่ about:debugging → Firefox นี้ การติดตั้งหายไปเมื่อเปิดใหม่ การติดตั้งถาวรต้องใช้ลายเซ็น Mozilla รุ่นนี้ยังไม่ได้ลงนาม"
+  },
+  "privacy": {
+    "message": "ส่งเฉพาะลิงก์ที่คุณเลือกเอง ไม่อ่าน Cookie หรือดาวน์โหลดอัตโนมัติ ใช้แหล่งเข้าสู่ระบบของแอป"
+  },
+  "current_page": {
+    "message": "หน้าปัจจุบัน"
+  },
+  "send": {
+    "message": "ส่งไปยัง YTDownloader"
+  },
+  "choose_desktop": {
+    "message": "เลือกคุณภาพและดาวน์โหลดในแอป"
+  },
+  "checking": {
+    "message": "กำลังตรวจสอบการเชื่อมต่อ…"
+  },
+  "ready": {
+    "message": "บริดจ์พร้อม ส่งแล้วจะเปิดแอป"
+  },
+  "sent": {
+    "message": "ส่งไปยัง YTDownloader แล้ว ดูผลการวิเคราะห์ในแอป"
+  },
+  "invalid_url": {
+    "message": "ไม่สามารถส่งลิงก์หน้านี้"
+  },
+  "app_launch_failed": {
+    "message": "เปิดแอปไม่ได้ โปรดตรวจสอบตำแหน่ง"
+  },
+  "protocol_mismatch": {
+    "message": "โปรโตคอลไม่เข้ากัน อัปเดตส่วนขยายและแอป"
+  },
+  "busy": {
+    "message": "คิววิเคราะห์เต็ม โปรดลองอีกครั้งภายหลัง"
+  },
+  "host_unavailable": {
+    "message": "ไม่พบการเชื่อมต่อภายใน ตั้งค่าส่วนขยายในกล่องเครื่องมือก่อน"
+  },
+  "send_page": {
+    "message": "ส่งหน้าปัจจุบันไปยัง YTDownloader"
+  },
+  "send_link": {
+    "message": "ส่งลิงก์นี้ไปยัง YTDownloader"
+  },
+  "sending": {
+    "message": "กำลังส่ง…"
+  },
+  "name": {
+    "message": "ส่งไปยังแอปเดสก์ท็อป"
+  }
+}

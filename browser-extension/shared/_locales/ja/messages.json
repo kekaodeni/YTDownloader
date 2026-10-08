@@ -1,0 +1,113 @@
+{
+  "title": {
+    "message": "ブラウザー拡張機能"
+  },
+  "description": {
+    "message": "ブラウザーからリンクを送り、アプリで解析して画質を選択します。"
+  },
+  "install": {
+    "message": "接続を設定"
+  },
+  "test": {
+    "message": "接続をテスト"
+  },
+  "repair": {
+    "message": "接続を修復"
+  },
+  "remove": {
+    "message": "接続を解除"
+  },
+  "folder": {
+    "message": "拡張機能フォルダーを開く"
+  },
+  "help": {
+    "message": "インストール案内"
+  },
+  "identity": {
+    "message": "拡張機能 ID（ストア版の再関連付け）"
+  },
+  "not_configured": {
+    "message": "未設定"
+  },
+  "configured": {
+    "message": "ローカル接続設定済み・ブラウザーの接続待ち"
+  },
+  "connected": {
+    "message": "接続済み（過去5分以内）"
+  },
+  "repair_needed": {
+    "message": "接続の修復が必要"
+  },
+  "bridge_missing": {
+    "message": "YTDownloaderBridge.exe がありません。完全なポータブル版を使用してください。"
+  },
+  "registration_conflict": {
+    "message": "別のインストールの登録を保持しました。"
+  },
+  "unauthorized_extension": {
+    "message": "拡張機能 ID が無効です。ブラウザーの管理画面を確認してください。"
+  },
+  "operation_failed": {
+    "message": "操作に失敗しました。アプリの場所と権限を確認してください。"
+  },
+  "folder_opened": {
+    "message": "フォルダーを開きました"
+  },
+  "test_in_browser": {
+    "message": "ローカル接続は有効です。拡張機能からリンクを送って確認してください。"
+  },
+  "install_help": {
+    "message": "設定後、フォルダーを開きます。chrome://extensions または edge://extensions で開発者モードを有効にしてフォルダーを読み込みます。アプリ移動後は接続を修復してください。"
+  },
+  "firefox_help": {
+    "message": "Firefox：about:debugging の「この Firefox」で manifest.json を一時読み込みします。再起動で削除されます。永続インストールには Mozilla の署名が必要で、この開発版は未署名です。"
+  },
+  "privacy": {
+    "message": "明示的に送ったリンクのみ転送します。Cookie の読み取りや自動ダウンロードは行わず、アプリのログイン設定を使います。"
+  },
+  "current_page": {
+    "message": "現在のページ"
+  },
+  "send": {
+    "message": "YTDownloader に送る"
+  },
+  "choose_desktop": {
+    "message": "アプリで画質を選択してダウンロード"
+  },
+  "checking": {
+    "message": "接続を確認中…"
+  },
+  "ready": {
+    "message": "接続準備完了・送信時にアプリを起動"
+  },
+  "sent": {
+    "message": "YTDownloader に送信しました。解析結果はアプリで確認してください。"
+  },
+  "invalid_url": {
+    "message": "このページのリンクは送信できません。"
+  },
+  "app_launch_failed": {
+    "message": "アプリを起動できません。場所を確認してください。"
+  },
+  "protocol_mismatch": {
+    "message": "プロトコルが非互換です。拡張機能とアプリを更新してください。"
+  },
+  "busy": {
+    "message": "解析待ちがいっぱいです。後で再試行してください。"
+  },
+  "host_unavailable": {
+    "message": "ローカル接続がありません。ツールボックスで設定してください。"
+  },
+  "send_page": {
+    "message": "現在のページを YTDownloader に送る"
+  },
+  "send_link": {
+    "message": "このリンクを YTDownloader に送る"
+  },
+  "sending": {
+    "message": "送信中…"
+  },
+  "name": {
+    "message": "デスクトップアプリへ送信"
+  }
+}

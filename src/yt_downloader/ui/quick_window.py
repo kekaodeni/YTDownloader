@@ -15,6 +15,7 @@ from yt_downloader.infrastructure.runtime import resource_path
 from yt_downloader.ui.quick_dialogs import DialogBridge
 from yt_downloader.ui.quick_download import DownloadPresenter
 from yt_downloader.ui.quick_toolbox import ToolboxPresenter
+from yt_downloader.ui.quick_browser_companion import BrowserCompanionPresenter
 from yt_downloader.ui.quick_history import HistoryPresenter
 from yt_downloader.ui.quick_images import ImageStore
 from yt_downloader.ui.quick_settings import SettingsPresenter
@@ -61,6 +62,7 @@ class MainWindow(ViewState):
         self.dialogs.sessionsChanged.connect(self._finish_close)
         self.download_page = DownloadPresenter(settings.download_directory, self.images, self, translator=self.i18n)
         self.toolbox_page = ToolboxPresenter(settings.download_directory, self.images, self, translator=self.i18n)
+        self.browser_companion = BrowserCompanionPresenter(self.i18n, self)
         self.history_page = HistoryPresenter(self.dialogs, self, self.i18n)
         self.i18n.languageChanged.connect(self.history_page.refresh_localized)
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
@@ -85,6 +87,7 @@ class MainWindow(ViewState):
         context = self.engine.rootContext()
         for name, value in (('shell', self), ('theme', self.theme), ('download', self.download_page),
                             ('toolbox', self.toolbox_page),
+                            ('browserCompanion', self.browser_companion),
                             ('history', self.history_page), ('settings', self.settings_page), ('dialogs', self.dialogs), ('cookies', self.cookies), ('i18n', self.i18n)):
             context.setContextProperty(name, value)
         context.setContextProperty('assetsBase', QUrl.fromLocalFile(str(resource_path('assets')) + '/'))
@@ -167,6 +170,7 @@ class MainWindow(ViewState):
             import shiboken6
             self._disposed = True
             self.root.hide()
+            self.browser_companion.close()
             self.history_page.close()
             self.settings_page.close_tools()
             shiboken6.delete(self.engine)
