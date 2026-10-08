@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 
 ComboBox {
     id: control
@@ -13,6 +14,9 @@ ComboBox {
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
     property bool subtleOverscroll: true
+    // Finite selectors open at the first option. Specialized long lists may
+    // opt out without changing their selection or keyboard behavior.
+    property bool openAtTop: true
     Keys.onPressed: function(event) {
         if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
             Qt.callLater(function() { if (control.popup.visible) options.positionViewAtIndex(control.highlightedIndex, ListView.Contain) })
@@ -44,8 +48,13 @@ ComboBox {
         objectName: control.objectName + "-option-" + index
         width: options.width - 16; height: 38
         highlighted: control.highlightedIndex === index
-        contentItem: UiText { text: modelData; elide: Text.ElideRight }
-        background: Rectangle { radius: 6; color: parent.highlighted ? theme.state.selection : optionHover.hovered ? theme.state.subtle : "transparent" }
+        readonly property bool selectedOption: control.currentIndex === index
+        contentItem: RowLayout {
+            spacing: 8
+            UiText { text: "\u2713"; color: theme.state.accent; Layout.preferredWidth: 16; horizontalAlignment: Text.AlignHCenter; opacity: control.currentIndex === index ? 1 : 0; Accessible.ignored: true }
+            UiText { Layout.fillWidth: true; text: modelData; elide: Text.ElideRight }
+        }
+        background: Rectangle { radius: 6; color: parent.selectedOption || parent.highlighted ? theme.state.selection : optionHover.hovered ? theme.state.subtle : "transparent" }
     }
     popup: Popup {
         objectName: "popup-" + control.objectName
@@ -64,6 +73,7 @@ ComboBox {
             boundsBehavior: Flickable.StopAtBounds
             property real elasticOffset: 0
             property int feedbackDirection: 0
+            property bool initializingViewport: false
             contentItem.transform: Translate { y: options.elasticOffset }
             function cancelFeedback() {
                 rebound.stop()
@@ -74,6 +84,13 @@ ComboBox {
                 return direction > 0 ? contentY <= originY + 0.5 : contentY >= bottom - 0.5
             }
             onContentYChanged: {
+                // ComboBox's native visibleChanged callback explicitly places
+                // the highlighted row at Beginning. Keep this opening-only
+                // viewport guard synchronous, before any frame is rendered.
+                if (initializingViewport && control.openAtTop && contentY !== originY) {
+                    contentY = originY
+                    return
+                }
                 if (rebound.running && !atFeedbackEdge(feedbackDirection)) cancelFeedback()
             }
             // One outward gesture starts one complete pulse. Events during
@@ -115,8 +132,24 @@ ComboBox {
             }
             model: control.popup.visible ? control.delegateModel : null
             // Hover is a visual state, not a request to scroll the viewport.
-            currentIndex: control.currentIndex
+            currentIndex: -1
             ScrollBar.vertical: UiScrollBar { compact: true }
+        }
+        onAboutToShow: {
+            options.initializingViewport = true
+            options.cancelFeedback()
+            options.cancelFlick()
+            if (control.openAtTop) options.positionViewAtBeginning()
+            else options.positionViewAtIndex(control.currentIndex, ListView.Contain)
+        }
+        onVisibleChanged: {
+            if (visible) Qt.callLater(function() {
+                if (!control.popup.visible) return
+                options.forceLayout()
+                if (control.openAtTop) options.positionViewAtBeginning()
+                options.initializingViewport = false
+            })
+            else options.initializingViewport = false
         }
         onClosed: options.cancelFeedback()
         enter: UiPopupEnter { }
