@@ -95,6 +95,21 @@ def test_startup_race_waits_and_delivers():
     assert bridge.handle(dict(protocol=1,action='send_url',request_id='one',url='https://example.org/'))['status'] == 'delivered'
     launch.assert_called_once_with({})
 
+
+def test_desktop_launch_outlives_windows_native_messaging_job(tmp_path, monkeypatch):
+    import subprocess
+    monkeypatch.setattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0x01000000, raising=False)
+    monkeypatch.setattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000, raising=False)
+    app = tmp_path / 'YTDownloader.exe'
+    app.write_bytes(b'controlled executable')
+    launch = Mock()
+    monkeypatch.setattr(subprocess, 'Popen', launch)
+    launch_app({'launch': {'mode': 'frozen', 'path': str(app)}})
+    flags = launch.call_args.kwargs['creationflags']
+    assert flags & subprocess.CREATE_BREAKAWAY_FROM_JOB
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert launch.call_args.args[0] == [str(app)]
+
 def test_ping_never_starts_app_and_errors_are_not_leaked():
     launch = Mock()
     bridge = NativeBridge({},'edge',client=Mock(side_effect=OSError('SESSDATA=secret')),launcher=launch)

@@ -37,7 +37,11 @@ def launch_app(config):
     # No URL, options, program name or command from the extension enters argv.
     subprocess.Popen(args, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, close_fds=True,
-                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                     # Firefox closes the native host's Windows Job after a
+                     # one-shot message. The desktop application must outlive
+                     # that job; it remains the same fixed, URL-free launch.
+                     creationflags=(getattr(subprocess, 'CREATE_NO_WINDOW', 0) |
+                                    getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0)))
 
 class NativeBridge:
     def __init__(self, config, browser, *, client=send_local, launcher=launch_app, timeout=45):
