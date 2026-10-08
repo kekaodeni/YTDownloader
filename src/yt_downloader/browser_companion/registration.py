@@ -45,8 +45,11 @@ def assets_root():
     return resource_path('browser-extension')
 
 def default_bridge_path():
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent / 'YTDownloaderBridge.exe'
+    from yt_downloader.infrastructure.runtime import resource_path
     return Path(os.environ.get('YT_DOWNLOADER_BRIDGE_EXE') or
-                (Path(sys.executable).parent / 'YTDownloaderBridge.exe'))
+                resource_path('build/browser-bridge/YTDownloaderBridge.exe'))
 
 def valid_extension_id(browser, value):
     if not isinstance(value, str): return False

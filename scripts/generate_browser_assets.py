@@ -38,6 +38,12 @@ def main():
         folder = assets / 'shared/_locales' / browser_locale
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'messages.json').write_text(json.dumps({key:dict(message=value) for key,value in zip(KEYS,values)},ensure_ascii=False,indent=2)+'\n','utf-8')
+    from browser_onboarding_translations import KEYS as desktop_keys, ROWS as desktop_rows
+    for locale, row in desktop_rows.items():
+        values = row.split('|')
+        assert len(values) == len(desktop_keys), (locale, len(values))
+        for key, value in zip(desktop_keys, values):
+            catalog['messages'].setdefault('browser.' + key, {})[locale] = value
     # Preserve the established compact catalog and every unrelated translation.
     browser_lines = [f'    {json.dumps(key)}: ' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))
                      for key, value in catalog['messages'].items() if key.startswith('browser.')]

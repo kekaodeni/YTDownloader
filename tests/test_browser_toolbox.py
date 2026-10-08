@@ -1,4 +1,4 @@
-from conftest import find_item,run_frames
+from conftest import click_item, find_item,run_frames
 from yt_downloader.ui.quick_browser_companion import BrowserCompanionPresenter
 
 def test_browser_toolbox_navigation_help_and_live_translation(quick_window,qapp):
@@ -45,7 +45,13 @@ def test_connection_refresh_preserves_card_and_field_focus(quick_window, qapp, m
     w=quick_window
     w._select_page(2);w.toolbox_page.selectCategory(2)
     run_frames(qapp,220)
+    from test_browser_onboarding import reveal
+    toggle = find_item(w, 'browser-advanced-chrome')
+    reveal(w, qapp, toggle)
+    click_item(w, toggle)
+    run_frames(qapp,100)
     field=find_item(w,'browser-id-chrome')
+    reveal(w, qapp, field)
     field.forceActiveFocus(Qt.OtherFocusReason)
     monkeypatch.setattr(w.browser_companion.manager,'status',lambda browser:'configured')
     w.browser_companion.mark_seen('chrome')

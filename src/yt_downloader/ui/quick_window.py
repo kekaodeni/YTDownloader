@@ -62,7 +62,7 @@ class MainWindow(ViewState):
         self.dialogs.sessionsChanged.connect(self._finish_close)
         self.download_page = DownloadPresenter(settings.download_directory, self.images, self, translator=self.i18n)
         self.toolbox_page = ToolboxPresenter(settings.download_directory, self.images, self, translator=self.i18n)
-        self.browser_companion = BrowserCompanionPresenter(self.i18n, self)
+        self.browser_companion = BrowserCompanionPresenter(self.i18n, self, dialogs=self.dialogs)
         self.history_page = HistoryPresenter(self.dialogs, self, self.i18n)
         self.i18n.languageChanged.connect(self.history_page.refresh_localized)
         self.settings_page = SettingsPresenter(settings, ytdlp_version=ytdlp_version,
