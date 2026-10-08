@@ -32,7 +32,9 @@ def test_twenty_outward_wheel_events_finish_one_smooth_edge_pulse(quick_window, 
     sent = []
     started = time.perf_counter()
     def tick():
-        if len(sent) < 20:
+        # Qt Quick may render at 60 Hz even with a 4 ms precise timer. Multiple
+        # native events per callback keep all 20 events inside the same pulse.
+        for _ in range(min(4, 20 - len(sent))):
             wheel(quick_window, view, angle=0 if pixels else direction*120,
                   pixels=direction*10 if pixels else 0)
             sent.append(time.perf_counter()-started)
@@ -44,6 +46,8 @@ def test_twenty_outward_wheel_events_finish_one_smooth_edge_pulse(quick_window, 
                               combo.property('model'), combo.property('currentIndex'))))
     timer = QTimer()
     timer.timeout.connect(tick)
+    # Generate the requested burst independently of Windows coarse timer ticks.
+    timer.setTimerType(Qt.TimerType.PreciseTimer)
     timer.start(4)
     try:
         run_frames(qapp, 260)

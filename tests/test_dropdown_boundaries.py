@@ -60,13 +60,17 @@ def test_shared_dropdown_boundary_behavior(quick_window, qapp, name, edge, reduc
         timer.stop()
     assert all(top-.01 <= y <= bottom+.01 for y in inertia)
     def tick():
-        if len(sent) < 20:
+        # A rendered Qt Quick frame can occupy a whole 16 ms event-loop tick.
+        # Deliver a real rapid burst without assuming 250 timer ticks/second.
+        for _ in range(min(4, 20 - len(sent))):
             before = view.property('elasticOffset')
             wheel(quick_window, view, angle=direction*120)
             sent.append((before, view.property('elasticOffset')))
         observations.append((view.property('contentY'), view.property('elasticOffset'), geometry()))
     timer = QTimer()
     timer.timeout.connect(tick)
+    # Request precision; rendering can still coalesce callbacks.
+    timer.setTimerType(Qt.TimerType.PreciseTimer)
     timer.start(4)
     try:
         run_frames(qapp, 270)
