@@ -32,7 +32,15 @@ def quick_window(qapp, tmp_path):
     window = MainWindow(AppSettings(download_directory=str(tmp_path), auto_check_updates=False),
                         ytdlp_version='test', ffmpeg_description='test')
     window.show()
-    run_frames(qapp, 120)
+    # Native input/hover and frame assertions require a presented, active
+    # window. A fixed startup sleep can race Windows exposure under a full
+    # suite, leaving clicks in an unprepared scene or capturing entrance fade.
+    if qapp.platformName() == 'windows':
+        assert QTest.qWaitForWindowExposed(window.root, 5000)
+        window.root.requestActivate()
+        assert QTest.qWaitForWindowActive(window.root, 5000)
+    assert not window.grab().isNull()
+    run_frames(qapp, 240)
     yield window
     for session in tuple(window.dialogs.sessions):
         session.reject()

@@ -361,7 +361,9 @@ def test_profile_editor_dialog_uses_one_rounded_surface_for_all_corners(quick_wi
 
     editor = find_item(quick_window, 'downloadProfileEditor')
     image = quick_window.root.grabWindow()
-    dpr = image.devicePixelRatio()
+    # grabWindow returns physical pixels but can keep QImage's DPR at 1 on
+    # native Windows. Derive the real logical-to-pixel scale for sampling.
+    dpr = image.width() / quick_window.root.width()
     left = round(editor.property('x') * dpr)
     top = round(editor.property('y') * dpr)
     right = round((editor.property('x') + editor.property('width')) * dpr) - 1
