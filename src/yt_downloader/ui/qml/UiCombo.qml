@@ -14,11 +14,12 @@ ComboBox {
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
     property bool subtleOverscroll: true
-    // Finite selectors open at the first option. Specialized long lists may
-    // opt out without changing their selection or keyboard behavior.
-    property bool openAtTop: true
+    enum InitialPosition { EnsureSelectedVisible, Top }
+    property int initialPosition: UiCombo.EnsureSelectedVisible
+    readonly property real optionHeight: 38
     Keys.onPressed: function(event) {
         if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
+            options.initializingViewport = false
             Qt.callLater(function() { if (control.popup.visible) options.positionViewAtIndex(control.highlightedIndex, ListView.Contain) })
         }
         event.accepted = false
@@ -46,7 +47,7 @@ ComboBox {
         hoverEnabled: false
         HoverHandler { id: optionHover }
         objectName: control.objectName + "-option-" + index
-        width: options.width - 16; height: 38
+        width: options.width - 16; height: control.optionHeight
         highlighted: control.highlightedIndex === index
         readonly property bool selectedOption: control.currentIndex === index
         contentItem: RowLayout {
@@ -75,6 +76,24 @@ ComboBox {
             property int feedbackDirection: 0
             property bool initializingViewport: false
             contentItem.transform: Translate { y: options.elasticOffset }
+            function initialContentY() {
+                const top = originY
+                const viewportHeight = height > 0 ? height : Math.max(0, control.popup.implicitHeight - control.popup.topPadding - control.popup.bottomPadding)
+                const bottom = top + Math.max(0, contentHeight - viewportHeight)
+                if (control.initialPosition === UiCombo.Top || control.currentIndex < 0 || control.currentIndex >= count || bottom <= top) return top
+                const row = itemAtIndex(control.currentIndex)
+                const rowTop = row ? row.y : top + control.currentIndex * control.optionHeight
+                const rowHeight = row ? row.height : control.optionHeight
+                if (rowTop >= top && rowTop + rowHeight <= top + viewportHeight) return top
+                return Math.max(top, Math.min(bottom, rowTop + (rowHeight - viewportHeight) / 2))
+            }
+            function applyInitialPosition() {
+                if (!initializingViewport) return
+                const targetY = initialContentY()
+                if (Math.abs(contentY - targetY) > 0.01) contentY = targetY
+            }
+            onHeightChanged: applyInitialPosition()
+            onContentHeightChanged: applyInitialPosition()
             function cancelFeedback() {
                 rebound.stop()
                 elasticOffset = 0
@@ -87,8 +106,8 @@ ComboBox {
                 // ComboBox's native visibleChanged callback explicitly places
                 // the highlighted row at Beginning. Keep this opening-only
                 // viewport guard synchronous, before any frame is rendered.
-                if (initializingViewport && control.openAtTop && contentY !== originY) {
-                    contentY = originY
+                if (initializingViewport) {
+                    applyInitialPosition()
                     return
                 }
                 if (rebound.running && !atFeedbackEdge(feedbackDirection)) cancelFeedback()
@@ -101,6 +120,7 @@ ComboBox {
                 enabled: control.subtleOverscroll
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 onWheel: function(event) {
+                    options.initializingViewport = false
                     const delta = event.pixelDelta.y || event.angleDelta.y
                     if (delta !== 0) {
                         const direction = delta > 0 ? 1 : -1
@@ -130,7 +150,9 @@ ComboBox {
                 target: motion
                 function onReducedChanged() { if (motion.reduced) options.cancelFeedback() }
             }
-            model: control.popup.visible ? control.delegateModel : null
+            // Prepare rows before visibility so the first rendered frame can
+            // already contain the selected item, without a delayed scroll.
+            model: control.popup.visible || initializingViewport ? control.delegateModel : null
             // Hover is a visual state, not a request to scroll the viewport.
             currentIndex: -1
             ScrollBar.vertical: UiScrollBar { compact: true }
@@ -139,16 +161,17 @@ ComboBox {
             options.initializingViewport = true
             options.cancelFeedback()
             options.cancelFlick()
-            if (control.openAtTop) options.positionViewAtBeginning()
-            else options.positionViewAtIndex(control.currentIndex, ListView.Contain)
+            options.forceLayout()
+            options.applyInitialPosition()
         }
         onVisibleChanged: {
-            if (visible) Qt.callLater(function() {
-                if (!control.popup.visible) return
+            if (visible) {
                 options.forceLayout()
-                if (control.openAtTop) options.positionViewAtBeginning()
-                options.initializingViewport = false
-            })
+                options.applyInitialPosition()
+                // Release only the construction guard; never reposition a
+                // rendered popup. Wheel/keyboard input releases it immediately.
+                Qt.callLater(function() { options.initializingViewport = false })
+            }
             else options.initializingViewport = false
         }
         onClosed: options.cancelFeedback()

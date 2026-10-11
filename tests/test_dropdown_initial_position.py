@@ -1,5 +1,5 @@
 import pytest
-from PySide6.QtCore import QPointF, Qt, QTimer, QElapsedTimer
+from PySide6.QtCore import QPointF, Qt, QElapsedTimer
 from PySide6.QtTest import QTest
 
 from conftest import click_item, find_item, run_frames
@@ -86,8 +86,8 @@ def test_user_scrolling_and_hover_do_not_reset_initial_viewport(quick_window, qa
     assert combo.property('currentIndex') == 0
 
 
-@pytest.mark.parametrize('index', [1, 5, 9])
-def test_mouse_reopen_starts_at_top_without_changing_language(quick_window, qapp, index):
+@pytest.mark.parametrize('index', [0, 3, 5, 8, 9])
+def test_mouse_reopen_keeps_selected_language_fully_visible(quick_window, qapp, index):
     w = quick_window
     w._select_page(3)
     locales = [row['locale'] for row in w.i18n.languages]
@@ -98,13 +98,22 @@ def test_mouse_reopen_starts_at_top_without_changing_language(quick_window, qapp
         click_item(w, combo)
         run_frames(qapp, 180)
         view = find_item(w, 'options-languageCombo')
-        assert view.property('contentY') == pytest.approx(view.property('originY'), abs=.1)
+        row = find_item(w, f'languageCombo-option-{index}')
+        row_top = row.mapToItem(view, QPointF()).y()
+        assert row_top >= -.1
+        assert row_top + row.height() <= view.height() + .1
+        if index <= 5:
+            assert view.property('contentY') == pytest.approx(view.property('originY'), abs=.1)
+        else:
+            assert view.property('contentY') > view.property('originY')
+        bottom = view.property('originY') + max(0, view.property('contentHeight') - view.height())
+        assert view.property('originY') <= view.property('contentY') <= bottom
         assert combo.property('currentIndex') == index
         assert w.i18n.currentLocale == locales[index]
         view.setProperty('contentY', view.property('originY') + max(0, view.property('contentHeight') - view.height()))
         run_frames(qapp, 100)
         QTest.keyClick(w.root, Qt.Key_Escape)
-        run_frames(qapp, 180)
+        wait_popup_transition(qapp, find_item(w, 'popup-languageCombo'), False)
 
 
 def test_mouse_open_has_no_old_position_frame(quick_window, qapp):
@@ -113,15 +122,98 @@ def test_mouse_open_has_no_old_position_frame(quick_window, qapp):
     w.settings_page.setSetting('language', 'th-TH')
     run_frames(qapp, 200)
     view = find_item(w, 'options-languageCombo')
+    popup = find_item(w, 'popup-languageCombo')
     observed = []
-    timer = QTimer()
-    timer.setTimerType(Qt.TimerType.PreciseTimer)
-    timer.timeout.connect(lambda: observed.append(view.property('contentY') - view.property('originY')))
-    timer.start(4)
+    def rendered_frame():
+        if popup.property('visible') and view.height() > 0:
+            row = find_item(w, 'languageCombo-option-9')
+            observed.append((view.property('contentY'), row.mapToItem(view, QPointF()).y(),
+                             row.height(), view.height()))
+    w.root.frameSwapped.connect(rendered_frame)
     click_item(w, find_item(w, 'languageCombo'))
     run_frames(qapp, 180)
-    timer.stop()
-    assert observed and max(abs(value) for value in observed) < .1
+    w.root.frameSwapped.disconnect(rendered_frame)
+    assert observed
+    assert all(y >= -.1 and y + row_height <= viewport_height + .1
+               for _, y, row_height, viewport_height in observed), observed
+    assert max(value[0] for value in observed) - min(value[0] for value in observed) < .1
+
+
+@pytest.mark.parametrize('index', [0, 1, 3, 6, 7])
+@pytest.mark.parametrize('viewport_height', [170, 280])
+def test_quality_reopen_contains_selected_with_context_and_no_blank(quick_window, qapp, tmp_path, index, viewport_height):
+    from dataclasses import replace
+    from test_download_service import _request
+    w = quick_window
+    video = _request(tmp_path).video
+    tiers = [2160, 1440, 1080, 720, 480, 360, 240, 144]
+    formats = tuple(replace(video.formats[0], label=f'{height}p', height=height,
+                    format_selector=str(height), video_format_id=str(height)) for height in tiers)
+    w.download_page.show_video(replace(video, formats=formats))
+    w.download_page.selectFormat(index)
+    run_frames(qapp, 250)
+    combo = find_item(w, 'formatCombo')
+    popup = find_item(w, 'popup-formatCombo')
+    popup.setProperty('height', viewport_height)
+    for _ in range(2):
+        frames = []
+        def rendered_frame():
+            if popup.property('visible'):
+                view = find_item(w, 'options-formatCombo')
+                row = find_item(w, f'formatCombo-option-{index}')
+                frames.append((row.mapToItem(view, QPointF()).y(), row.height(), view.height()))
+        w.root.frameSwapped.connect(rendered_frame)
+        click_item(w, combo)
+        wait_popup_transition(qapp, popup, True)
+        w.root.frameSwapped.disconnect(rendered_frame)
+        assert frames
+        assert all(y >= -.1 and y + row_height <= view_height + .1 for y, row_height, view_height in frames), frames
+        view = find_item(w, 'options-formatCombo')
+        row = find_item(w, f'formatCombo-option-{index}')
+        y = row.mapToItem(view, QPointF()).y()
+        assert y >= -.1 and y + row.height() <= view.height() + .1
+        assert row.property('selectedOption')
+        assert combo.property('currentIndex') == index
+        assert w.download_page.state['formatIndex'] == index
+        top = view.property('originY')
+        bottom = top + max(0, view.property('contentHeight') - view.height())
+        assert top <= view.property('contentY') <= bottom
+        if index <= 1:
+            assert view.property('contentY') == pytest.approx(top, abs=.1)
+            assert find_item(w, 'formatCombo-option-0').mapToItem(view, QPointF()).y() >= -.1
+        elif view.property('contentY') > top and view.property('contentY') < bottom:
+            assert y > 0 and y + row.height() < view.height()
+        QTest.keyClick(w.root, Qt.Key_Escape)
+        wait_popup_transition(qapp, popup, False)
+
+
+def test_fast_twenty_reopens_preserve_last_language_from_first_rendered_frame(quick_window, qapp):
+    w = quick_window
+    w._select_page(3)
+    w.settings_page.setSetting('language', 'th-TH')
+    run_frames(qapp, 240)
+    combo = find_item(w, 'languageCombo')
+    popup = find_item(w, 'popup-languageCombo')
+    for _ in range(20):
+        frames = []
+        def rendered_frame():
+            if popup.property('visible'):
+                view = find_item(w, 'options-languageCombo')
+                row = find_item(w, 'languageCombo-option-9')
+                frames.append((row.mapToItem(view, QPointF()).y(), row.height(), view.height()))
+        w.root.frameSwapped.connect(rendered_frame)
+        click_item(w, combo)
+        wait_popup_transition(qapp, popup, True)
+        w.root.frameSwapped.disconnect(rendered_frame)
+        assert frames
+        assert all(y >= -.1 and y + row_height <= view_height + .1 for y, row_height, view_height in frames), frames
+        view = find_item(w, 'options-languageCombo')
+        row = find_item(w, 'languageCombo-option-9')
+        y = row.mapToItem(view, QPointF()).y()
+        assert y >= -.1 and y + row.height() <= view.height() + .1
+        assert combo.property('currentIndex') == 9 and w.i18n.currentLocale == 'th-TH'
+        QTest.keyClick(w.root, Qt.Key_Escape)
+        wait_popup_transition(qapp, popup, False)
 
 
 @pytest.mark.parametrize('selector', ['quality', 'batch', 'language', 'profile', 'proxy', 'remux', 'content'])
