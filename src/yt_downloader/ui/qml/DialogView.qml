@@ -43,9 +43,18 @@ Dialog {
     exit: UiPopupExit { }
     contentItem: UiScrollView {
         id: viewport
+        objectName: "dialogScrollView"
         implicitHeight: body.implicitHeight
         clip: true
         contentWidth: availableWidth
+        // ScrollView creates this Flickable internally. The guide has strict
+        // edges; keep every other dialog's native scrolling configuration.
+        Binding {
+            target: viewport.contentItem
+            property: "boundsBehavior"
+            value: Flickable.StopAtBounds
+            when: popup.s.kind === "browser_guide"
+        }
         ColumnLayout {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
