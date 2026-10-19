@@ -1,5 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+import pytest
 
 from conftest import click_item, find_item, run_frames
 from test_browser_onboarding import isolated_manager, open_browser, reveal
@@ -56,6 +57,31 @@ def test_install_guide_live_translation_has_all_ten_languages(quick_window, qapp
         assert find_item(w, 'guide-browser-instructions').property('text') == w.i18n.text('browser.install_chrome')
     QTest.keyClick(w.root, Qt.Key_Escape)
     run_frames(qapp, 260)
+    assert not w.qml_warnings
+
+
+@pytest.mark.parametrize('focus_target', ['guide-browser-edge', 'guideExtensionPath'])
+def test_install_guide_escape_closes_once_from_header_or_body(quick_window, qapp, tmp_path, focus_target):
+    w = quick_window
+    isolated_manager(w, tmp_path)
+    open_browser(w, qapp, 'firefox')
+    click_item(w, find_item(w, 'browser-install-guide'))
+    run_frames(qapp, 250)
+    guide = w.browser_companion._guide
+    closed = []
+    guide.closed.connect(lambda: closed.append(True))
+    target = find_item(w, focus_target)
+    click_item(w, target)
+    run_frames(qapp, 100)
+    guide.update(closeEnabled=False)
+    QTest.keyClick(w.root, Qt.Key_Escape)
+    run_frames(qapp, 160)
+    assert w.browser_companion._guide is guide and closed == []
+    guide.update(closeEnabled=True)
+    QTest.keyClick(w.root, Qt.Key_Escape)
+    run_frames(qapp, 300)
+    assert w.browser_companion._guide is None and closed == [True]
+    assert w.browser_companion.state['activeBrowser'] == 'firefox'
     assert not w.qml_warnings
 
 

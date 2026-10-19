@@ -12,8 +12,8 @@ Dialog {
     objectName: "dialog-" + s.kind
     modal: s.modal
     focus: true
-    closePolicy: Popup.NoAutoClose
-    Shortcut { sequence: "Escape"; enabled: popup.opened && popup.s.closeEnabled; onActivated: popup.session.reject() }
+    closePolicy: isBrowserGuide && s.closeEnabled ? Popup.CloseOnEscape : Popup.NoAutoClose
+    Shortcut { sequence: "Escape"; enabled: !popup.isBrowserGuide && popup.opened && popup.s.closeEnabled; onActivated: popup.session.reject() }
     width: Math.min(s.kind === "browser_guide" ? 780 : 620, parent ? parent.width - 32 : 620)
     height: Math.min(isBrowserGuide ? 740 : implicitHeight, parent ? parent.height - 40 : 700)
     x: parent ? (parent.width - width) / 2 : 0
@@ -57,7 +57,10 @@ Dialog {
     Overlay.modal: UiDimmer { }
     function focusClose() { if (isBrowserGuide) guideClose.forceActiveFocus(); else cancelAction.forceActiveFocus() }
     onOpened: focusClose()
-    onClosed: if (restoreFocus) restoreFocus.forceActiveFocus()
+    onClosed: {
+        if (isBrowserGuide && s.open) session.reject()
+        if (restoreFocus) restoreFocus.forceActiveFocus()
+    }
     Component.onCompleted: if (s.open) open()
     Connections {
         target: popup.session
