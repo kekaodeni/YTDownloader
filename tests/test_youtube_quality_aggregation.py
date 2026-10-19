@@ -100,6 +100,48 @@ def test_youtube_missing_semantic_tier_keeps_existing_physical_fps_groups():
     assert {o.label for o in result} == {'640p', '640p 60 FPS'}
 
 
+@pytest.mark.parametrize('portrait', [False, True])
+def test_youtube_unlabelled_hls_joins_matching_labelled_dimensions(portrait):
+    labelled = rendition(720, 59.94, portrait=portrait, protocol='https')
+    hls = {**labelled, 'format_id': 'hls-low', 'format_note': '',
+           'format': 'hls - physical dimensions', 'fps': 29.97,
+           'protocol': 'm3u8_native', 'tbr': 10000}
+    raw = [labelled, hls]
+    before = deepcopy(raw)
+    option, = normalize_formats(raw, extractor_key='Youtube')
+    assert option.label == '720p 60 FPS' + (' 竖屏' if portrait else '')
+    assert option.video_format_id == labelled['format_id']
+    assert set(option.candidate_video_format_ids) == {f['format_id'] for f in raw}
+    assert raw == before
+
+
+def test_youtube_matching_hls_can_represent_the_semantic_tier():
+    labelled = rendition(720, 30, protocol='https')
+    hls = {**labelled, 'format_id': 'hls-high', 'format_note': '',
+           'fps': 60, 'protocol': 'm3u8_native'}
+    option, = normalize_formats([labelled, hls], extractor_key='Youtube')
+    assert option.label == '720p 60 FPS'
+    assert option.semantic_height == 720
+    assert option.video_format_id == 'hls-high'
+    assert option.semantic_quality_source == 'youtube-matching-dimensions'
+    assert choose_quality([option], 'cap:720p') == option
+
+
+def test_youtube_ambiguous_dimension_mapping_keeps_physical_fallback():
+    labelled = rendition(720, 30)
+    different_tier = {**labelled, 'format_id': 'labelled-480', 'format_note': '480p'}
+    unknown = {**labelled, 'format_id': 'unlabelled', 'format_note': ''}
+    result = normalize_formats([labelled, different_tier, unknown], extractor_key='Youtube')
+    assert {o.label for o in result} == {'720p', '640p', '480p'}
+
+
+def test_youtube_matching_dimensions_do_not_merge_dynamic_ranges():
+    labelled = rendition(720, 30, dynamic_range='SDR')
+    hls_hdr = {**labelled, 'format_id': 'hdr-hls', 'format_note': '', 'dynamic_range': 'HDR10'}
+    result = normalize_formats([labelled, hls_hdr], extractor_key='Youtube')
+    assert {o.label for o in result} == {'720p', '640p HDR'}
+
+
 def test_youtube_distinct_semantic_tiers_include_144p_without_cropping():
     raw = [rendition(144, 30), rendition(240, 30), rendition(720, 60)]
     before = deepcopy(raw)

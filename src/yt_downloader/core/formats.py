@@ -97,6 +97,8 @@ def _youtube_semantic_quality(item: Mapping[str, Any]) -> tuple[int | None, floa
         if len(matches) == 1:
             height, fps = matches.pop()
             return height, fps, f"youtube-{field}"
+    if height := item.get('_app_youtube_semantic_height'):
+        return height, None, 'youtube-matching-dimensions'
     return None, None, "raw-dimensions"
 
 
@@ -104,6 +106,33 @@ def _youtube_range_label(item: Mapping[str, Any]) -> str:
     value = str(item.get("dynamic_range") or "").casefold()
     return {"sdr": "", "": "", "hdr": "HDR", "hdr10": "HDR",
             "hdr10+": "HDR10+", "hlg": "HLG", "dv": "杜比视界"}.get(value, value.upper())
+
+
+def _youtube_link_unlabelled_tiers(videos: list[dict[str, Any]]) -> None:
+    """Link HLS renditions to explicit tiers with identical measured dimensions.
+
+    Native HLS often lacks qualityLabel while DASH supplies it. Only reuse an
+    unambiguous label from the same dimensions and dynamic range; never guess
+    a tier from a nearby size or change the original extractor dictionaries.
+    """
+    def dimensions(item):
+        width, height = item.get('width'), item.get('height')
+        if not all(isinstance(value, (int, float)) and value > 0 for value in (width, height)):
+            return None
+        return width, height, _youtube_range_label(item)
+
+    known: dict[tuple, set[int]] = {}
+    for item in videos:
+        height, _, _ = _youtube_semantic_quality(item)
+        key = dimensions(item)
+        if height is not None and key is not None:
+            known.setdefault(key, set()).add(height)
+    for item in videos:
+        if _youtube_semantic_quality(item)[0] is not None:
+            continue
+        tiers = known.get(dimensions(item), set())
+        if len(tiers) == 1:
+            item['_app_youtube_semantic_height'] = next(iter(tiers))
 
 
 def _youtube_preferred_renditions(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -282,6 +311,8 @@ def normalize_formats(
     # Some extractors (including X HLS) identify an audio rendition with
     # vcodec=none but leave acodec unknown. yt-dlp can still select it.
     audios = [item for item in formats if item.get("vcodec") == "none" and item.get("acodec") != "none"]
+    if extractor_key.casefold() == 'youtube':
+        _youtube_link_unlabelled_tiers(videos)
 
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for item in videos:
