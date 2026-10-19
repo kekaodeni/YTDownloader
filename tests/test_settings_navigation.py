@@ -92,7 +92,11 @@ def test_settings_categories_preserve_navigation_and_wrap_rows(quick_window, qap
         scroll = find_item(quick_window, 'settingsScroll')
         scroll.setProperty('contentY', max(0, scroll.property('contentHeight') - scroll.height()))
         run_frames(qapp, 80)
-        assert nav.mapToScene(QPointF()) == position
+        # The page entrance can retain a subpixel animation tail under load.
+        # Detect actual navigation movement without exact qreal equality.
+        current = nav.mapToScene(QPointF())
+        assert current.x() == pytest.approx(position.x(), abs=.01)
+        assert current.y() == pytest.approx(position.y(), abs=.01)
         scroll.setProperty('contentY', 0)
     assert quick_window.settings_page.state['ffmpegVersion']
     assert quick_window.settings_page.state['ffmpegPath'].endswith('ffmpeg.exe')
