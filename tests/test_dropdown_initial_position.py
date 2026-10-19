@@ -5,6 +5,32 @@ from PySide6.QtTest import QTest
 from conftest import click_item, find_item, run_frames
 
 
+def test_spanish_reopens_near_center_with_context_from_first_frame(quick_window, qapp):
+    w = quick_window
+    w._select_page(3)
+    w.settings_page.setSetting('language', 'es-ES')
+    run_frames(qapp, 240)
+    combo = find_item(w, 'languageCombo')
+    popup = find_item(w, 'popup-languageCombo')
+    samples = []
+    def rendered():
+        if popup.property('visible'):
+            view = find_item(w, 'options-languageCombo')
+            row = find_item(w, 'languageCombo-option-6')
+            samples.append(row.mapToItem(view, QPointF()).y() + row.height()/2 - view.height()/2)
+    w.root.frameSwapped.connect(rendered)
+    click_item(w, combo)
+    wait_popup_transition(qapp, popup, True)
+    w.root.frameSwapped.disconnect(rendered)
+    assert samples and all(abs(offset) <= 1.1 for offset in samples), samples
+    view = find_item(w, 'options-languageCombo')
+    for index in (5, 7):
+        row = find_item(w, f'languageCombo-option-{index}')
+        y = row.mapToItem(view, QPointF()).y()
+        assert y >= 0 and y + row.height() <= view.height()
+    assert combo.property('currentIndex') == 6 and w.i18n.currentLocale == 'es-ES'
+
+
 def wait_popup_transition(qapp, popup, opened):
     """Wait for the real transition endpoint, without retrying input.
 
@@ -86,7 +112,7 @@ def test_user_scrolling_and_hover_do_not_reset_initial_viewport(quick_window, qa
     assert combo.property('currentIndex') == 0
 
 
-@pytest.mark.parametrize('index', [0, 3, 5, 8, 9])
+@pytest.mark.parametrize('index', [0, 3, 5, 6, 8, 9])
 def test_mouse_reopen_keeps_selected_language_fully_visible(quick_window, qapp, index):
     w = quick_window
     w._select_page(3)
@@ -102,11 +128,9 @@ def test_mouse_reopen_keeps_selected_language_fully_visible(quick_window, qapp, 
         row_top = row.mapToItem(view, QPointF()).y()
         assert row_top >= -.1
         assert row_top + row.height() <= view.height() + .1
-        if index <= 5:
-            assert view.property('contentY') == pytest.approx(view.property('originY'), abs=.1)
-        else:
-            assert view.property('contentY') > view.property('originY')
         bottom = view.property('originY') + max(0, view.property('contentHeight') - view.height())
+        target = max(view.property('originY'), min(bottom, index * row.height() + (row.height() - view.height()) / 2))
+        assert view.property('contentY') == pytest.approx(target, abs=.1)
         assert view.property('originY') <= view.property('contentY') <= bottom
         assert combo.property('currentIndex') == index
         assert w.i18n.currentLocale == locales[index]
@@ -139,7 +163,7 @@ def test_mouse_open_has_no_old_position_frame(quick_window, qapp):
     assert max(value[0] for value in observed) - min(value[0] for value in observed) < .1
 
 
-@pytest.mark.parametrize('index', [0, 1, 3, 6, 7])
+@pytest.mark.parametrize('index', [0, 1, 2, 3, 6, 7])
 @pytest.mark.parametrize('viewport_height', [170, 280])
 def test_quality_reopen_contains_selected_with_context_and_no_blank(quick_window, qapp, tmp_path, index, viewport_height):
     from dataclasses import replace
@@ -178,6 +202,8 @@ def test_quality_reopen_contains_selected_with_context_and_no_blank(quick_window
         top = view.property('originY')
         bottom = top + max(0, view.property('contentHeight') - view.height())
         assert top <= view.property('contentY') <= bottom
+        target = max(top, min(bottom, index * row.height() + (row.height() - view.height()) / 2))
+        assert view.property('contentY') == pytest.approx(target, abs=.1)
         if index <= 1:
             assert view.property('contentY') == pytest.approx(top, abs=.1)
             assert find_item(w, 'formatCombo-option-0').mapToItem(view, QPointF()).y() >= -.1

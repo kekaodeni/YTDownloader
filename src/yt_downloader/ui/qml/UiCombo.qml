@@ -14,8 +14,8 @@ ComboBox {
     Accessible.name: control.accessibleName
     property string accessibleName: i18n.messages["ui.select_option"]
     property bool subtleOverscroll: true
-    enum InitialPosition { EnsureSelectedVisible, Top }
-    property int initialPosition: UiCombo.EnsureSelectedVisible
+    enum InitialPosition { PreferSelectedCenter, Top }
+    property int initialPosition: UiCombo.PreferSelectedCenter
     readonly property real optionHeight: 38
     Keys.onPressed: function(event) {
         if (popup.visible && (event.text.length > 0 || [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].indexOf(event.key) >= 0)) {
@@ -84,7 +84,6 @@ ComboBox {
                 const row = itemAtIndex(control.currentIndex)
                 const rowTop = row ? row.y : top + control.currentIndex * control.optionHeight
                 const rowHeight = row ? row.height : control.optionHeight
-                if (rowTop >= top && rowTop + rowHeight <= top + viewportHeight) return top
                 return Math.max(top, Math.min(bottom, rowTop + (rowHeight - viewportHeight) / 2))
             }
             function applyInitialPosition() {
