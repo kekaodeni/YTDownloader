@@ -19,7 +19,7 @@ UiCategoryHost {
             RowLayout {
                 Layout.fillWidth: true
                 UiText { Layout.fillWidth: true; text: i18n.messages["browser.title"]; role: "SectionTitle"; wrapMode: Text.Wrap }
-                UiButton { objectName: "browser-install-guide"; text: i18n.messages["browser.guide_entry"]; appearance: "quiet"; onClicked: browserCompanion.showInstallGuide() }
+                UiButton { objectName: "browser-install-guide"; text: i18n.messages["browser.guide_entry"]; icon.source: assetsBase + "icons/info_regular.svg"; appearance: "quiet"; onClicked: browserCompanion.showInstallGuide() }
             }
             UiText { Layout.fillWidth: true; text: i18n.messages["browser.description"]; color: theme.state.secondary; wrapMode: Text.Wrap }
             UiText { text: i18n.messages["browser.choose_browser"]; role: "Caption" }

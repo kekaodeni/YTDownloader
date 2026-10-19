@@ -8,24 +8,55 @@ Dialog {
     property var s: session.state
     property var restoreFocus
     property bool detailsOpen: false
+    readonly property bool isBrowserGuide: s.kind === "browser_guide"
     objectName: "dialog-" + s.kind
     modal: s.modal
     focus: true
     closePolicy: Popup.NoAutoClose
     Shortcut { sequence: "Escape"; enabled: popup.opened && popup.s.closeEnabled; onActivated: popup.session.reject() }
     width: Math.min(s.kind === "browser_guide" ? 780 : 620, parent ? parent.width - 32 : 620)
-    height: Math.min(implicitHeight, parent ? parent.height - 40 : 700)
+    height: Math.min(isBrowserGuide ? 740 : implicitHeight, parent ? parent.height - 40 : 700)
     x: parent ? (parent.width - width) / 2 : 0
     y: parent ? (parent.height - height) / 2 : 0
     padding: 24
+    topPadding: isBrowserGuide ? 0 : 24
+    bottomPadding: isBrowserGuide ? 0 : 24
     title: s.title
     background: Rectangle { radius: 16; color: theme.state.elevated; border.color: theme.state.stroke }
     header: Item {
-        implicitHeight: 66
-        UiText { objectName: "dialogTitle"; anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 24; anchors.verticalCenter: parent.verticalCenter; text: popup.s.title; role: "SectionTitle"; elide: Text.ElideRight }
+        implicitHeight: popup.isBrowserGuide ? guideHeader.implicitHeight + 36 : 66
+        UiText { objectName: "dialogTitle"; visible: !popup.isBrowserGuide; anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 24; anchors.verticalCenter: parent.verticalCenter; text: popup.s.title; role: "SectionTitle"; elide: Text.ElideRight }
+        ColumnLayout {
+            id: guideHeader
+            objectName: "guideHeader"
+            visible: popup.isBrowserGuide
+            x: 24; y: 18; width: parent.width - 48; spacing: 12
+            RowLayout {
+                Layout.fillWidth: true; spacing: 10
+                Image { source: assetsBase + "icons/info_regular.svg"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; sourceSize.width: 22; sourceSize.height: 22 }
+                UiText { objectName: "guideTitle"; Layout.fillWidth: true; text: popup.s.title; role: "SectionTitle"; wrapMode: Text.Wrap }
+                UiButton { objectName: "guideHeaderClose"; appearance: "quiet"; icon.source: assetsBase + "icons/dismiss_regular.svg"; icon.width: 16; icon.height: 16; hint: i18n.messages["common.close"]; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
+            }
+            Flow {
+                objectName: "guideBrowserTabs"
+                Layout.fillWidth: true; spacing: 8
+                Repeater {
+                    model: popup.isBrowserGuide ? ["chrome", "edge", "firefox"] : []
+                    delegate: UiButton {
+                        required property string modelData
+                        objectName: "guide-browser-" + modelData
+                        text: modelData === "edge" ? "Microsoft Edge" : modelData === "chrome" ? "Chrome" : "Firefox"
+                        selected: popup.s.browser === modelData
+                        onClicked: popup.session.selectBrowser(modelData)
+                    }
+                }
+            }
+        }
+        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: theme.state.stroke; visible: popup.isBrowserGuide }
     }
     Overlay.modal: UiDimmer { }
-    onOpened: { cancelAction.forceActiveFocus() }
+    function focusClose() { if (isBrowserGuide) guideClose.forceActiveFocus(); else cancelAction.forceActiveFocus() }
+    onOpened: focusClose()
     onClosed: if (restoreFocus) restoreFocus.forceActiveFocus()
     Component.onCompleted: if (s.open) open()
     Connections {
@@ -37,7 +68,7 @@ Dialog {
                 popup.open()
             } else if (!popup.session.state.open && popup.visible) popup.close()
         }
-        function onFocusRequested() { popup.open(); cancelAction.forceActiveFocus() }
+        function onFocusRequested() { popup.open(); popup.focusClose() }
     }
     enter: UiPopupEnter { duration: motion.standard }
     exit: UiPopupExit { }
@@ -58,8 +89,8 @@ Dialog {
         ColumnLayout {
             id: body; width: viewport.availableWidth; spacing: 16
             Keys.onEscapePressed: if (popup.s.closeEnabled) popup.session.reject()
-            UiText { objectName: "dialogMessage"; Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
-            Loader { objectName: "browserGuideLoader"; Layout.fillWidth: true; visible: active; active: popup.s.kind === "browser_guide"; sourceComponent: Component { BrowserInstallGuide { session: popup.session } } }
+            UiText { objectName: "dialogMessage"; visible: !popup.isBrowserGuide; Layout.fillWidth: true; text: popup.s.message; wrapMode: Text.Wrap; color: theme.state.secondary }
+            Loader { objectName: "browserGuideLoader"; Layout.fillWidth: true; Layout.topMargin: 12; Layout.bottomMargin: 12; visible: active; active: popup.isBrowserGuide; sourceComponent: Component { BrowserInstallGuide { session: popup.session; onBrowserChanged: viewport.contentItem.contentY = viewport.contentItem.originY } } }
             UiText { Layout.fillWidth: true; visible: popup.s.kind === "info"; text: i18n.messages["cookie.privacy_short"]; wrapMode: Text.Wrap; color: theme.state.secondary }
             ColumnLayout {
                 Layout.fillWidth: true; visible: popup.s.kind === "error"; spacing: 12
@@ -126,9 +157,19 @@ Dialog {
         }
     }
     footer: Item {
-        implicitHeight: actions.implicitHeight + 32
+        implicitHeight: popup.isBrowserGuide ? guideFooter.implicitHeight + 32 : actions.implicitHeight + 32
+        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: theme.state.stroke; visible: popup.isBrowserGuide }
+        RowLayout {
+            id: guideFooter
+            objectName: "guideFooter"
+            visible: popup.isBrowserGuide
+            x: 24; y: 16; width: parent.width - 48; spacing: 20
+            UiText { objectName: "guidePrivacy"; Layout.fillWidth: true; text: i18n.messages["browser.privacy"]; role: "Caption"; color: theme.state.secondary; wrapMode: Text.Wrap }
+            UiButton { id: guideClose; objectName: "guideClose"; text: i18n.messages["common.close"]; enabled: popup.s.closeEnabled; onClicked: popup.session.reject() }
+        }
         Flow {
             id: actions
+            visible: !popup.isBrowserGuide
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 8
             Repeater {
                 model: popup.s.kind === "error" ? (popup.s.errorActions || []) : []
