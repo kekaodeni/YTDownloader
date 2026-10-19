@@ -1,4 +1,4 @@
-# Send to YTDownloader (development companion)
+# Send to YTDownloader
 
 This first-party extension sends an explicitly selected HTTP(S) URL to the
 Windows desktop app. It never reads Cookie values, page content or browsing
@@ -7,7 +7,7 @@ Cookie source, quality selector, Profiles and yt-dlp pipeline.
 
 ## Install / configure
 
-1. Use a development portable build containing **YTDownloaderBridge.exe**.
+1. Use the complete portable release containing **YTDownloaderBridge.exe**.
 2. Open **Toolbox → Browser extension**, choose your browser, and use
    **Start setup** in step 1. Registration and the frozen Bridge/IPC are checked;
    success means the local connection is ready, not that a browser is connected.

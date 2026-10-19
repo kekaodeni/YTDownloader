@@ -10,7 +10,7 @@ def test_package_and_runtime_versions_match() -> None:
     project_root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert __version__ == "0.6.0"
+    assert __version__ == "0.7.0"
     assert project["project"]["version"] == __version__
     build_script = (project_root / "scripts" / "build.ps1").read_text(encoding="utf-8")
     assert "--metadata-process-self-test" in build_script
@@ -24,7 +24,7 @@ def test_ui_and_updater_use_the_runtime_version(quick_window) -> None:
     from PySide6.QtCore import QObject
     from yt_downloader_updater.__main__ import UPDATER_VERSION
 
-    assert UPDATER_VERSION == __version__ == "0.6.0"
+    assert UPDATER_VERSION == __version__ == "0.7.0"
     assert quick_window.state['version'] == __version__
     assert quick_window.settings_page.state['version'] == __version__
     texts = [item.property('text') for item in quick_window.root.findChildren(QObject)]
@@ -50,6 +50,27 @@ def test_readme_uses_stable_product_name() -> None:
     assert (project_root / "README.md").read_text(encoding="utf-8").startswith(
         "# YTDownloader\n"
     )
+
+
+def test_frozen_browser_resources_exclude_development_tests() -> None:
+    import ast
+    root = Path(__file__).resolve().parents[1]
+    spec = ast.parse((root / 'YTDownloader.spec').read_text('utf-8'))
+    browser_data = [node for node in ast.walk(spec) if isinstance(node, ast.Tuple)
+                    and len(node.elts) == 2 and 'browser-extension' in ast.unparse(node)]
+    packaged = set()
+    for node in browser_data:
+        source, target = eval(compile(ast.Expression(node), '<spec browser data>', 'eval'), {'root': root})
+        source = Path(source)
+        files = list(source.rglob('*')) if source.is_dir() else [source]
+        for file in files:
+            if file.is_file():
+                relative = file.relative_to(source).as_posix() if source.is_dir() else file.name
+                packaged.add(target + '/' + relative)
+    assert 'browser-extension/shared/popup.html' in packaged
+    assert 'browser-extension/manifests/firefox.json' in packaged
+    assert 'browser-extension/identity.json' in packaged
+    assert not any('/tests/' in path or path.endswith('.test.mjs') for path in packaged)
 
 
 def test_packaged_self_test_runs_before_qml_initialization(monkeypatch, tmp_path: Path) -> None:

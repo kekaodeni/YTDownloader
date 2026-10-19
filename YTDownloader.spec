@@ -23,7 +23,11 @@ if missing:
 
 datas = yt_datas + ejs_datas + curl_datas + [
     (str(root / "assets"), "assets"),
-    (str(root / "browser-extension"), "browser-extension"),
+    (str(root / "browser-extension" / "shared"), "browser-extension/shared"),
+    (str(root / "browser-extension" / "manifests"), "browser-extension/manifests"),
+    (str(root / "browser-extension" / "templates"), "browser-extension/templates"),
+    (str(root / "browser-extension" / "identity.json"), "browser-extension"),
+    (str(root / "browser-extension" / "README.md"), "browser-extension"),
     (str(root / "src" / "yt_downloader" / "ui" / "qml"), "yt_downloader/ui/qml"),
     (str(root / "src" / "yt_downloader" / "ui" / "translations.json"), "yt_downloader/ui"),
     (str(root / "licenses"), "third_party_licenses"),
