@@ -70,7 +70,7 @@ YTDownloader is a modern Windows frontend for yt-dlp with download archives, sta
 
 ### Cookie 与隐私
 
-Cookie 是敏感登录凭据。应用保存来源引用和网站匹配信息，不保存网站账号密码、不复制浏览器 Cookie 数据库，也不会修改所选 `cookies.txt`。关闭“使用 Cookie”后，任务不会使用 Cookie。
+Cookie 是敏感登录凭据。应用配置保存来源引用和网站匹配信息，不保存网站账号密码或 Cookie 内容，也不会修改所选 `cookies.txt`。浏览器 Cookie 读取遵循 yt-dlp 的原生流程，必要时会创建临时 SQLite 副本，并在读取结束后清理。关闭“使用 Cookie”后，任务不会使用 Cookie。
 
 浏览器 Cookie 的读取受浏览器配置、Windows 加密和访问权限影响。请勿公开分享 Cookie 文件、浏览器配置目录或含敏感信息的错误日志。
 

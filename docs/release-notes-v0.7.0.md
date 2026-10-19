@@ -14,7 +14,7 @@ v0.7.0 聚焦下载管理、独立媒体工具箱、播放列表体验及浏览�
 
 - 已完成的批量任务可收纳为摘要，失败任务保留明确的重试入口。
 - 便携包包含浏览器 Bridge 及三种扩展资源，提供配置、连接检测、修复、移除和独立安装指南。
-- 常规下拉框采用 PreferSelectedCenter，选中项尽量居中，靠近首尾时限制在合法范围；保留键盘、减少动画及轻微边界反馈。
+- 下拉框重新展开时，选中项尽量居中，靠近首尾时限制在合法范围；保留键盘、减少动画及轻微边界反馈。
 - 安装指南采用固定标题 / 浏览器切换栏、独立滚动正文和固定页脚，技术说明可折叠；长路径可换行、选择与复制。
 - 完善浅色 / 深色、十种语言和高 DPI 下的滚动边界与界面布局。
 
@@ -46,7 +46,7 @@ Windows ZIP 未使用 Authenticode 代码签名，可能显示“未知发布者
 
 ## 本次发布验证
 
-- 最终源码重新执行：完整 pytest **1356 passed**，发布 focused tests **543 passed**；浏览器扩展 JavaScript 测试通过。
+- 最终源码重新执行：完整 pytest **1358 passed**，发布 focused tests **549 passed**；浏览器扩展 JavaScript 测试通过。
 - 实际 Qt Quick：Light / Dark、100% / 125% / 150% / 200% DPI、十种语言和 Reduce Motion；320 次下拉框定位与 480 组安装指南检查通过，QML warnings **0**。
 - 实际下载并用 ffprobe 检查 YouTube、YouTube Playlist、Bilibili、Bilibili 番剧、X 和 SOOP 成品的音视频、封面及 metadata；章节样本的最终 MKV 保留 **15 个章节**。独立封面、字幕提取、真实文件归档失效检查及 X 有效 / 失效 / 无媒体状态通过。
 - 正式冻结包、生产签名、v0.6.0 → v0.7.0 更新与回滚的最终结果见 Release 附件 `release-validation-v0.7.0.json`；该报告仅在对应发布门禁通过后上传。
@@ -70,7 +70,7 @@ v0.7.0 focuses on download management, standalone media tools, selective playlis
 
 - Completed batch tasks can collapse into a summary; failed tasks keep their retry actions.
 - Portable Extension Distribution includes the Bridge and all three browser resources, with setup, connection checks, repair, removal and a separate installation guide.
-- PreferSelectedCenter dropdown positioning balances context, clamps at list boundaries and retains keyboard navigation, reduced motion and subtle edge feedback.
+- Reopened dropdowns center the selected item where space allows, clamp at list boundaries and retain keyboard navigation, reduced motion and subtle edge feedback.
 - The installation guide has a fixed title/browser header, independently scrolling steps and fixed footer. Technical details are collapsible; paths wrap and support selection/copying.
 - Refined scrolling and layout across light/dark themes, all ten languages and high DPI settings.
 
@@ -98,7 +98,7 @@ The ZIP is not Authenticode-signed. Update manifests use the established product
 
 ### This release's validation
 
-- Fresh final-source runs: **1356 full pytest tests** and **543 focused release tests** passed; browser-extension JavaScript tests passed.
+- Fresh final-source runs: **1358 full pytest tests** and **549 focused release tests** passed; browser-extension JavaScript tests passed.
 - Native Qt Quick: light/dark, 100% / 125% / 150% / 200% DPI, all ten languages and Reduce Motion; 320 dropdown-positioning cases and 480 installation-guide cases passed, with **0 QML warnings**.
 - Real YouTube, YouTube Playlist, Bilibili, Bilibili season, X and SOOP outputs were checked with ffprobe for audio/video, covers and metadata. The chapter sample retained **15 chapters** in its final MKV. Standalone cover/subtitle tools, real-file archive invalidation and X valid/invalid/no-media states passed.
 - Final formal-package, production-signature, v0.6.0 → v0.7.0 upgrade and rollback results are recorded in the Release asset `release-validation-v0.7.0.json`, uploaded only after the corresponding publication gates pass.
